@@ -301,14 +301,7 @@ class Dinov2WithRegistersPatchEmbeddings(nn.Module):
         self.projection = nn.Conv2d(num_channels, hidden_size, kernel_size=patch_size, stride=patch_size)
 
     def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
-        num_channels = pixel_values.shape[1]
-        if num_channels != self.num_channels:
-            raise ValueError(
-                "Make sure that the channel dimension of the pixel values match with the one set in the configuration."
-                f" Expected {self.num_channels} but got {num_channels}."
-            )
-        embeddings = self.projection(pixel_values).flatten(2).transpose(1, 2)
-        return embeddings
+        return self.projection(pixel_values).flatten(2).transpose(1, 2)
 
 class WindowedDinov2WithRegistersEmbeddings(nn.Module):
     """
@@ -448,41 +441,6 @@ class Dinov2WithRegistersSelfAttention(nn.Module):
         x = x.view(new_x_shape)
         return x.permute(0, 2, 1, 3)
 
-    def forward(
-        self, hidden_states, head_mask: Optional[torch.Tensor] = None, output_attentions: bool = False
-    ) -> Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor]]:
-        mixed_query_layer = self.query(hidden_states)
-
-        key_layer = self.transpose_for_scores(self.key(hidden_states))
-        value_layer = self.transpose_for_scores(self.value(hidden_states))
-        query_layer = self.transpose_for_scores(mixed_query_layer)
-
-        # Take the dot product between "query" and "key" to get the raw attention scores.
-        attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
-
-        attention_scores = attention_scores / math.sqrt(self.attention_head_size)
-
-        # Normalize the attention scores to probabilities.
-        attention_probs = nn.functional.softmax(attention_scores, dim=-1)
-
-        # This is actually dropping out entire tokens to attend to, which might
-        # seem a bit unusual, but is taken from the original Transformer paper.
-        attention_probs = self.dropout(attention_probs)
-
-        # Mask heads if we want to
-        if head_mask is not None:
-            attention_probs = attention_probs * head_mask
-
-        context_layer = torch.matmul(attention_probs, value_layer)
-
-        context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
-        new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
-        context_layer = context_layer.view(new_context_layer_shape)
-
-        outputs = (context_layer, attention_probs) if output_attentions else (context_layer,)
-
-        return outputs
-
 class Dinov2WithRegistersSelfOutput(nn.Module):
     """
     The residual connection is defined in Dinov2WithRegistersLayer instead of here (as is the case with other models), due to the
@@ -506,24 +464,6 @@ class Dinov2WithRegistersAttention(nn.Module):
         self.attention = Dinov2WithRegistersSelfAttention(config)
         self.output = Dinov2WithRegistersSelfOutput(config)
         self.pruned_heads = set()
-
-    def prune_heads(self, heads: Set[int]) -> None:
-        if len(heads) == 0:
-            return
-        heads, index = find_pruneable_heads_and_indices(
-            heads, self.attention.num_attention_heads, self.attention.attention_head_size, self.pruned_heads
-        )
-
-        # Prune linear layers
-        self.attention.query = prune_linear_layer(self.attention.query, index)
-        self.attention.key = prune_linear_layer(self.attention.key, index)
-        self.attention.value = prune_linear_layer(self.attention.value, index)
-        self.output.dense = prune_linear_layer(self.output.dense, index, dim=1)
-
-        # Update hyper params and store pruned heads
-        self.attention.num_attention_heads = self.attention.num_attention_heads - len(heads)
-        self.attention.all_head_size = self.attention.attention_head_size * self.attention.num_attention_heads
-        self.pruned_heads = self.pruned_heads.union(heads)
 
     def forward(
         self,
@@ -623,16 +563,11 @@ class WindowedDinov2WithRegistersLayer(nn.Module):
         self.norm1 = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.attention = DINOV2_WITH_REGISTERS_ATTENTION_CLASSES[config._attn_implementation](config)
         self.layer_scale1 = Dinov2WithRegistersLayerScale(config)
-        self.drop_path = (
-            Dinov2WithRegistersDropPath(config.drop_path_rate) if config.drop_path_rate > 0.0 else nn.Identity()
-        )
+        self.drop_path = nn.Identity()
 
         self.norm2 = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
 
-        if config.use_swiglu_ffn:
-            self.mlp = Dinov2WithRegistersSwiGLUFFN(config)
-        else:
-            self.mlp = Dinov2WithRegistersMLP(config)
+        self.mlp = Dinov2WithRegistersMLP(config)
         self.layer_scale2 = Dinov2WithRegistersLayerScale(config)
 
     def forward(
@@ -875,58 +810,46 @@ class DinoV2(nn.Module):
         self.patch_size = patch_size
         self.num_windows = num_windows
 
-        # Create the encoder
+        window_block_indexes = set(range(out_feature_indexes[-1] + 1))
+        window_block_indexes.difference_update(out_feature_indexes)
+        window_block_indexes = list(window_block_indexes)
 
-        if not use_windowed_attn:
-            assert not gradient_checkpointing, "Gradient checkpointing is not supported for non-windowed attention"
-            assert load_dinov2_weights, "Using non-windowed attention requires loading dinov2 weights from hub"
-            self.encoder = AutoBackbone.from_pretrained(
-                name,
-                out_features=[f"stage{i}" for i in out_feature_indexes],
-                return_dict=False,
+        dino_config = get_config(size, use_registers)
+
+        dino_config["return_dict"] = False
+        dino_config["out_features"] = [f"stage{i}" for i in out_feature_indexes]
+
+        implied_resolution = positional_encoding_size * patch_size
+
+        if implied_resolution != dino_config["image_size"]:
+            print("Using a different number of positional encodings than DINOv2, which means we're not loading DINOv2 backbone weights. This is not a problem if finetuning a pretrained RF-DETR model.")
+            dino_config["image_size"] = implied_resolution
+            load_dinov2_weights = False
+
+        if patch_size != 14:
+            print(f"Using patch size {patch_size} instead of 14, which means we're not loading DINOv2 backbone weights. This is not a problem if finetuning a pretrained RF-DETR model.")
+            dino_config["patch_size"] = patch_size
+            load_dinov2_weights = False
+
+        if use_registers:
+            windowed_dino_config = WindowedDinov2WithRegistersConfig(
+                **dino_config,
+                num_windows=num_windows,
+                window_block_indexes=window_block_indexes,
+                gradient_checkpointing=gradient_checkpointing,
             )
         else:
-            window_block_indexes = set(range(out_feature_indexes[-1] + 1))
-            window_block_indexes.difference_update(out_feature_indexes)
-            window_block_indexes = list(window_block_indexes)
-
-            dino_config = get_config(size, use_registers)
-
-            dino_config["return_dict"] = False
-            dino_config["out_features"] = [f"stage{i}" for i in out_feature_indexes]
-
-            implied_resolution = positional_encoding_size * patch_size
-
-            if implied_resolution != dino_config["image_size"]:
-                print("Using a different number of positional encodings than DINOv2, which means we're not loading DINOv2 backbone weights. This is not a problem if finetuning a pretrained RF-DETR model.")
-                dino_config["image_size"] = implied_resolution
-                load_dinov2_weights = False
-
-            if patch_size != 14:
-                print(f"Using patch size {patch_size} instead of 14, which means we're not loading DINOv2 backbone weights. This is not a problem if finetuning a pretrained RF-DETR model.")
-                dino_config["patch_size"] = patch_size
-                load_dinov2_weights = False
-
-            if use_registers:
-                windowed_dino_config = WindowedDinov2WithRegistersConfig(
-                    **dino_config,
-                    num_windows=num_windows,
-                    window_block_indexes=window_block_indexes,
-                    gradient_checkpointing=gradient_checkpointing,
-                )
-            else:
-                windowed_dino_config = WindowedDinov2WithRegistersConfig(
-                    **dino_config,
-                    num_windows=num_windows,
-                    window_block_indexes=window_block_indexes,
-                    num_register_tokens=0,
-                    gradient_checkpointing=gradient_checkpointing,
-                )
-            self.encoder = WindowedDinov2WithRegistersBackbone.from_pretrained(
-                name,
-                config=windowed_dino_config,
-            ) if load_dinov2_weights else WindowedDinov2WithRegistersBackbone(windowed_dino_config)
-
+            windowed_dino_config = WindowedDinov2WithRegistersConfig(
+                **dino_config,
+                num_windows=num_windows,
+                window_block_indexes=window_block_indexes,
+                num_register_tokens=0,
+                gradient_checkpointing=gradient_checkpointing,
+            )
+        self.encoder = WindowedDinov2WithRegistersBackbone.from_pretrained(
+            name,
+            config=windowed_dino_config,
+        ) if load_dinov2_weights else WindowedDinov2WithRegistersBackbone(windowed_dino_config)
 
         self._out_feature_channels = [size_to_width[size]] * len(out_feature_indexes)
         self._export = False
@@ -972,13 +895,7 @@ def _get_activation_fn(activation):
         return F.glu
     raise RuntimeError(F"activation should be relu/gelu, not {activation}.")
 
-def _is_power_of_2(n):
-    if (not isinstance(n, int)) or (n < 0):
-        raise ValueError("invalid input for _is_power_of_2: {} (type: {})".format(n, type(n)))
-    return (n & (n - 1) == 0) and n != 0
-
 class TransformerDecoderLayer(nn.Module):
-
     def __init__(self, d_model, sa_nhead, ca_nhead, dim_feedforward=2048, dropout=0.1,
                  activation="relu", normalize_before=False, group_detr=1,
                  num_feature_levels=4, dec_n_points=4,
@@ -1033,17 +950,10 @@ class TransformerDecoderLayer(nn.Module):
         # shape: batch_size x num_queries x 256
         q = k = tgt + query_pos
         v = tgt
-        if self.training:
-            q = torch.cat(q.split(num_queries // self.group_detr, dim=1), dim=0)
-            k = torch.cat(k.split(num_queries // self.group_detr, dim=1), dim=0)
-            v = torch.cat(v.split(num_queries // self.group_detr, dim=1), dim=0)
-
         tgt2 = self.self_attn(q, k, v, attn_mask=tgt_mask,
                             key_padding_mask=tgt_key_padding_mask,
                             need_weights=False)[0]
 
-        if self.training:
-            tgt2 = torch.cat(tgt2.split(bs, dim=0), dim=1)
         # ========== End of Self-Attention =============
 
         tgt = tgt + self.dropout1(tgt2)
@@ -1137,17 +1047,6 @@ class TransformerDecoder(nn.Module):
         self.ref_point_head = MLP(2 * d_model, d_model, d_model, 2)
 
         self._export = False
-
-    def refpoints_refine(self, refpoints_unsigmoid, new_refpoints_delta):
-        if self.bbox_reparam:
-            new_refpoints_cxcy = new_refpoints_delta[..., :2] * refpoints_unsigmoid[..., 2:] + refpoints_unsigmoid[..., :2]
-            new_refpoints_wh = new_refpoints_delta[..., 2:].exp() * refpoints_unsigmoid[..., 2:]
-            new_refpoints_unsigmoid = torch.concat(
-                [new_refpoints_cxcy, new_refpoints_wh], dim=-1
-            )
-        else:
-            new_refpoints_unsigmoid = refpoints_unsigmoid + new_refpoints_delta
-        return new_refpoints_unsigmoid
 
     def forward(self, tgt, memory,
                 tgt_mask: Optional[Tensor] = None,
@@ -1317,15 +1216,6 @@ class MSDeformAttn(nn.Module):
         :param n_points     number of sampling points per attention head per feature level
         """
         super().__init__()
-        if d_model % n_heads != 0:
-            raise ValueError('d_model must be divisible by n_heads, but got {} and {}'.format(d_model, n_heads))
-        _d_per_head = d_model // n_heads
-        # you'd better set _d_per_head to a power of 2 which is more efficient in our CUDA implementation
-        if not _is_power_of_2(_d_per_head):
-            warnings.warn("You'd better set d_model in MSDeformAttn to make the "
-                          "dimension of each attention head a power of 2 "
-                          "which is more efficient in our CUDA implementation.")
-
         self.im2col_step = 64
 
         self.d_model = d_model
@@ -1338,26 +1228,7 @@ class MSDeformAttn(nn.Module):
         self.value_proj = nn.Linear(d_model, d_model)
         self.output_proj = nn.Linear(d_model, d_model)
 
-        self._reset_parameters()
-
         self._export = False
-
-    def _reset_parameters(self):
-        constant_(self.sampling_offsets.weight.data, 0.)
-        thetas = torch.arange(self.n_heads, dtype=torch.float32) * (2.0 * math.pi / self.n_heads)
-        grid_init = torch.stack([thetas.cos(), thetas.sin()], -1)
-        grid_init = (grid_init / grid_init.abs().max(-1, keepdim=True)
-                     [0]).view(self.n_heads, 1, 1, 2).repeat(1, self.n_levels, self.n_points, 1)
-        for i in range(self.n_points):
-            grid_init[:, :, i, :] *= i + 1
-        with torch.no_grad():
-            self.sampling_offsets.bias = nn.Parameter(grid_init.view(-1))
-        constant_(self.attention_weights.weight.data, 0.)
-        constant_(self.attention_weights.bias.data, 0.)
-        xavier_uniform_(self.value_proj.weight.data)
-        constant_(self.value_proj.bias.data, 0.)
-        xavier_uniform_(self.output_proj.weight.data)
-        constant_(self.output_proj.bias.data, 0.)
 
     def forward(self, query, reference_points, input_flatten, input_spatial_shapes,
                 input_level_start_index, input_padding_mask=None):
@@ -1404,7 +1275,6 @@ class MSDeformAttn(nn.Module):
 
 
 class Transformer(nn.Module):
-
     def __init__(self, d_model=512, sa_nhead=8, ca_nhead=8, num_queries=300,
                  num_decoder_layers=6, dim_feedforward=2048, dropout=0.0,
                  activation="relu", normalize_before=False,
@@ -1457,9 +1327,6 @@ class Transformer(nn.Module):
         for p in self.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
-        for m in self.modules():
-            if isinstance(m, MSDeformAttn):
-                m._reset_parameters()
 
     def get_valid_ratio(self, mask):
         _, H, W = mask.shape
@@ -1605,8 +1472,6 @@ class BackboneBase(nn.Module):
     def __init__(self):
         super().__init__()
 
-    def get_named_param_lr_pairs(self, args, prefix:str):
-        raise NotImplementedError
     
 def get_activation(name, inplace=False):
     """ get activation """
@@ -1857,17 +1722,6 @@ class NestedTensor(object):
     def __init__(self, tensors: Tensor, mask: Optional[Tensor]) -> None:
         self.tensors = tensors
         self.mask = mask
-
-    def to(self, device: torch.device) -> 'NestedTensor':
-        cast_tensor = self.tensors.to(device)
-        mask = self.mask
-        if mask is not None:
-            assert mask is not None
-            cast_mask = mask.to(device)
-        else:
-            cast_mask = None
-        return NestedTensor(cast_tensor, cast_mask)
-
     def decompose(self) -> Tuple[Tensor, Optional[Tensor]]:
         return self.tensors, self.mask
 
@@ -1877,13 +1731,7 @@ class NestedTensor(object):
 def build_position_encoding(hidden_dim, position_embedding):
     N_steps = hidden_dim // 2
     if position_embedding in ('v2', 'sine'):
-        # TODO find a better way of exposing other arguments
         position_embedding = PositionEmbeddingSine(N_steps, normalize=True)
-    elif position_embedding in ('v3', 'learned'):
-        position_embedding = PositionEmbeddingLearned(N_steps)
-    else:
-        raise ValueError(f"not supported {position_embedding}")
-
     return position_embedding
 
 class PositionEmbeddingSine(nn.Module):
@@ -1916,31 +1764,6 @@ class PositionEmbeddingSine(nn.Module):
             x_embed = x_embed / (x_embed[:, :, -1:] + eps) * self.scale
 
         dim_t = torch.arange(self.num_pos_feats, dtype=torch.float32, device=x.device)
-        dim_t = self.temperature ** (2 * (dim_t // 2) / self.num_pos_feats)
-
-        pos_x = x_embed[:, :, :, None] / dim_t
-        pos_y = y_embed[:, :, :, None] / dim_t
-        pos_x = torch.stack((pos_x[:, :, :, 0::2].sin(), pos_x[:, :, :, 1::2].cos()), dim=4).flatten(3)
-        pos_y = torch.stack((pos_y[:, :, :, 0::2].sin(), pos_y[:, :, :, 1::2].cos()), dim=4).flatten(3)
-        if align_dim_orders:
-            pos = torch.cat((pos_y, pos_x), dim=3).permute(1, 2, 0, 3)
-            # return: (H, W, bs, C)
-        else:
-            pos = torch.cat((pos_y, pos_x), dim=3).permute(0, 3, 1, 2)
-            # return: (bs, C, H, W)
-        return pos
-
-    def forward_export(self, mask:torch.Tensor, align_dim_orders = True):
-        assert mask is not None
-        not_mask = ~mask
-        y_embed = not_mask.cumsum(1, dtype=torch.float32)
-        x_embed = not_mask.cumsum(2, dtype=torch.float32)
-        if self.normalize:
-            eps = 1e-6
-            y_embed = y_embed / (y_embed[:, -1:, :] + eps) * self.scale
-            x_embed = x_embed / (x_embed[:, :, -1:] + eps) * self.scale
-
-        dim_t = torch.arange(self.num_pos_feats, dtype=torch.float32, device=mask.device)
         dim_t = self.temperature ** (2 * (dim_t // 2) / self.num_pos_feats)
 
         pos_x = x_embed[:, :, :, None] / dim_t
@@ -2046,44 +1869,6 @@ class Backbone(BackboneBase):
             ]
             out.append(NestedTensor(feat, mask))
         return out
-
-    def forward_export(self, tensors: torch.Tensor):
-        feats = self.encoder(tensors)
-        feats = self.projector(feats)
-        out_feats = []
-        out_masks = []
-        for feat in feats:
-            # x: [(B, C, H, W)]
-            b, _, h, w = feat.shape
-            out_masks.append(
-                torch.zeros((b, h, w), dtype=torch.bool, device=feat.device)
-            )
-            out_feats.append(feat)
-        return out_feats, out_masks
-
-    def get_named_param_lr_pairs(self, args, prefix: str = "backbone.0"):
-        num_layers = args.out_feature_indexes[-1] + 1
-        backbone_key = "backbone.0.encoder"
-        named_param_lr_pairs = {}
-        for n, p in self.named_parameters():
-            n = prefix + "." + n
-            if backbone_key in n and p.requires_grad:
-                lr = (
-                    args.lr_encoder
-                    * get_dinov2_lr_decay_rate(
-                        n,
-                        lr_decay_rate=args.lr_vit_layer_decay,
-                        num_layers=num_layers,
-                    )
-                    * args.lr_component_decay**2
-                )
-                wd = args.weight_decay * get_dinov2_weight_decay_rate(n)
-                named_param_lr_pairs[n] = {
-                    "params": p,
-                    "lr": lr,
-                    "weight_decay": wd,
-                }
-        return named_param_lr_pairs
 
 def build_backbone(
     encoder,
@@ -2390,27 +2175,18 @@ def _max_by_axis(the_list: List[List[int]]) -> List[int]:
     return maxes
 
 def nested_tensor_from_tensor_list(tensor_list: List[Tensor]) -> NestedTensor:
-    # TODO make this more general
-    if tensor_list[0].ndim == 3:
-        if torchvision._is_tracing():
-            # nested_tensor_from_tensor_list() does not export well to ONNX
-            # call _onnx_nested_tensor_from_tensor_list() instead
-            return _onnx_nested_tensor_from_tensor_list(tensor_list)
-
-        # TODO make it support different-sized images
-        max_size = _max_by_axis([list(img.shape) for img in tensor_list])
-        # min_size = tuple(min(s) for s in zip(*[img.shape for img in tensor_list]))
-        batch_shape = [len(tensor_list)] + max_size
-        b, c, h, w = batch_shape
-        dtype = tensor_list[0].dtype
-        device = tensor_list[0].device
-        tensor = torch.zeros(batch_shape, dtype=dtype, device=device)
-        mask = torch.ones((b, h, w), dtype=torch.bool, device=device)
-        for img, pad_img, m in zip(tensor_list, tensor, mask):
-            pad_img[: img.shape[0], : img.shape[1], : img.shape[2]].copy_(img)
-            m[: img.shape[1], :img.shape[2]] = False
-    else:
-        raise ValueError('not supported')
+    # TODO make it support different-sized images
+    max_size = _max_by_axis([list(img.shape) for img in tensor_list])
+    # min_size = tuple(min(s) for s in zip(*[img.shape for img in tensor_list]))
+    batch_shape = [len(tensor_list)] + max_size
+    b, c, h, w = batch_shape
+    dtype = tensor_list[0].dtype
+    device = tensor_list[0].device
+    tensor = torch.zeros(batch_shape, dtype=dtype, device=device)
+    mask = torch.ones((b, h, w), dtype=torch.bool, device=device)
+    for img, pad_img, m in zip(tensor_list, tensor, mask):
+        pad_img[: img.shape[0], : img.shape[1], : img.shape[2]].copy_(img)
+        m[: img.shape[1], :img.shape[2]] = False
     return NestedTensor(tensor, mask)
 
 class MLP(nn.Module):
@@ -2496,36 +2272,7 @@ class LWDETR(nn.Module):
 
         self._export = False
 
-    def reinitialize_detection_head(self, num_classes):
-        base = self.class_embed.weight.shape[0]
-        num_repeats = int(math.ceil(num_classes / base))
-        self.class_embed.weight.data = self.class_embed.weight.data.repeat(num_repeats, 1)
-        self.class_embed.weight.data = self.class_embed.weight.data[:num_classes]
-        self.class_embed.bias.data = self.class_embed.bias.data.repeat(num_repeats)
-        self.class_embed.bias.data = self.class_embed.bias.data[:num_classes]
-
-        if self.two_stage:
-            for enc_out_class_embed in self.transformer.enc_out_class_embed:
-                enc_out_class_embed.weight.data = enc_out_class_embed.weight.data.repeat(num_repeats, 1)
-                enc_out_class_embed.weight.data = enc_out_class_embed.weight.data[:num_classes]
-                enc_out_class_embed.bias.data = enc_out_class_embed.bias.data.repeat(num_repeats)
-                enc_out_class_embed.bias.data = enc_out_class_embed.bias.data[:num_classes]
-
     def forward(self, samples: NestedTensor, targets=None):
-        """The forward expects a NestedTensor, which consists of:
-               - samples.tensor: batched images, of shape [batch_size x 3 x H x W]
-               - samples.mask: a binary mask of shape [batch_size x H x W], containing 1 on padded pixels
-
-            It returns a dict with the following elements:
-               - "pred_logits": the classification logits (including no-object) for all queries.
-                                Shape= [batch_size x num_queries x num_classes]
-               - "pred_boxes": The normalized boxes coordinates for all queries, represented as
-                               (center_x, center_y, width, height). These values are normalized in [0, 1],
-                               relative to the size of each individual image (disregarding possible padding).
-                               See PostProcess for information on how to retrieve the unnormalized bounding box.
-               - "aux_outputs": Optional, only returned when auxilary losses are activated. It is a list of
-                                dictionnaries containing the two above keys for each decoder layer.
-        """
         if isinstance(samples, (list, torch.Tensor)):
             samples = nested_tensor_from_tensor_list(samples)
         features, poss = self.backbone(samples)
@@ -2571,8 +2318,6 @@ class LWDETR(nn.Module):
             out = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
             if self.segmentation_head is not None:
                 out['pred_masks'] = outputs_masks[-1]
-            if self.aux_loss:
-                out['aux_outputs'] = self._set_aux_loss(outputs_class, outputs_coord, outputs_masks if self.segmentation_head is not None else None)
 
         if self.two_stage:
             group_detr = self.group_detr if self.training else 1
@@ -2597,70 +2342,6 @@ class LWDETR(nn.Module):
                     out['pred_masks'] = masks_enc
 
         return out
-
-    def forward_export(self, tensors):
-        srcs, _, poss = self.backbone(tensors)
-        # only use one group in inference
-        refpoint_embed_weight = self.refpoint_embed.weight[:self.num_queries]
-        query_feat_weight = self.query_feat.weight[:self.num_queries]
-
-        hs, ref_unsigmoid, hs_enc, ref_enc = self.transformer(
-            srcs, None, poss, refpoint_embed_weight, query_feat_weight)
-
-        outputs_masks = None
-
-        if hs is not None:
-            if self.bbox_reparam:
-                outputs_coord_delta = self.bbox_embed(hs)
-                outputs_coord_cxcy = outputs_coord_delta[..., :2] * ref_unsigmoid[..., 2:] + ref_unsigmoid[..., :2]
-                outputs_coord_wh = outputs_coord_delta[..., 2:].exp() * ref_unsigmoid[..., 2:]
-                outputs_coord = torch.concat(
-                    [outputs_coord_cxcy, outputs_coord_wh], dim=-1
-                )
-            else:
-                outputs_coord = (self.bbox_embed(hs) + ref_unsigmoid).sigmoid()
-            outputs_class = self.class_embed(hs)
-            if self.segmentation_head is not None:
-                outputs_masks = self.segmentation_head(srcs[0], [hs,], tensors.shape[-2:])[0]
-        else:
-            assert self.two_stage, "if not using decoder, two_stage must be True"
-            outputs_class = self.transformer.enc_out_class_embed[0](hs_enc)
-            outputs_coord = ref_enc
-            if self.segmentation_head is not None:
-                outputs_masks = self.segmentation_head(srcs[0], [hs_enc,], tensors.shape[-2:], skip_blocks=True)[0]
-
-        if outputs_masks is not None:
-            return outputs_coord, outputs_class, outputs_masks
-        else:
-            return outputs_coord, outputs_class
-
-    @torch.jit.unused
-    def _set_aux_loss(self, outputs_class, outputs_coord, outputs_masks):
-        # this is a workaround to make torchscript happy, as torchscript
-        # doesn't support dictionary with non-homogeneous values, such
-        # as a dict having both a Tensor and a list.
-        if outputs_masks is not None:
-            return [{'pred_logits': a, 'pred_boxes': b, 'pred_masks': c}
-                    for a, b, c in zip(outputs_class[:-1], outputs_coord[:-1], outputs_masks[:-1])]
-        else:
-            return [{'pred_logits': a, 'pred_boxes': b}
-                    for a, b in zip(outputs_class[:-1], outputs_coord[:-1])]
-
-    def update_drop_path(self, drop_path_rate, vit_encoder_num_layers):
-        """ """
-        dp_rates = [x.item() for x in torch.linspace(0, drop_path_rate, vit_encoder_num_layers)]
-        for i in range(vit_encoder_num_layers):
-            if hasattr(self.backbone[0].encoder, 'blocks'): # Not aimv2
-                if hasattr(self.backbone[0].encoder.blocks[i].drop_path, 'drop_prob'):
-                    self.backbone[0].encoder.blocks[i].drop_path.drop_prob = dp_rates[i]
-            else: # aimv2
-                if hasattr(self.backbone[0].encoder.trunk.blocks[i].drop_path, 'drop_prob'):
-                    self.backbone[0].encoder.trunk.blocks[i].drop_path.drop_prob = dp_rates[i]
-
-    def update_dropout(self, drop_rate):
-        for module in self.transformer.modules():
-            if isinstance(module, nn.Dropout):
-                module.p = drop_rate
 
 def build_model(args):
     # the `num_classes` naming here is somewhat misleading.
@@ -2853,16 +2534,6 @@ class ModelConfig(BaseModel):
     mask_downsample_ratio: int = 4
     license: str = "Apache-2.0"
 
-    @field_validator("pretrain_weights", mode="after")
-    @classmethod
-    def expand_path(cls, v: Optional[str]) -> Optional[str]:
-        """
-        Expand user paths (e.g., '~' or paths with separators) but leave simple filenames
-        (like 'rf-detr-base.pth') unchanged so they can match hosted model keys.
-        """
-        if v is None:
-            return v
-        return os.path.realpath(os.path.expanduser(v))
 
 class RFDETRBaseConfig(ModelConfig):
     """
@@ -2971,47 +2642,6 @@ class RFDETR:
         Retrieve the configuration parameters used by the model.
         """
         return ModelConfig(**kwargs)
-
-    def train(self, **kwargs):
-        """
-        Train an RF-DETR model.
-        """
-        config = self.get_train_config(**kwargs)
-        self.train_from_config(config, **kwargs)
-
-    def optimize_for_inference(self, compile=True, batch_size=1, dtype=torch.float32):
-        self.remove_optimized_model()
-
-        self.model.inference_model = deepcopy(self.model.model)
-        self.model.inference_model.eval()
-        self.model.inference_model.export()
-
-        self._optimized_resolution = self.model.resolution
-        self._is_optimized_for_inference = True
-
-        self.model.inference_model = self.model.inference_model.to(dtype=dtype)
-        self._optimized_dtype = dtype
-
-        if compile:
-            self.model.inference_model = torch.jit.trace(
-                self.model.inference_model,
-                torch.randn(
-                    batch_size, 3, self.model.resolution, self.model.resolution,
-                    device=self.model.device,
-                    dtype=dtype
-                )
-            )
-            self._optimized_has_been_compiled = True
-            self._optimized_batch_size = batch_size
-
-    def remove_optimized_model(self):
-        exit()
-        self.model.inference_model = None
-        self._is_optimized_for_inference = False
-        self._optimized_has_been_compiled = False
-        self._optimized_batch_size = None
-        self._optimized_resolution = None
-        self._optimized_half = False
 
     @staticmethod
     def _load_classes(dataset_dir) -> List[str]:
