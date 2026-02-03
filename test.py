@@ -59,15 +59,7 @@ size_to_width = {
     "large": 1024,
 }
 
-def get_config(size, use_registers):
-    config_dict = size_to_config_with_registers if use_registers else size_to_config
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    configs_dir = os.path.join(current_dir, "dinov2_configs")
-    config_path = os.path.join(configs_dir, config_dict[size])
-    with open(config_path, "r") as f:
-        dino_config = json.load(f)
-    return dino_config
-
+configs = {"small": {'architectures': ['Dinov2Model'], 'attention_probs_dropout_prob': 0.0, 'drop_path_rate': 0.0, 'hidden_act': 'gelu', 'hidden_dropout_prob': 0.0, 'hidden_size': 384, 'image_size': 518, 'initializer_range': 0.02, 'layer_norm_eps': 1e-06, 'layerscale_value': 1.0, 'mlp_ratio': 4, 'model_type': 'dinov2', 'num_attention_heads': 6, 'num_channels': 3, 'num_hidden_layers': 12, 'patch_size': 14, 'qkv_bias': True, 'torch_dtype': 'float32', 'transformers_version': '4.32.0.dev0', 'use_swiglu_ffn': False}}
 
 PLATFORM_MODELS = {
     "rf-detr-xlarge.pth": "https://storage.googleapis.com/rfdetr/platform-licensed/rf-detr-xlarge.pth",
@@ -802,7 +794,7 @@ class DinoV2(nn.Module):
         window_block_indexes.difference_update(out_feature_indexes)
         window_block_indexes = list(window_block_indexes)
 
-        dino_config = get_config(size, use_registers)
+        dino_config = configs[size]
 
         dino_config["return_dict"] = False
         dino_config["out_features"] = [f"stage{i}" for i in out_feature_indexes]
@@ -2393,6 +2385,7 @@ def build_model(args):
     return model
 
 def download_file(url: str, filename: str) -> None:
+    print("rory downloading url",url)
     response = requests.get(url, stream=True)
     total_size = int(response.headers['content-length'])
     with open(filename, "wb") as f, tqdm(
@@ -2625,42 +2618,6 @@ class RFDETR:
         """
         download_pretrain_weights(self.model_config.pretrain_weights)
 
-    def get_model_config(self, **kwargs):
-        """
-        Retrieve the configuration parameters used by the model.
-        """
-        return ModelConfig(**kwargs)
-
-    @staticmethod
-    def _load_classes(dataset_dir) -> List[str]:
-        exit()
-        """Load class names from a COCO or YOLO dataset directory."""
-        if is_valid_coco_dataset(dataset_dir):
-            coco_path = os.path.join(dataset_dir, "train", "_annotations.coco.json")
-            with open(coco_path, "r") as f:
-                anns = json.load(f)
-            class_names = [c["name"] for c in anns["categories"] if c["supercategory"] != "none"]
-            return class_names
-
-        # list all YAML files in the folder
-        if is_valid_yolo_dataset(dataset_dir):
-            yaml_paths = glob.glob(os.path.join(dataset_dir, "*.yaml")) + glob.glob(os.path.join(dataset_dir, "*.yml"))
-            # any YAML file starting with data e.g. data.yaml, dataset.yaml
-            yaml_data_files = [yp for yp in yaml_paths if os.path.basename(yp).startswith("data")]
-            yaml_path = yaml_data_files[0]
-            with open(yaml_path, "r") as f:
-                data = yaml.safe_load(f)
-            if "names" in data:
-                if isinstance(data["names"], dict):
-                    return [data["names"][i] for i in sorted(data["names"].keys())]
-                return data["names"]
-            else:
-                raise ValueError(f"Found {yaml_path} but it does not contain 'names' field.")
-
-        raise FileNotFoundError(
-            f"Could not find class names in {dataset_dir}. "
-            "Checked for COCO (train/_annotations.coco.json) and YOLO (data.yaml, data.yml) styles."
-        )
 
     def get_model(self, config: ModelConfig):
         """
