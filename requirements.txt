@@ -1,6 +1,4 @@
 numpy==2.4.2
-opencv-python==4.13.0.90
-opencv-python-headless==4.10.0.84
 packaging==26.0
 peft==0.18.1
 pi_heif==1.2.0
