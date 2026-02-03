@@ -3,19 +3,15 @@ import supervision as sv
 from PIL import Image
 import numpy as np
 from collections import defaultdict
-from transformers.utils.backbone_utils import BackboneMixin, BackboneConfigMixin, get_aligned_output_features_output_indices
-from transformers.utils import add_start_docstrings_to_model_forward, replace_return_docstrings
+from transformers.utils.backbone_utils import BackboneMixin, BackboneConfigMixin
 from transformers.modeling_outputs import BackboneOutput, BaseModelOutput
-from transformers.activations import ACT2FN
 from transformers.modeling_utils import PreTrainedModel
 from transformers.configuration_utils import PretrainedConfig
 
 import torch
 from torch import nn
 from torch import Tensor
-import torchvision
 from typing import List, Literal, Optional, Union, Tuple, Callable, Set
-from copy import deepcopy
 from pydantic import BaseModel, field_validator
 import os
 import torchvision.transforms.functional as vF
@@ -24,7 +20,6 @@ from tqdm import tqdm
 import math
 import copy
 import argparse
-from torch.nn.init import constant_, xavier_uniform_
 import json
 import collections.abc
 
@@ -229,9 +224,7 @@ class WindowedDinov2WithRegistersConfig(BackboneConfigMixin, PretrainedConfig):
         self.use_swiglu_ffn = use_swiglu_ffn
         self.num_register_tokens = num_register_tokens
         self.stage_names = ["stem"] + [f"stage{idx}" for idx in range(1, num_hidden_layers + 1)]
-        self._out_features, self._out_indices = get_aligned_output_features_output_indices(
-            out_features=out_features, out_indices=out_indices, stage_names=self.stage_names
-        )
+        self._out_features = ['stage3', 'stage6', 'stage9', 'stage12']
         self.apply_layernorm = apply_layernorm
         self.reshape_hidden_states = reshape_hidden_states
         self.num_windows = num_windows
@@ -532,10 +525,7 @@ class Dinov2WithRegistersMLP(nn.Module):
         in_features = out_features = config.hidden_size
         hidden_features = int(config.hidden_size * config.mlp_ratio)
         self.fc1 = nn.Linear(in_features, hidden_features, bias=True)
-        if isinstance(config.hidden_act, str):
-            self.activation = ACT2FN[config.hidden_act]
-        else:
-            self.activation = config.hidden_act
+        self.activation = torch.nn.GELU()
         self.fc2 = nn.Linear(hidden_features, out_features, bias=True)
 
     def forward(self, hidden_state: torch.Tensor) -> torch.Tensor:
@@ -693,8 +683,6 @@ class WindowedDinov2WithRegistersBackbone(WindowedDinov2WithRegistersPreTrainedM
     def get_input_embeddings(self) -> Dinov2WithRegistersPatchEmbeddings:
         return self.embeddings.patch_embeddings
 
-    @add_start_docstrings_to_model_forward(DINOV2_WITH_REGISTERS_INPUTS_DOCSTRING)
-    @replace_return_docstrings(output_type=BackboneOutput, config_class=_CONFIG_FOR_DOC)
     def forward(
         self,
         pixel_values: torch.Tensor,
