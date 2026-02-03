@@ -6,16 +6,9 @@ peft==0.18.1
 pi_heif==1.2.0
 pillow==12.1.0
 pillow-avif-plugin==1.5.2
-polygraphy==0.49.26
-psutil==7.2.2
-pycocotools==2.0.11
 pydantic==2.12.5
 pydantic_core==2.41.5
-pyparsing==3.3.2
-python-dateutil==2.9.0.post0
-python-dotenv==1.2.1
 PyYAML==6.0.3
-regex==2026.1.15
 requests==2.32.5
 requests-toolbelt==1.0.0
 supervision==0.27.0
