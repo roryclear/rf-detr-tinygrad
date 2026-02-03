@@ -931,66 +931,6 @@ class DinoV2(nn.Module):
         self._out_feature_channels = [size_to_width[size]] * len(out_feature_indexes)
         self._export = False
 
-    def export(self):
-        if self._export:
-            return
-        self._export = True
-        shape = self.shape
-        def make_new_interpolated_pos_encoding(
-            position_embeddings, patch_size, height, width
-        ):
-
-            num_positions = position_embeddings.shape[1] - 1
-            dim = position_embeddings.shape[-1]
-            height = height // patch_size
-            width = width // patch_size
-
-            class_pos_embed = position_embeddings[:, 0]
-            patch_pos_embed = position_embeddings[:, 1:]
-
-            # Reshape and permute
-            patch_pos_embed = patch_pos_embed.reshape(
-                1, int(math.sqrt(num_positions)), int(math.sqrt(num_positions)), dim
-            )
-            patch_pos_embed = patch_pos_embed.permute(0, 3, 1, 2)
-
-            # Use bilinear interpolation without antialias
-            patch_pos_embed = F.interpolate(
-                patch_pos_embed,
-                size=(height, width),
-                mode="bicubic",
-                align_corners=False,
-                antialias=True,
-            )
-
-            # Reshape back
-            patch_pos_embed = patch_pos_embed.permute(0, 2, 3, 1).reshape(1, -1, dim)
-            return torch.cat((class_pos_embed.unsqueeze(0), patch_pos_embed), dim=1)
-
-        # If the shape of self.encoder.embeddings.position_embeddings
-        # matches the shape of your new tensor, use copy_:
-        with torch.no_grad():
-            new_positions = make_new_interpolated_pos_encoding(
-                self.encoder.embeddings.position_embeddings,
-                self.encoder.config.patch_size,
-                shape[0],
-                shape[1],
-            )
-        # Create a new Parameter with the new size
-        old_interpolate_pos_encoding = self.encoder.embeddings.interpolate_pos_encoding
-        def new_interpolate_pos_encoding(self_mod, embeddings, height, width):
-            num_patches = embeddings.shape[1] - 1
-            num_positions = self_mod.position_embeddings.shape[1] - 1
-            if num_patches == num_positions and height == width:
-                return self_mod.position_embeddings
-            return old_interpolate_pos_encoding(embeddings, height, width)
-
-        self.encoder.embeddings.position_embeddings = nn.Parameter(new_positions)
-        self.encoder.embeddings.interpolate_pos_encoding = types.MethodType(
-            new_interpolate_pos_encoding,
-            self.encoder.embeddings
-        )
-
     def forward(self, x):
         block_size = self.patch_size * self.num_windows
         assert x.shape[2] % block_size == 0 and x.shape[3] % block_size == 0, f"Backbone requires input shape to be divisible by {block_size}, but got {x.shape}"
@@ -1198,9 +1138,6 @@ class TransformerDecoder(nn.Module):
 
         self._export = False
 
-    def export(self):
-        self._export = True
-
     def refpoints_refine(self, refpoints_unsigmoid, new_refpoints_delta):
         if self.bbox_reparam:
             new_refpoints_cxcy = new_refpoints_delta[..., :2] * refpoints_unsigmoid[..., 2:] + refpoints_unsigmoid[..., :2]
@@ -1405,11 +1342,6 @@ class MSDeformAttn(nn.Module):
 
         self._export = False
 
-    def export(self):
-        """export mode
-        """
-        self._export = True
-
     def _reset_parameters(self):
         constant_(self.sampling_offsets.weight.data, 0.)
         thetas = torch.arange(self.n_heads, dtype=torch.float32) * (2.0 * math.pi / self.n_heads)
@@ -1520,9 +1452,6 @@ class Transformer(nn.Module):
         self.bbox_reparam = bbox_reparam
 
         self._export = False
-
-    def export(self):
-        self._export = True
 
     def _reset_parameters(self):
         for p in self.parameters():
@@ -1974,11 +1903,6 @@ class PositionEmbeddingSine(nn.Module):
         self.scale = scale
         self._export = False
 
-    def export(self):
-        self._export = True
-        self._forward_origin = self.forward
-        self.forward = self.forward_export
-
     def forward(self, tensor_list: NestedTensor, align_dim_orders = True):
         x = tensor_list.tensors
         mask = tensor_list.mask
@@ -2106,15 +2030,6 @@ class Backbone(BackboneBase):
         )
 
         self._export = False
-
-    def export(self):
-        self._export = True
-        self._forward_origin = self.forward
-        self.forward = self.forward_export
-
-        if isinstance(self.encoder, PeftModel):
-            print("Merging and unloading LoRA weights")
-            self.encoder.merge_and_unload()
 
     def forward(self, tensor_list: NestedTensor):
         """ """
@@ -2466,20 +2381,7 @@ class Joiner(nn.Sequential):
         for x_ in x:
             pos.append(self[1](x_, align_dim_orders=False).to(x_.tensors.dtype))
         return x, pos
-
-    def export(self):
-        self._export = True
-        self._forward_origin = self.forward
-        self.forward = self.forward_export
-        for name, m in self.named_modules():
-            if (
-                hasattr(m, "export")
-                and isinstance(m.export, Callable)
-                and hasattr(m, "_export")
-                and not m._export
-            ):
-                m.export()
-
+    
 def _max_by_axis(the_list: List[List[int]]) -> List[int]:
     maxes = the_list[0]
     for sublist in the_list[1:]:
@@ -2608,14 +2510,6 @@ class LWDETR(nn.Module):
                 enc_out_class_embed.weight.data = enc_out_class_embed.weight.data[:num_classes]
                 enc_out_class_embed.bias.data = enc_out_class_embed.bias.data.repeat(num_repeats)
                 enc_out_class_embed.bias.data = enc_out_class_embed.bias.data[:num_classes]
-
-    def export(self):
-        self._export = True
-        self._forward_origin = self.forward
-        self.forward = self.forward_export
-        for name, m in self.named_modules():
-            if hasattr(m, "export") and isinstance(m.export, Callable) and hasattr(m, "_export") and not m._export:
-                m.export()
 
     def forward(self, samples: NestedTensor, targets=None):
         """The forward expects a NestedTensor, which consists of:
@@ -3118,15 +3012,6 @@ class RFDETR:
         self._optimized_batch_size = None
         self._optimized_resolution = None
         self._optimized_half = False
-
-    def export(self, **kwargs):
-        exit()
-        """
-        Export your model to an ONNX file.
-
-        See [the ONNX export documentation](https://rfdetr.roboflow.com/learn/export/) for more information.
-        """
-        self.model.export(**kwargs)
 
     @staticmethod
     def _load_classes(dataset_dir) -> List[str]:
