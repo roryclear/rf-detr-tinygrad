@@ -1,7 +1,6 @@
 numpy==2.4.2
 packaging==26.0
-peft==0.18.1
-pi_heif==1.2.0
+peft==0.18.1 #need
 pillow==12.1.0
 pillow-avif-plugin==1.5.2
 pydantic==2.12.5
