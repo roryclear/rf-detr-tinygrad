@@ -288,7 +288,16 @@ class Dinov2WithRegistersSelfAttention(nn.Module):
         self.query_tiny.bias = to_tiny(self.query.bias)
 
         self.key = nn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
+
+        self.key_tiny = tinynn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
+        self.key_tiny.weight = to_tiny(self.key.weight)
+        self.key_tiny.bias = to_tiny(self.key.bias)
+
         self.value = nn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
+
+        self.value_tiny = tinynn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
+        self.value_tiny.weight = to_tiny(self.value.weight)
+        self.value_tiny.bias = to_tiny(self.value.bias)
 
         self.dropout = nn.Dropout(config.attention_probs_dropout_prob)
 
@@ -347,10 +356,9 @@ class Dinov2WithRegistersSdpaSelfAttention(Dinov2WithRegistersSelfAttention):
         hidden_states = to_tiny(hidden_states)
         mixed_query_layer = self.query_tiny(hidden_states)
 
-        hidden_states = to_torch(hidden_states)
 
-        key_layer = self.transpose_for_scores(self.key(hidden_states))
-        value_layer = self.transpose_for_scores(self.value(hidden_states))
+        key_layer = self.transpose_for_scores(self.key_tiny(hidden_states))
+        value_layer = self.transpose_for_scores(self.value_tiny(hidden_states))
         query_layer = self.transpose_for_scores(mixed_query_layer)
 
         context_layer = torch.nn.functional.scaled_dot_product_attention(
