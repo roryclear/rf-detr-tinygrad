@@ -1519,11 +1519,6 @@ class NestedTensor(object):
     def __init__(self, tensors: Tensor, mask: Optional[Tensor]) -> None:
         self.tensors = tensors
         self.mask = mask
-    def decompose(self) -> Tuple[Tensor, Optional[Tensor]]:
-        return self.tensors, self.mask
-
-    def __repr__(self) -> str:
-        return str(self.tensors)
 
 def build_position_encoding(hidden_dim, position_embedding):
     N_steps = hidden_dim // 2
@@ -1532,10 +1527,6 @@ def build_position_encoding(hidden_dim, position_embedding):
     return position_embedding
 
 class PositionEmbeddingSine(nn.Module):
-    """
-    This is a more standard version of the position embedding, very similar to the one
-    used by the Attention is all you need paper, generalized to work on images.
-    """
     def __init__(self, num_pos_feats=64, temperature=10000, normalize=False, scale=None):
         super().__init__()
         self.num_pos_feats = num_pos_feats
@@ -2070,7 +2061,7 @@ class LWDETR(nn.Module):
         srcs = []
         masks = []
         for l, feat in enumerate(features):
-            src, mask = feat.decompose()
+            src, mask = feat.tensors, feat.mask
             srcs.append(src)
             masks.append(mask)
             assert mask is not None
