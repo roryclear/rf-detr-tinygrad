@@ -742,38 +742,27 @@ class TransformerDecoderLayer(nn.Module):
                      spatial_shapes=None,
                      level_start_index=None,
                      ):
-        bs, num_queries, _ = tgt.shape
-
-        # ========== Begin of Self-Attention =============
-        # Apply projections here
-        # shape: batch_size x num_queries x 256
         q = k = tgt + query_pos
         v = tgt
         tgt2 = self.self_attn(q, k, v, attn_mask=tgt_mask,
                             key_padding_mask=tgt_key_padding_mask,
                             need_weights=False)[0]
-
-        # ========== End of Self-Attention =============
-
         tgt = tgt + self.dropout1(tgt2)
         tgt = self.norm1(tgt)
-
-        # ========== Begin of Cross-Attention =============
         tgt2 = self.cross_attn(
-            self.with_pos_embed(tgt, query_pos),
+            tgt+query_pos,
             reference_points,
             memory,
             spatial_shapes,
             level_start_index,
             memory_key_padding_mask
         )
-        # ========== End of Cross-Attention =============
 
 
-        tgt = tgt + self.dropout2(tgt2)
+        tgt = tgt + tgt2
         tgt = self.norm2(tgt)
-        tgt2 = self.linear2(self.dropout(F.relu(self.linear1(tgt))))
-        tgt = (tgt + self.dropout3(tgt2))
+        tgt2 = self.linear2(F.relu(self.linear1(tgt)))
+        tgt += tgt2
         tgt = self.norm3(tgt)
         return tgt
     
