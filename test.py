@@ -420,7 +420,7 @@ class Dinov2WithRegistersLayerScale(nn.Module):
     def forward(self, hidden_state: torch.Tensor) -> torch.Tensor:
         hidden_state = to_tiny(hidden_state)
         x = hidden_state * self.lambda1_tiny
-        return to_torch(x)
+        return x
 
 class WindowedDinov2WithRegistersLayer(nn.Module):
     """This corresponds to the Block class in the original implementation."""
@@ -465,8 +465,8 @@ class WindowedDinov2WithRegistersLayer(nn.Module):
             num_windows_squared = self.num_windows ** 2
             hidden_states = hidden_states.view(B // num_windows_squared, num_windows_squared * HW, C)
         x = self.norm1_tiny(hidden_states)
-        x = to_torch(x)
 
+        # todo
         self_attention_outputs = self.attention(
             x,
             head_mask,
@@ -480,22 +480,16 @@ class WindowedDinov2WithRegistersLayer(nn.Module):
             attention_output = attention_output.view(B * num_windows_squared, HW // num_windows_squared, C)
         attention_output = self.layer_scale1(attention_output)
         outputs = self_attention_outputs[1:]
-        shortcut = to_torch(shortcut)
-        hidden_states = self.drop_path(attention_output) + shortcut
+        hidden_states = attention_output + shortcut
 
         # in Dinov2WithRegisters, layernorm is also applied after self-attention
-        hidden_states = to_tiny(hidden_states)
         layer_output = self.norm2_tiny(hidden_states)
-        layer_output = to_torch(layer_output)
         layer_output = self.mlp(layer_output)
         layer_output = self.layer_scale2(layer_output)
+        layer_output = layer_output + hidden_states
 
-        # second residual connection
-        hidden_states = to_torch(hidden_states)
-        layer_output = self.drop_path(layer_output) + hidden_states
-
+        layer_output = to_torch(layer_output)
         outputs = (layer_output,) + outputs
-
         return outputs
 
 class WindowedDinov2WithRegistersEncoder(nn.Module):
