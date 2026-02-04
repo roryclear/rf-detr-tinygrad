@@ -1348,22 +1348,15 @@ class BackboneBase(nn.Module):
         super().__init__()
 
 class ConvX(nn.Module):
-    """ Conv-bn module"""
     def __init__(self, in_planes, out_planes, kernel=3, stride=1, groups=1, dilation=1, act='relu', layer_norm=False, rms_norm=False):
         super(ConvX, self).__init__()
-        if not isinstance(kernel, tuple):
-            kernel = (kernel, kernel)
-        padding = (kernel[0] // 2, kernel[1] // 2)
-        self.conv = nn.Conv2d(in_planes, out_planes, kernel_size=kernel,
+        padding = (kernel // 2, kernel // 2)
+        self.conv = nn.Conv2d(in_planes, out_planes, kernel_size=(kernel, kernel),
                               stride=stride, padding=padding, groups=groups,
                               dilation=dilation, bias=False)
-        if rms_norm:
-            self.bn = nn.RMSNorm(out_planes)
-        else:
-            self.bn = get_norm('LN', out_planes) if layer_norm else nn.BatchNorm2d(out_planes)
+        self.bn = LayerNorm(out_planes)
 
     def forward(self, x):
-        """ forward """
         out = F.silu(self.bn(self.conv(x.contiguous())))
         return out
 
