@@ -25,8 +25,8 @@ import collections.abc
 
 from tinygrad import Tensor as tinyTensor, nn as tinynn
 
-def to_tiny(x): return tinyTensor(x.detach().numpy())
-def to_torch(x): return Tensor(x.numpy())
+def to_tiny(x): return tinyTensor(x.detach().numpy()) if type(x) != tinyTensor else x
+def to_torch(x): return Tensor(x.numpy()) if type(x) != Tensor else x
 
 COCO_CLASSES = {1: "person", 2: "bicycle", 3: "car", 4: "motorcycle", 5: "airplane", 6: "bus", 7: "train", 8: "truck", 9: "boat",
 10: "traffic light", 11: "fire hydrant", 13: "stop sign", 14: "parking meter", 15: "bench", 16: "bird", 17: "cat", 18: "dog",
@@ -227,11 +227,13 @@ class WindowedDinov2WithRegistersEmbeddings(nn.Module):
         super().__init__()
 
         self.cls_token = nn.Parameter(torch.randn(1, 1, config.hidden_size))
+        self.cls_token_tiny = to_tiny(self.cls_token)
         self.mask_token = nn.Parameter(torch.zeros(1, config.hidden_size))
         self.register_tokens = nn.Parameter(torch.zeros(1, config.num_register_tokens, config.hidden_size)) if config.num_register_tokens > 0 else None
         self.patch_embeddings = Dinov2WithRegistersPatchEmbeddings(config)
         num_patches = self.patch_embeddings.num_patches
         self.position_embeddings = nn.Parameter(torch.randn(1, num_patches + 1, config.hidden_size))
+        self.position_embeddings_tiny = to_tiny(self.position_embeddings)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.patch_size = config.patch_size
         self.config = config
@@ -243,17 +245,18 @@ class WindowedDinov2WithRegistersEmbeddings(nn.Module):
         embeddings = self.patch_embeddings(pixel_values.to(dtype=target_dtype))
 
         # add the [CLS] token to the embedded patch tokens
-        cls_tokens = self.cls_token.expand(batch_size, -1, -1)
-        embeddings = torch.cat((cls_tokens, embeddings), dim=1)
-
+        cls_tokens = self.cls_token_tiny.expand(batch_size, -1, -1)
+        embeddings = to_tiny(embeddings)
+        embeddings = tinyTensor.cat(cls_tokens, embeddings, dim=1)
         # add positional encoding to each token
-        embeddings = embeddings +  self.position_embeddings
+        embeddings = embeddings + self.position_embeddings_tiny
 
         # reshape for windows
         num_h_patches = height // self.config.patch_size
         num_w_patches = width // self.config.patch_size
         cls_token_with_pos_embed = embeddings[:, :1]
         pixel_tokens_with_pos_embed = embeddings[:, 1:]
+        
         pixel_tokens_with_pos_embed = pixel_tokens_with_pos_embed.view(batch_size, num_h_patches, num_w_patches, -1)
         num_w_patches_per_window = num_w_patches // self.config.num_windows
         num_h_patches_per_window = num_h_patches // self.config.num_windows
@@ -262,16 +265,8 @@ class WindowedDinov2WithRegistersEmbeddings(nn.Module):
         windowed_pixel_tokens = windowed_pixel_tokens.permute(0, 2, 1, 3, 4)
         windowed_pixel_tokens = windowed_pixel_tokens.reshape(batch_size * num_windows ** 2, num_h_patches_per_window * num_w_patches_per_window, -1)
         windowed_cls_token_with_pos_embed = cls_token_with_pos_embed.repeat(num_windows ** 2, 1, 1)
-        embeddings = torch.cat((windowed_cls_token_with_pos_embed, windowed_pixel_tokens), dim=1)
-
-        # add register tokens
-        embeddings = torch.cat(
-            (embeddings[:, :1], self.register_tokens.expand(embeddings.shape[0], -1, -1), embeddings[:, 1:]), dim=1
-        ) if self.config.num_register_tokens > 0 else embeddings
-
-        embeddings = self.dropout(embeddings)
-
-        return embeddings
+        embeddings = tinyTensor.cat(windowed_cls_token_with_pos_embed, windowed_pixel_tokens, dim=1)
+        return to_torch(embeddings)
 
 class Dinov2WithRegistersSelfAttention(nn.Module):
     def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
