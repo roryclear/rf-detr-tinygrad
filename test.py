@@ -511,44 +511,15 @@ class WindowedDinov2WithRegistersEncoder(nn.Module):
         all_self_attentions = () if output_attentions else None
 
         for i, layer_module in enumerate(self.layer):
-            if output_hidden_states:
-                all_hidden_states = all_hidden_states + (hidden_states,)
-
-            if i > int(self.config.out_features[-1][5:]):
-                # early stop if we have reached the last output feature
-                break
-
+            all_hidden_states = all_hidden_states + (hidden_states,)
             run_full_attention = i not in self.config.window_block_indexes
-
-            layer_head_mask = head_mask[i] if head_mask is not None else None
-
-            if self.gradient_checkpointing and self.training:
-                layer_outputs = self._gradient_checkpointing_func(
-                    layer_module.__call__,
-                    hidden_states,
-                    layer_head_mask,
-                    output_attentions,
-                    run_full_attention,
-                )
-            else:
-                layer_outputs = layer_module(hidden_states, layer_head_mask, output_attentions, run_full_attention)
-
+            layer_head_mask = None
+            layer_outputs = layer_module(hidden_states, layer_head_mask, output_attentions, run_full_attention)
             hidden_states = layer_outputs[0]
 
-            if output_attentions:
-                all_self_attentions = all_self_attentions + (layer_outputs[1],)
-
-        if output_hidden_states:
-            all_hidden_states = all_hidden_states + (hidden_states,)
-
-        if not return_dict:
-            return tuple(v for v in [hidden_states, all_hidden_states, all_self_attentions] if v is not None)
-        return BaseModelOutput(
-            last_hidden_state=hidden_states,
-            hidden_states=all_hidden_states,
-            attentions=all_self_attentions,
-        )
-
+        all_hidden_states = all_hidden_states + (hidden_states,)
+        return tuple(v for v in [hidden_states, all_hidden_states, all_self_attentions] if v is not None)
+    
 class WindowedDinov2WithRegistersBackbone(WindowedDinov2WithRegistersPreTrainedModel, BackboneMixin):
     def __init__(self, config: WindowedDinov2WithRegistersConfig):
         super().__init__(config)
