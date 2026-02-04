@@ -396,11 +396,20 @@ class Dinov2WithRegistersMLP(nn.Module):
         self.fc1 = nn.Linear(in_features, hidden_features, bias=True)
         self.fc2 = nn.Linear(hidden_features, out_features, bias=True)
 
+        self.fc1_tiny = tinynn.Linear(in_features, hidden_features, bias=True)
+        self.fc1_tiny.weight = to_tiny(self.fc1.weight)
+        self.fc1_tiny.bias = to_tiny(self.fc1.bias)
+        
+        self.fc2_tiny = tinynn.Linear(hidden_features, out_features, bias=True)
+        self.fc2_tiny.weight = to_tiny(self.fc2.weight)
+        self.fc2_tiny.bias = to_tiny(self.fc2.bias)
+
     def forward(self, hidden_state: torch.Tensor) -> torch.Tensor:
-        hidden_state = self.fc1(hidden_state)
-        hidden_state = F.gelu(hidden_state)
-        hidden_state = self.fc2(hidden_state)
-        return hidden_state
+        hidden_state = to_tiny(hidden_state)
+        hidden_state = self.fc1_tiny(hidden_state)
+        hidden_state = hidden_state * 0.5 * (1.0 + tinyTensor.erf(hidden_state / math.sqrt(2.0)))
+        hidden_state = self.fc2_tiny(hidden_state)
+        return to_torch(hidden_state)
 
 class Dinov2WithRegistersLayerScale(nn.Module):
     def __init__(self, config) -> None:
