@@ -668,6 +668,7 @@ class DinoV2(nn.Module):
         x = self.encoder(x)
         return list(x[0])
 
+# todo later...less easy
 def ms_deform_attn_core_pytorch(value, value_spatial_shapes, sampling_locations, attention_weights):
     """"for debug and test only, need to use cuda version instead
     """
@@ -679,7 +680,7 @@ def ms_deform_attn_core_pytorch(value, value_spatial_shapes, sampling_locations,
     #value_list = to_tiny(value_list)
     sampling_grids = 2 * sampling_locations - 1
     sampling_value_list = []
-    for lid_, (H, W) in enumerate(value_spatial_shapes):
+    for lid_, (H, W) in enumerate(value_spatial_shapes): # only one in loop?
         # B, n_heads, head_dim, H, W
         value_l_ = value_list[lid_].view(B * n_heads, head_dim, H, W)
         # B, Len_q, n_heads, P, 2 -> B, n_heads, Len_q, P, 2 -> B*n_heads, Len_q, P, 2
@@ -726,10 +727,9 @@ class TransformerDecoderLayer(nn.Module):
         self.normalize_before = normalize_before
         self.group_detr = group_detr
 
-    def with_pos_embed(self, tensor, pos: Optional[Tensor]):
-        return tensor if pos is None else tensor + pos
+    def with_pos_embed(self, tensor, pos: Optional[Tensor]): return tensor + pos
 
-    def forward_post(self, tgt, memory,
+    def forward(self, tgt, memory,
                      tgt_mask: Optional[Tensor] = None,
                      memory_mask: Optional[Tensor] = None,
                      tgt_key_padding_mask: Optional[Tensor] = None,
@@ -776,24 +776,7 @@ class TransformerDecoderLayer(nn.Module):
         tgt = (tgt + self.dropout3(tgt2))
         tgt = self.norm3(tgt)
         return tgt
-
-    def forward(self, tgt, memory,
-                tgt_mask: Optional[Tensor] = None,
-                memory_mask: Optional[Tensor] = None,
-                tgt_key_padding_mask: Optional[Tensor] = None,
-                memory_key_padding_mask: Optional[Tensor] = None,
-                pos: Optional[Tensor] = None,
-                query_pos: Optional[Tensor] = None,
-                query_sine_embed = None,
-                is_first = False,
-                reference_points = None,
-                spatial_shapes=None,
-                level_start_index=None):
-        return self.forward_post(tgt, memory, tgt_mask, memory_mask,
-                                 tgt_key_padding_mask, memory_key_padding_mask, pos, query_pos,
-                                 query_sine_embed, is_first,
-                                 reference_points, spatial_shapes, level_start_index)
-
+    
 def gen_sineembed_for_position(pos_tensor, dim=128):
     # n_query, bs, _ = pos_tensor.size()
     # sineembed_tensor = torch.zeros(n_query, bs, 256)
