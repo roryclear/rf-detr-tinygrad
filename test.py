@@ -431,6 +431,9 @@ class WindowedDinov2WithRegistersLayer(nn.Module):
         self.num_windows = config.num_windows
 
         self.norm1 = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.norm1_tiny = tinynn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.norm1_tiny.weight = to_tiny(self.norm1.weight)
+        self.norm1_tiny.bias = to_tiny(self.norm1.bias)
         self.attention = DINOV2_WITH_REGISTERS_ATTENTION_CLASSES[config._attn_implementation](config)
         self.layer_scale1 = Dinov2WithRegistersLayerScale(config)
         self.drop_path = nn.Identity()
@@ -456,9 +459,8 @@ class WindowedDinov2WithRegistersLayer(nn.Module):
             B, HW, C = hidden_states.shape
             num_windows_squared = self.num_windows ** 2
             hidden_states = hidden_states.view(B // num_windows_squared, num_windows_squared * HW, C)
-
-        hidden_states = to_torch(hidden_states)
-        x = self.norm1(hidden_states)
+        x = self.norm1_tiny(hidden_states)
+        x = to_torch(x)
 
         self_attention_outputs = self.attention(
             x,
