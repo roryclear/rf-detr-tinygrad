@@ -440,6 +440,11 @@ class WindowedDinov2WithRegistersLayer(nn.Module):
 
         self.norm2 = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
 
+        self.norm2_tiny = tinynn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.norm2_tiny.weight = to_tiny(self.norm2.weight)
+        self.norm2_tiny.bias = to_tiny(self.norm2.bias)
+
+
         self.mlp = Dinov2WithRegistersMLP(config)
         self.layer_scale2 = Dinov2WithRegistersLayerScale(config)
 
@@ -479,11 +484,14 @@ class WindowedDinov2WithRegistersLayer(nn.Module):
         hidden_states = self.drop_path(attention_output) + shortcut
 
         # in Dinov2WithRegisters, layernorm is also applied after self-attention
-        layer_output = self.norm2(hidden_states)
+        hidden_states = to_tiny(hidden_states)
+        layer_output = self.norm2_tiny(hidden_states)
+        layer_output = to_torch(layer_output)
         layer_output = self.mlp(layer_output)
         layer_output = self.layer_scale2(layer_output)
 
         # second residual connection
+        hidden_states = to_torch(hidden_states)
         layer_output = self.drop_path(layer_output) + hidden_states
 
         outputs = (layer_output,) + outputs
