@@ -282,6 +282,11 @@ class Dinov2WithRegistersSelfAttention(nn.Module):
         self.all_head_size = self.num_attention_heads * self.attention_head_size
 
         self.query = nn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
+
+        self.query_tiny = tinynn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
+        self.query_tiny.weight = to_tiny(self.query.weight)
+        self.query_tiny.bias = to_tiny(self.query.bias)
+
         self.key = nn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
         self.value = nn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
 
@@ -338,12 +343,11 @@ class Dinov2WithRegistersSdpaSelfAttention(Dinov2WithRegistersSelfAttention):
     def forward(
         self, hidden_states, head_mask: Optional[torch.Tensor] = None, output_attentions: bool = False
     ) -> Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor]]:
-        if output_attentions:
-            return super().forward(
-                hidden_states=hidden_states, head_mask=head_mask, output_attentions=output_attentions
-            )
 
-        mixed_query_layer = self.query(hidden_states)
+        hidden_states = to_tiny(hidden_states)
+        mixed_query_layer = self.query_tiny(hidden_states)
+
+        hidden_states = to_torch(hidden_states)
 
         key_layer = self.transpose_for_scores(self.key(hidden_states))
         value_layer = self.transpose_for_scores(self.value(hidden_states))
