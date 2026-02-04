@@ -303,9 +303,14 @@ class Dinov2WithRegistersSelfOutput(nn.Module):
     def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
+        self.dense_tiny = tinynn.Linear(config.hidden_size, config.hidden_size)
+        self.dense_tiny.weight = to_tiny(self.dense.weight)
+        self.dense_tiny.bias = to_tiny(self.dense.bias)
 
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        return self.dense(hidden_states)
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = to_tiny(x)
+        x = self.dense_tiny(x)
+        return to_torch(x)
 
 class Dinov2WithRegistersAttention(nn.Module):
     def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
