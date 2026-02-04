@@ -288,9 +288,11 @@ class Dinov2WithRegistersSelfAttention(nn.Module):
         self.dropout = nn.Dropout(config.attention_probs_dropout_prob)
 
     def transpose_for_scores(self, x: torch.Tensor) -> torch.Tensor:
+        x = to_tiny(x)
         new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
         x = x.view(new_x_shape)
-        return x.permute(0, 2, 1, 3)
+        x = x.permute(0, 2, 1, 3)
+        return to_torch(x)
 
 class Dinov2WithRegistersSelfOutput(nn.Module):
     """
