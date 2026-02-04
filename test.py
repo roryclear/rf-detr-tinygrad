@@ -25,8 +25,18 @@ import collections.abc
 
 from tinygrad import Tensor as tinyTensor, nn as tinynn
 
-def to_tiny(x): return tinyTensor(x.detach().numpy()) if type(x) != tinyTensor else x
-def to_torch(x): return Tensor(x.numpy()) if type(x) != Tensor else x
+def to_tiny(x):
+    if type(x) == tuple:
+        ret = []
+        for i in range(len(x)): ret.append(to_tiny(x[i]))
+        return tuple(ret)
+    return tinyTensor(x.detach().numpy()) if type(x) != tinyTensor else x
+def to_torch(x):
+    if type(x) == tuple:
+        ret = []
+        for i in range(len(x)): ret.append(to_torch(x[i]))
+        return tuple(ret)
+    return Tensor(x.numpy()) if type(x) != Tensor else x
 
 COCO_CLASSES = {1: "person", 2: "bicycle", 3: "car", 4: "motorcycle", 5: "airplane", 6: "bus", 7: "train", 8: "truck", 9: "boat",
 10: "traffic light", 11: "fire hydrant", 13: "stop sign", 14: "parking meter", 15: "bench", 16: "bird", 17: "cat", 18: "dog",
@@ -666,6 +676,7 @@ def ms_deform_attn_core_pytorch(value, value_spatial_shapes, sampling_locations,
     _, Len_q, n_heads, L, P, _ = sampling_locations.shape
     x = [value_spatial_shapes[0][0]**2]
     value_list = value.split(x, dim=3)
+    #value_list = to_tiny(value_list)
     sampling_grids = 2 * sampling_locations - 1
     sampling_value_list = []
     for lid_, (H, W) in enumerate(value_spatial_shapes):
