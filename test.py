@@ -415,9 +415,12 @@ class Dinov2WithRegistersLayerScale(nn.Module):
     def __init__(self, config) -> None:
         super().__init__()
         self.lambda1 = nn.Parameter(config.layerscale_value * torch.ones(config.hidden_size))
+        self.lambda1_tiny = to_tiny(self.lambda1)
 
     def forward(self, hidden_state: torch.Tensor) -> torch.Tensor:
-        return hidden_state * self.lambda1
+        hidden_state = to_tiny(hidden_state)
+        x = hidden_state * self.lambda1_tiny
+        return to_torch(x)
 
 class WindowedDinov2WithRegistersLayer(nn.Module):
     """This corresponds to the Block class in the original implementation."""
