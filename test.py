@@ -1211,8 +1211,6 @@ class Transformer(nn.Module):
             self.enc_output = nn.ModuleList([nn.Linear(d_model, d_model) for _ in range(group_detr)])
             self.enc_output_norm = nn.ModuleList([nn.LayerNorm(d_model) for _ in range(group_detr)])
 
-        self._reset_parameters()
-
         self.num_queries = num_queries
         self.d_model = d_model
         self.dec_layers = num_decoder_layers
@@ -1221,11 +1219,6 @@ class Transformer(nn.Module):
         self.bbox_reparam = bbox_reparam
 
         self._export = False
-
-    def _reset_parameters(self):
-        for p in self.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
 
     def get_valid_ratio(self, mask):
         _, H, W = mask.shape
@@ -1343,12 +1336,6 @@ class Transformer(nn.Module):
         return hs, references, None, None
 
 def build_transformer(args):
-
-    try:
-        two_stage = args.two_stage
-    except:
-        two_stage = False
-
     return Transformer(
         d_model=args.hidden_dim,
         sa_nhead=args.sa_nheads,
@@ -1359,7 +1346,7 @@ def build_transformer(args):
         num_decoder_layers=args.dec_layers,
         return_intermediate_dec=True,
         group_detr=args.group_detr,
-        two_stage=two_stage,
+        two_stage=True,
         num_feature_levels=args.num_feature_levels,
         dec_n_points=args.dec_n_points,
         lite_refpoint_refine=args.lite_refpoint_refine,
@@ -1371,7 +1358,6 @@ class BackboneBase(nn.Module):
     def __init__(self):
         super().__init__()
 
-    
 def get_activation(name, inplace=False):
     """ get activation """
     if name == "silu":
