@@ -529,6 +529,9 @@ class WindowedDinov2WithRegistersBackbone(WindowedDinov2WithRegistersPreTrainedM
         self.encoder = WindowedDinov2WithRegistersEncoder(config)
 
         self.layernorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.layernorm_tiny = tinynn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.layernorm_tiny.weight = to_tiny(self.layernorm.weight)
+        self.layernorm_tiny.bias = to_tiny(self.layernorm.bias)
 
         self.num_register_tokens = config.num_register_tokens
 
@@ -556,7 +559,8 @@ class WindowedDinov2WithRegistersBackbone(WindowedDinov2WithRegistersPreTrainedM
         feature_maps = ()
         for stage, hidden_state in zip(self.stage_names, hidden_states):
             if stage in self.out_features:
-                hidden_state = self.layernorm(hidden_state)
+                hidden_state = to_tiny(hidden_state)
+                hidden_state = self.layernorm_tiny(hidden_state)
                 hidden_state = hidden_state[:, self.num_register_tokens + 1 :]
                 # this was actually a bug in the original implementation that we copied here,
                 # cause normally the order is height, width
@@ -577,6 +581,7 @@ class WindowedDinov2WithRegistersBackbone(WindowedDinov2WithRegistersPreTrainedM
 
                 hidden_state = hidden_state.reshape(batch_size, num_h_patches, num_w_patches, -1)
                 hidden_state = hidden_state.permute(0, 3, 1, 2).contiguous()
+                hidden_state = to_torch(hidden_state)
                 feature_maps += (hidden_state,)
 
         output = (feature_maps,) + outputs[2:]
