@@ -449,6 +449,7 @@ class WindowedDinov2WithRegistersLayer(nn.Module):
     ) -> Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor]]:
         assert head_mask is None, "head_mask is not supported for windowed attention"
         assert not output_attentions, "output_attentions is not supported for windowed attention"
+        hidden_states = to_tiny(hidden_states)
         shortcut = hidden_states
         if run_full_attention:
             # reshape x to remove windows
@@ -456,24 +457,23 @@ class WindowedDinov2WithRegistersLayer(nn.Module):
             num_windows_squared = self.num_windows ** 2
             hidden_states = hidden_states.view(B // num_windows_squared, num_windows_squared * HW, C)
 
+        hidden_states = to_torch(hidden_states)
+        x = self.norm1(hidden_states)
+
         self_attention_outputs = self.attention(
-            self.norm1(hidden_states),  # in Dinov2WithRegisters, layernorm is applied before self-attention
+            x,
             head_mask,
             output_attentions=output_attentions,
         )
         attention_output = self_attention_outputs[0]
 
         if run_full_attention:
-            # reshape x to add windows back
             B, HW, C = hidden_states.shape
             num_windows_squared = self.num_windows ** 2
-            # hidden_states = hidden_states.view(B * num_windows_squared, HW // num_windows_squared, C)
             attention_output = attention_output.view(B * num_windows_squared, HW // num_windows_squared, C)
-
         attention_output = self.layer_scale1(attention_output)
-        outputs = self_attention_outputs[1:]  # add self attentions if we output attention weights
-
-        # first residual connection
+        outputs = self_attention_outputs[1:]
+        shortcut = to_torch(shortcut)
         hidden_states = self.drop_path(attention_output) + shortcut
 
         # in Dinov2WithRegisters, layernorm is also applied after self-attention
