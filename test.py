@@ -1359,11 +1359,18 @@ class ConvX(nn.Module):
         self.conv = nn.Conv2d(in_planes, out_planes, kernel_size=(kernel, kernel),
                               stride=stride, padding=padding, groups=groups,
                               dilation=dilation, bias=False)
+        
+        self.conv_tiny = tinynn.Conv2d(in_planes, out_planes, (kernel, kernel), stride, padding, dilation, groups, False)
+        self.conv_tiny.weight = to_tiny(self.conv.weight)
         self.bn = LayerNorm(out_planes)
 
     def forward(self, x):
-        out = F.silu(self.bn(self.conv(x.contiguous())))
-        return out
+        x = to_tiny(x)
+        x = self.conv_tiny(x)
+        x = self.bn(x)
+        if type(x) != tinyTensor: x = to_tiny(x)
+        out = tinyTensor.silu(x)
+        return to_torch(out)
 
 class Bottleneck(nn.Module):
     """Standard bottleneck."""
@@ -1417,7 +1424,7 @@ class LayerNorm(nn.Module):
         self.normalized_shape = (normalized_shape,)
 
     def forward(self, x):
-        x = to_tiny(x)
+        if type(x) != tinyTensor: x = to_tiny(x)
         x = x.permute(0, 2, 3, 1)
         x -= x.mean(axis=-1, keepdim=True)
         var = (x ** 2).mean(axis=-1, keepdim=True) + self.eps
