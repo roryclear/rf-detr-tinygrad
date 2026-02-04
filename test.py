@@ -545,92 +545,42 @@ class WindowedDinov2WithRegistersBackbone(WindowedDinov2WithRegistersPreTrainedM
         output_attentions: Optional[bool] = None,
         return_dict: Optional[bool] = None,
     ) -> BackboneOutput:
-        """
-        Returns:
-
-        Examples:
-        Returns:
-
-        Examples:
-
-
-        ```python
-        >>> from transformers import AutoImageProcessor, AutoBackbone
-        >>> import torch
-        >>> from PIL import Image
-        >>> import requests
-
-        >>> url = "http://images.cocodataset.org/val2017/000000039769.jpg"
-        >>> image = Image.open(requests.get(url, stream=True).raw)
-
-        >>> processor = AutoImageProcessor.from_pretrained("facebook/dinov2-with-registers-base")
-        >>> model = AutoBackbone.from_pretrained(
-        ...     "facebook/dinov2-with-registers-base", out_features=["stage2", "stage5", "stage8", "stage11"]
-        ... )
-
-        >>> inputs = processor(image, return_tensors="pt")
-
-        >>> outputs = model(**inputs)
-        >>> feature_maps = outputs.feature_maps
-        >>> list(feature_maps[-1].shape)
-        [1, 768, 16, 16]
-        ```"""
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-
         embedding_output = self.embeddings(pixel_values)
 
         outputs = self.encoder(
             embedding_output, output_hidden_states=True, output_attentions=output_attentions, return_dict=return_dict
         )
 
-        hidden_states = outputs.hidden_states if return_dict else outputs[1]
+        hidden_states = outputs[1]
 
         feature_maps = ()
         for stage, hidden_state in zip(self.stage_names, hidden_states):
             if stage in self.out_features:
-                if self.config.apply_layernorm:
-                    hidden_state = self.layernorm(hidden_state)
-                if self.config.reshape_hidden_states:
-                    hidden_state = hidden_state[:, self.num_register_tokens + 1 :]
-                    # this was actually a bug in the original implementation that we copied here,
-                    # cause normally the order is height, width
-                    batch_size, _, height, width = pixel_values.shape
-                    patch_size = self.config.patch_size
+                hidden_state = self.layernorm(hidden_state)
+                hidden_state = hidden_state[:, self.num_register_tokens + 1 :]
+                # this was actually a bug in the original implementation that we copied here,
+                # cause normally the order is height, width
+                batch_size, _, height, width = pixel_values.shape
+                patch_size = self.config.patch_size
 
-                    num_h_patches = height // patch_size
-                    num_w_patches = width // patch_size
+                num_h_patches = height // patch_size
+                num_w_patches = width // patch_size
 
-                    if self.config.num_windows > 1:
-                        # undo windowing
-                        num_windows_squared = self.config.num_windows ** 2
-                        B, HW, C = hidden_state.shape
-                        num_h_patches_per_window = num_h_patches // self.config.num_windows
-                        num_w_patches_per_window = num_w_patches // self.config.num_windows
-                        hidden_state = hidden_state.reshape(B // num_windows_squared, num_windows_squared * HW, C)
-                        hidden_state = hidden_state.reshape((B // num_windows_squared) * self.config.num_windows, self.config.num_windows, num_h_patches_per_window, num_w_patches_per_window, C)
-                        hidden_state = hidden_state.permute(0, 2, 1, 3, 4)
+                # undo windowing
+                num_windows_squared = self.config.num_windows ** 2
+                B, HW, C = hidden_state.shape
+                num_h_patches_per_window = num_h_patches // self.config.num_windows
+                num_w_patches_per_window = num_w_patches // self.config.num_windows
+                hidden_state = hidden_state.reshape(B // num_windows_squared, num_windows_squared * HW, C)
+                hidden_state = hidden_state.reshape((B // num_windows_squared) * self.config.num_windows, self.config.num_windows, num_h_patches_per_window, num_w_patches_per_window, C)
+                hidden_state = hidden_state.permute(0, 2, 1, 3, 4)
 
-                    hidden_state = hidden_state.reshape(batch_size, num_h_patches, num_w_patches, -1)
-                    hidden_state = hidden_state.permute(0, 3, 1, 2).contiguous()
-
+                hidden_state = hidden_state.reshape(batch_size, num_h_patches, num_w_patches, -1)
+                hidden_state = hidden_state.permute(0, 3, 1, 2).contiguous()
                 feature_maps += (hidden_state,)
 
-        if not return_dict:
-            if output_hidden_states:
-                output = (feature_maps,) + outputs[1:]
-            else:
-                output = (feature_maps,) + outputs[2:]
-            return output
-
-        return BackboneOutput(
-            feature_maps=feature_maps,
-            hidden_states=outputs.hidden_states if output_hidden_states else None,
-            attentions=outputs.attentions if output_attentions else None,
-        )
+        output = (feature_maps,) + outputs[2:]
+        return output
 
 class DinoV2(nn.Module):
     def __init__(self,
