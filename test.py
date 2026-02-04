@@ -436,12 +436,11 @@ class Dinov2WithRegistersMLP(nn.Module):
         in_features = out_features = config.hidden_size
         hidden_features = int(config.hidden_size * config.mlp_ratio)
         self.fc1 = nn.Linear(in_features, hidden_features, bias=True)
-        self.activation = torch.nn.GELU()
         self.fc2 = nn.Linear(hidden_features, out_features, bias=True)
 
     def forward(self, hidden_state: torch.Tensor) -> torch.Tensor:
         hidden_state = self.fc1(hidden_state)
-        hidden_state = self.activation(hidden_state)
+        hidden_state = F.gelu(hidden_state)
         hidden_state = self.fc2(hidden_state)
         return hidden_state
 
@@ -784,16 +783,6 @@ def ms_deform_attn_core_pytorch(value, value_spatial_shapes, sampling_locations,
     output = (sampling_value_list * attention_weights).sum(-1).view(B, n_heads * head_dim, Len_q)
     return output.transpose(1, 2).contiguous()
 
-def _get_activation_fn(activation):
-    """Return an activation function given a string"""
-    if activation == "relu":
-        return F.relu
-    if activation == "gelu":
-        return F.gelu
-    if activation == "glu":
-        return F.glu
-    raise RuntimeError(F"activation should be relu/gelu, not {activation}.")
-
 class TransformerDecoderLayer(nn.Module):
     def __init__(self, d_model, sa_nhead, ca_nhead, dim_feedforward=2048, dropout=0.1,
                  activation="relu", normalize_before=False, group_detr=1,
@@ -821,8 +810,7 @@ class TransformerDecoderLayer(nn.Module):
 
         self.dropout2 = nn.Dropout(dropout)
         self.dropout3 = nn.Dropout(dropout)
-
-        self.activation = _get_activation_fn(activation)
+        
         self.normalize_before = normalize_before
         self.group_detr = group_detr
 
@@ -869,9 +857,10 @@ class TransformerDecoderLayer(nn.Module):
         )
         # ========== End of Cross-Attention =============
 
+
         tgt = tgt + self.dropout2(tgt2)
         tgt = self.norm2(tgt)
-        tgt2 = self.linear2(self.dropout(self.activation(self.linear1(tgt))))
+        tgt2 = self.linear2(self.dropout(F.relu(self.linear1(tgt))))
         tgt = (tgt + self.dropout3(tgt2))
         tgt = self.norm3(tgt)
         return tgt
@@ -1358,20 +1347,6 @@ class BackboneBase(nn.Module):
     def __init__(self):
         super().__init__()
 
-def get_activation(name, inplace=False):
-    """ get activation """
-    if name == "silu":
-        module = nn.SiLU(inplace=inplace)
-    elif name == "relu":
-        module = nn.ReLU(inplace=inplace)
-    elif name in ["LeakyReLU", 'leakyrelu', 'lrelu']:
-        module = nn.LeakyReLU(0.1, inplace=inplace)
-    elif name is None:
-        module = nn.Identity()
-    else:
-        raise AttributeError("Unsupported act type: {}".format(name))
-    return module
-
 class ConvX(nn.Module):
     """ Conv-bn module"""
     def __init__(self, in_planes, out_planes, kernel=3, stride=1, groups=1, dilation=1, act='relu', layer_norm=False, rms_norm=False):
@@ -1386,11 +1361,10 @@ class ConvX(nn.Module):
             self.bn = nn.RMSNorm(out_planes)
         else:
             self.bn = get_norm('LN', out_planes) if layer_norm else nn.BatchNorm2d(out_planes)
-        self.act = get_activation(act, inplace=True)
 
     def forward(self, x):
         """ forward """
-        out = self.act(self.bn(self.conv(x.contiguous())))
+        out = F.silu(self.bn(self.conv(x.contiguous())))
         return out
 
 class Bottleneck(nn.Module):
