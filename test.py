@@ -295,11 +295,6 @@ class WindowedDinov2WithRegistersEmbeddings(nn.Module):
         target_dtype = self.patch_embeddings.projection.weight.dtype
         embeddings = self.patch_embeddings(pixel_values.to(dtype=target_dtype))
 
-        if bool_masked_pos is not None:
-            embeddings = torch.where(
-                bool_masked_pos.unsqueeze(-1), self.mask_token.to(embeddings.dtype).unsqueeze(0), embeddings
-            )
-
         # add the [CLS] token to the embedded patch tokens
         cls_tokens = self.cls_token.expand(batch_size, -1, -1)
         embeddings = torch.cat((cls_tokens, embeddings), dim=1)
@@ -307,21 +302,20 @@ class WindowedDinov2WithRegistersEmbeddings(nn.Module):
         # add positional encoding to each token
         embeddings = embeddings + self.interpolate_pos_encoding(embeddings, height, width)
 
-        if self.config.num_windows > 1:
-            # reshape for windows
-            num_h_patches = height // self.config.patch_size
-            num_w_patches = width // self.config.patch_size
-            cls_token_with_pos_embed = embeddings[:, :1]
-            pixel_tokens_with_pos_embed = embeddings[:, 1:]
-            pixel_tokens_with_pos_embed = pixel_tokens_with_pos_embed.view(batch_size, num_h_patches, num_w_patches, -1)
-            num_w_patches_per_window = num_w_patches // self.config.num_windows
-            num_h_patches_per_window = num_h_patches // self.config.num_windows
-            num_windows = self.config.num_windows
-            windowed_pixel_tokens = pixel_tokens_with_pos_embed.reshape(batch_size * num_windows, num_h_patches_per_window, num_windows, num_h_patches_per_window, -1)
-            windowed_pixel_tokens = windowed_pixel_tokens.permute(0, 2, 1, 3, 4)
-            windowed_pixel_tokens = windowed_pixel_tokens.reshape(batch_size * num_windows ** 2, num_h_patches_per_window * num_w_patches_per_window, -1)
-            windowed_cls_token_with_pos_embed = cls_token_with_pos_embed.repeat(num_windows ** 2, 1, 1)
-            embeddings = torch.cat((windowed_cls_token_with_pos_embed, windowed_pixel_tokens), dim=1)
+        # reshape for windows
+        num_h_patches = height // self.config.patch_size
+        num_w_patches = width // self.config.patch_size
+        cls_token_with_pos_embed = embeddings[:, :1]
+        pixel_tokens_with_pos_embed = embeddings[:, 1:]
+        pixel_tokens_with_pos_embed = pixel_tokens_with_pos_embed.view(batch_size, num_h_patches, num_w_patches, -1)
+        num_w_patches_per_window = num_w_patches // self.config.num_windows
+        num_h_patches_per_window = num_h_patches // self.config.num_windows
+        num_windows = self.config.num_windows
+        windowed_pixel_tokens = pixel_tokens_with_pos_embed.reshape(batch_size * num_windows, num_h_patches_per_window, num_windows, num_h_patches_per_window, -1)
+        windowed_pixel_tokens = windowed_pixel_tokens.permute(0, 2, 1, 3, 4)
+        windowed_pixel_tokens = windowed_pixel_tokens.reshape(batch_size * num_windows ** 2, num_h_patches_per_window * num_w_patches_per_window, -1)
+        windowed_cls_token_with_pos_embed = cls_token_with_pos_embed.repeat(num_windows ** 2, 1, 1)
+        embeddings = torch.cat((windowed_cls_token_with_pos_embed, windowed_pixel_tokens), dim=1)
 
         # add register tokens
         embeddings = torch.cat(
