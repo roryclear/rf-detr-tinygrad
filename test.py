@@ -677,8 +677,53 @@ def ms_deform_attn_core_pytorch(value, value_spatial_shapes, sampling_locations,
     value_l_ = value.view(B * n_heads, head_dim, value_spatial_shapes[0][0], value_spatial_shapes[0][0])
     sampling_grid_l_ = sampling_grids[:, :, :, 0].transpose(1, 2).flatten(0, 1)
     sampling_grid_l_ = to_torch(sampling_grid_l_)
-    sampling_value_l_ = F.grid_sample(value_l_, sampling_grid_l_,
-                                        mode='bilinear', padding_mode='zeros', align_corners=False)
+
+    N, C, H, W = value_l_.shape
+    _, H_out, W_out, _ = sampling_grid_l_.shape
+    x = (sampling_grid_l_[..., 0] + 1) * W / 2 - 0.5
+    y = (sampling_grid_l_[..., 1] + 1) * H / 2 - 0.5
+
+    x0 = torch.floor(x).long()
+    y0 = torch.floor(y).long()
+    x1 = x0 + 1
+    y1 = y0 + 1
+
+    wx = x - x0.float()
+    wy = y - y0.float()
+
+    w00 = (1 - wx) * (1 - wy)
+    w01 = (1 - wx) * wy
+    w10 = wx * (1 - wy)
+    w11 = wx * wy
+
+    v00 = (x0 >= 0) & (x0 < W) & (y0 >= 0) & (y0 < H)
+    v01 = (x0 >= 0) & (x0 < W) & (y1 >= 0) & (y1 < H)
+    v10 = (x1 >= 0) & (x1 < W) & (y0 >= 0) & (y0 < H)
+    v11 = (x1 >= 0) & (x1 < W) & (y1 >= 0) & (y1 < H)
+
+    x0c = x0.clamp(0, W - 1)
+    x1c = x1.clamp(0, W - 1)
+    y0c = y0.clamp(0, H - 1)
+    y1c = y1.clamp(0, H - 1)
+
+    value_flat = value_l_.view(N, C, H * W)
+
+    def gather(xi, yi):
+        idx = (yi * W + xi).view(N, 1, -1).expand(-1, C, -1)
+        return torch.gather(value_flat, 2, idx).view(N, C, H_out, W_out)
+
+    g00 = gather(x0c, y0c)
+    g01 = gather(x0c, y1c)
+    g10 = gather(x1c, y0c)
+    g11 = gather(x1c, y1c)
+
+    sampling_value_l_ = (
+        g00 * (w00 * v00).unsqueeze(1) +
+        g01 * (w01 * v01).unsqueeze(1) +
+        g10 * (w10 * v10).unsqueeze(1) +
+        g11 * (w11 * v11).unsqueeze(1)
+    )
+
     attention_weights = attention_weights.transpose(1, 2).reshape(B * n_heads, 1, Len_q, L * P)
     output = (sampling_value_l_ * attention_weights).sum(-1).view(B, n_heads * head_dim, Len_q)
     return output.transpose(1, 2).contiguous()
