@@ -733,6 +733,8 @@ class TransformerDecoderLayer(nn.Module):
         self.norm1 = nn.LayerNorm(d_model)
 
         self.norm1_tiny = tinynn.LayerNorm(d_model)
+        self.norm2_tiny = tinynn.LayerNorm(d_model)
+        self.norm3_tiny = tinynn.LayerNorm(d_model)
 
         # Decoder Cross-Attention
         self.cross_attn = MSDeformAttn(
@@ -743,6 +745,10 @@ class TransformerDecoderLayer(nn.Module):
         # Implementation of Feedforward model
         self.linear1 = nn.Linear(d_model, dim_feedforward)
         self.linear2 = nn.Linear(dim_feedforward, d_model)
+
+        self.linear1_tiny = tinynn.Linear(d_model, dim_feedforward)
+        self.linear2_tiny = tinynn.Linear(dim_feedforward, d_model)
+
         self.norm2 = nn.LayerNorm(d_model)
         self.norm3 = nn.LayerNorm(d_model)
         
@@ -768,6 +774,16 @@ class TransformerDecoderLayer(nn.Module):
         # todo move
         self.norm1_tiny.weight = to_tiny(self.norm1.weight)
         self.norm1_tiny.bias = to_tiny(self.norm1.bias)
+        self.norm2_tiny.weight = to_tiny(self.norm2.weight)
+        self.norm2_tiny.bias = to_tiny(self.norm2.bias)
+        self.norm3_tiny.weight = to_tiny(self.norm3.weight)
+        self.norm3_tiny.bias = to_tiny(self.norm3.bias)
+
+        self.linear1_tiny.weight = to_tiny(self.linear1.weight)
+        self.linear1_tiny.bias = to_tiny(self.linear1.bias)
+
+        self.linear2_tiny.weight = to_tiny(self.linear2.weight)
+        self.linear2_tiny.bias = to_tiny(self.linear2.bias)
 
 
         tgt = to_tiny(tgt)
@@ -808,13 +824,13 @@ class TransformerDecoderLayer(nn.Module):
             memory_key_padding_mask
         )
         tgt = tgt + tgt2
-        tgt = to_torch(tgt)
-        tgt2 = to_torch(tgt2)
-        tgt = self.norm2(tgt)
-        tgt2 = self.linear2(F.relu(self.linear1(tgt)))
+        tgt = self.norm2_tiny(tgt)
+        x = self.linear1_tiny(tgt)
+        x = x.relu()
+        tgt2 = self.linear2_tiny(x)
         tgt += tgt2
-        tgt = self.norm3(tgt)
-        return tgt
+        tgt = self.norm3_tiny(tgt)
+        return to_torch(tgt)
     
 def gen_sineembed_for_position(pos_tensor, dim=128):
     # n_query, bs, _ = pos_tensor.size()
