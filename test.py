@@ -670,13 +670,13 @@ class DinoV2(nn.Module):
 
 # todo later...less easy
 def ms_deform_attn_core_pytorch(value, value_spatial_shapes, sampling_locations, attention_weights):
-    """"for debug and test only, need to use cuda version instead
-    """
+    sampling_locations = to_tiny(sampling_locations)
     B, n_heads, head_dim, _ = value.shape
     _, Len_q, n_heads, L, P, _ = sampling_locations.shape
     sampling_grids = 2 * sampling_locations - 1
     value_l_ = value.view(B * n_heads, head_dim, value_spatial_shapes[0][0], value_spatial_shapes[0][0])
     sampling_grid_l_ = sampling_grids[:, :, :, 0].transpose(1, 2).flatten(0, 1)
+    sampling_grid_l_ = to_torch(sampling_grid_l_)
     sampling_value_l_ = F.grid_sample(value_l_, sampling_grid_l_,
                                         mode='bilinear', padding_mode='zeros', align_corners=False)
     attention_weights = attention_weights.transpose(1, 2).reshape(B * n_heads, 1, Len_q, L * P)
