@@ -245,7 +245,6 @@ class WindowedDinov2WithRegistersEmbeddings(nn.Module):
         num_patches = self.patch_embeddings.num_patches
         self.position_embeddings = nn.Parameter(torch.randn(1, num_patches + 1, config.hidden_size))
         self.position_embeddings_tiny = to_tiny(self.position_embeddings)
-        self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.patch_size = config.patch_size
         self.config = config
 
@@ -309,8 +308,6 @@ class Dinov2WithRegistersSelfAttention(nn.Module):
         self.value_tiny = tinynn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
         self.value_tiny.weight = to_tiny(self.value.weight)
         self.value_tiny.bias = to_tiny(self.value.bias)
-
-        self.dropout = nn.Dropout(config.attention_probs_dropout_prob)
 
     def transpose_for_scores(self, x: torch.Tensor) -> torch.Tensor:
         x = to_tiny(x)
@@ -733,7 +730,6 @@ class TransformerDecoderLayer(nn.Module):
         super().__init__()
         # Decoder Self-Attention
         self.self_attn = nn.MultiheadAttention(embed_dim=d_model, num_heads=sa_nhead, dropout=dropout, batch_first=True)
-        self.dropout1 = nn.Dropout(dropout)
         self.norm1 = nn.LayerNorm(d_model)
 
         # Decoder Cross-Attention
@@ -744,14 +740,9 @@ class TransformerDecoderLayer(nn.Module):
 
         # Implementation of Feedforward model
         self.linear1 = nn.Linear(d_model, dim_feedforward)
-        self.dropout = nn.Dropout(dropout)
         self.linear2 = nn.Linear(dim_feedforward, d_model)
-
         self.norm2 = nn.LayerNorm(d_model)
         self.norm3 = nn.LayerNorm(d_model)
-
-        self.dropout2 = nn.Dropout(dropout)
-        self.dropout3 = nn.Dropout(dropout)
         
         self.normalize_before = normalize_before
         self.group_detr = group_detr
@@ -771,12 +762,19 @@ class TransformerDecoderLayer(nn.Module):
                      spatial_shapes=None,
                      level_start_index=None,
                      ):
+        tgt = to_tiny(tgt)
+        query_pos = to_tiny(query_pos)
         q = k = tgt + query_pos
         v = tgt
-        tgt2 = self.self_attn(q, k, v, attn_mask=tgt_mask,
-                            key_padding_mask=tgt_key_padding_mask,
-                            need_weights=False)[0]
-        tgt = tgt + self.dropout1(tgt2)
+
+        q = to_torch(q)
+        k = to_torch(k)
+        v = to_torch(v)
+        query_pos = to_torch(query_pos)
+        tgt = to_torch(tgt)
+
+        tgt2 = self.self_attn(q, k, v, attn_mask=None, key_padding_mask=None, need_weights=False)[0]
+        tgt = tgt + tgt2
         tgt = self.norm1(tgt)
         tgt2 = self.cross_attn(
             tgt+query_pos,
@@ -798,29 +796,30 @@ class TransformerDecoderLayer(nn.Module):
 def gen_sineembed_for_position(pos_tensor, dim=128):
     # n_query, bs, _ = pos_tensor.size()
     # sineembed_tensor = torch.zeros(n_query, bs, 256)
+    pos_tensor = to_tiny(pos_tensor)
     scale = 2 * math.pi
-    dim_t = torch.arange(dim, dtype=pos_tensor.dtype, device=pos_tensor.device)
+    dim_t = tinyTensor.arange(dim)
     dim_t = 10000 ** (2 * (dim_t // 2) / dim)
     x_embed = pos_tensor[:, :, 0] * scale
     y_embed = pos_tensor[:, :, 1] * scale
     pos_x = x_embed[:, :, None] / dim_t
     pos_y = y_embed[:, :, None] / dim_t
+    pos_x = to_torch(pos_x)
+    pos_y = to_torch(pos_y)
     pos_x = torch.stack((pos_x[:, :, 0::2].sin(), pos_x[:, :, 1::2].cos()), dim=3).flatten(2)
     pos_y = torch.stack((pos_y[:, :, 0::2].sin(), pos_y[:, :, 1::2].cos()), dim=3).flatten(2)
-    if pos_tensor.size(-1) == 2:
-        pos = torch.cat((pos_y, pos_x), dim=2)
-    elif pos_tensor.size(-1) == 4:
-        w_embed = pos_tensor[:, :, 2] * scale
-        pos_w = w_embed[:, :, None] / dim_t
-        pos_w = torch.stack((pos_w[:, :, 0::2].sin(), pos_w[:, :, 1::2].cos()), dim=3).flatten(2)
 
-        h_embed = pos_tensor[:, :, 3] * scale
-        pos_h = h_embed[:, :, None] / dim_t
-        pos_h = torch.stack((pos_h[:, :, 0::2].sin(), pos_h[:, :, 1::2].cos()), dim=3).flatten(2)
+    pos_tensor = to_torch(pos_tensor)
+    dim_t = to_torch(dim_t)
+    w_embed = pos_tensor[:, :, 2] * scale
+    pos_w = w_embed[:, :, None] / dim_t
+    pos_w = torch.stack((pos_w[:, :, 0::2].sin(), pos_w[:, :, 1::2].cos()), dim=3).flatten(2)
 
-        pos = torch.cat((pos_y, pos_x, pos_w, pos_h), dim=2)
-    else:
-        raise ValueError("Unknown pos_tensor shape(-1):{}".format(pos_tensor.size(-1)))
+    h_embed = pos_tensor[:, :, 3] * scale
+    pos_h = h_embed[:, :, None] / dim_t
+    pos_h = torch.stack((pos_h[:, :, 0::2].sin(), pos_h[:, :, 1::2].cos()), dim=3).flatten(2)
+
+    pos = torch.cat((pos_y, pos_x, pos_w, pos_h), dim=2)
     return pos
 
 def _get_clones(module, N):
