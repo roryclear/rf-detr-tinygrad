@@ -767,25 +767,29 @@ class TransformerDecoderLayer(nn.Module):
         q = k = tgt + query_pos
         v = tgt
 
-        q = to_torch(q)
-        k = to_torch(k)
-        v = to_torch(v)
         query_pos = to_torch(query_pos)
         tgt = to_torch(tgt)
         C = 256
         B, T, C = q.shape
         H = 8
         D = C // H
-        W = self.self_attn.in_proj_weight
-        b = self.self_attn.in_proj_bias
-        Wq, Wk, Wv = W.chunk(3, dim=0)
+        w = to_tiny(self.self_attn.in_proj_weight)
+        b = to_tiny(self.self_attn.in_proj_bias)
+        wq, wk, wv = w.chunk(3, dim=0)
         bq, bk, bv = b.chunk(3, dim=0)
-        q = torch.nn.functional.linear(q, Wq, bq)
-        k = torch.nn.functional.linear(k, Wk, bk)
-        v = torch.nn.functional.linear(v, Wv, bv)
+
+        q = q @ wq.T + bq
+        k = k @ wk.T + bk
+        v = v @ wv.T + bv
+
         q = q.view(B, T, H, D).transpose(1, 2)
         k = k.view(B, T, H, D).transpose(1, 2)
         v = v.view(B, T, H, D).transpose(1, 2)
+
+        q = to_torch(q)
+        k = to_torch(k)
+        v = to_torch(v)
+
         attn = torch.nn.functional.scaled_dot_product_attention(
             q, k, v,
             attn_mask=None,
