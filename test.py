@@ -677,16 +677,14 @@ def ms_deform_attn_core_pytorch(value, value_spatial_shapes, sampling_locations,
     _, Len_q, n_heads, L, P, _ = sampling_locations.shape
     x = [value_spatial_shapes[0][0]**2]
     value_list = value.split(x, dim=3)
+    print(len(value_list))
     sampling_grids = 2 * sampling_locations - 1
-    sampling_value_list = []
     value_l_ = value_list[0].view(B * n_heads, head_dim, value_spatial_shapes[0][0], value_spatial_shapes[0][0])
     sampling_grid_l_ = sampling_grids[:, :, :, 0].transpose(1, 2).flatten(0, 1)
     sampling_value_l_ = F.grid_sample(value_l_, sampling_grid_l_,
                                         mode='bilinear', padding_mode='zeros', align_corners=False)
-    sampling_value_list.append(sampling_value_l_)
     attention_weights = attention_weights.transpose(1, 2).reshape(B * n_heads, 1, Len_q, L * P)
-    sampling_value_list = torch.stack(sampling_value_list, dim=-2).flatten(-2)
-    output = (sampling_value_list * attention_weights).sum(-1).view(B, n_heads * head_dim, Len_q)
+    output = (sampling_value_l_ * attention_weights).sum(-1).view(B, n_heads * head_dim, Len_q)
     return output.transpose(1, 2).contiguous()
 
 class TransformerDecoderLayer(nn.Module):
