@@ -1023,13 +1023,6 @@ class MSDeformAttn(nn.Module):
     """Multi-Scale Deformable Attention Module
     """
     def __init__(self, d_model=256, n_levels=4, n_heads=8, n_points=4):
-        """
-        Multi-Scale Deformable Attention Module
-        :param d_model      hidden dimension
-        :param n_levels     number of feature levels
-        :param n_heads      number of attention heads
-        :param n_points     number of sampling points per attention head per feature level
-        """
         super().__init__()
         self.im2col_step = 64
 
@@ -1044,6 +1037,9 @@ class MSDeformAttn(nn.Module):
         self.output_proj = nn.Linear(d_model, d_model)
 
         self.value_proj_tiny = tinynn.Linear(d_model, d_model)
+        self.sampling_offsets_tiny = tinynn.Linear(d_model, n_heads * n_levels * n_points * 2)
+        self.attention_weights_tiny = tinynn.Linear(d_model, n_heads * n_levels * n_points)
+        self.output_proj_tiny = tinynn.Linear(d_model, d_model)
 
         self._export = False
 
@@ -1053,6 +1049,12 @@ class MSDeformAttn(nn.Module):
         # todo move to weight load
         self.value_proj_tiny.weight = to_tiny(self.value_proj.weight)
         self.value_proj_tiny.bias = to_tiny(self.value_proj.bias)
+        self.sampling_offsets_tiny.weight = to_tiny(self.sampling_offsets.weight)
+        self.sampling_offsets_tiny.bias = to_tiny(self.sampling_offsets.bias)
+        self.attention_weights_tiny.weight = to_tiny(self.attention_weights.weight)
+        self.attention_weights_tiny.bias = to_tiny(self.attention_weights.bias)
+        self.output_proj_tiny.weight = to_tiny(self.output_proj.weight)
+        self.output_proj_tiny.bias = to_tiny(self.output_proj.bias)
 
         query = to_tiny(query)
         reference_points = to_tiny(reference_points)
@@ -1063,24 +1065,22 @@ class MSDeformAttn(nn.Module):
         N, Len_q, _ = query.shape
         N, Len_in, _ = input_flatten.shape
 
-        reference_points = to_torch(reference_points)
         input_spatial_shapes = to_torch(input_spatial_shapes)
 
         value = self.value_proj_tiny(input_flatten)
         value = value.masked_fill(input_padding_mask[..., None], float(0))
-        value = to_torch(value)
-        query = to_torch(query)
-        sampling_offsets = self.sampling_offsets(query).view(N, Len_q, self.n_heads, self.n_levels, self.n_points, 2)
-        attention_weights = self.attention_weights(query).view(N, Len_q, self.n_heads, self.n_levels * self.n_points)
-
+        sampling_offsets = self.sampling_offsets_tiny(query).view(N, Len_q, self.n_heads, self.n_levels, self.n_points, 2)
+        attention_weights = self.attention_weights_tiny(query).view(N, Len_q, self.n_heads, self.n_levels * self.n_points)
         sampling_locations = reference_points[:, :, None, :, None, :2] \
                                 + sampling_offsets / self.n_points * reference_points[:, :, None, :, None, 2:] * 0.5
-        attention_weights = F.softmax(attention_weights, -1)
+        attention_weights = attention_weights.softmax(-1)
         value = value.transpose(1, 2).contiguous().view(N, self.n_heads, self.d_model // self.n_heads, Len_in)
         output = ms_deform_attn_core_pytorch(
             value, input_spatial_shapes, sampling_locations, attention_weights)
-        output = self.output_proj(output)
-        return output
+        output = to_tiny(output)
+        output = self.output_proj_tiny(output)
+        return to_torch(output)
+
 
 
 class Transformer(nn.Module):
