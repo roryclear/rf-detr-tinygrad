@@ -790,9 +790,8 @@ class TransformerDecoderLayer(nn.Module):
         attn = tinyTensor.scaled_dot_product_attention(q,k,v)
         attn = attn.transpose(1, 2).contiguous().view(B, T, C)
         tgt2 = attn @ wo.T + bo
-        tgt = to_torch(tgt)  
-        tgt2 = to_torch(tgt2) 
         tgt = tgt + tgt2
+        tgt = to_torch(tgt)
         tgt = self.norm1(tgt)
         tgt2 = self.cross_attn(
             tgt+query_pos,
@@ -1061,28 +1060,14 @@ class MSDeformAttn(nn.Module):
         """
         N, Len_q, _ = query.shape
         N, Len_in, _ = input_flatten.shape
-        assert (input_spatial_shapes[:, 0] * input_spatial_shapes[:, 1]).sum() == Len_in
-
         value = self.value_proj(input_flatten)
-        if input_padding_mask is not None:
-            value = value.masked_fill(input_padding_mask[..., None], float(0))
-
+        value = value.masked_fill(input_padding_mask[..., None], float(0))
         sampling_offsets = self.sampling_offsets(query).view(N, Len_q, self.n_heads, self.n_levels, self.n_points, 2)
         attention_weights = self.attention_weights(query).view(N, Len_q, self.n_heads, self.n_levels * self.n_points)
 
-        # N, Len_q, n_heads, n_levels, n_points, 2
-        if reference_points.shape[-1] == 2:
-            offset_normalizer = torch.stack([input_spatial_shapes[..., 1], input_spatial_shapes[..., 0]], -1)
-            sampling_locations = reference_points[:, :, None, :, None, :] \
-                                 + sampling_offsets / offset_normalizer[None, None, None, :, None, :]
-        elif reference_points.shape[-1] == 4:
-            sampling_locations = reference_points[:, :, None, :, None, :2] \
-                                 + sampling_offsets / self.n_points * reference_points[:, :, None, :, None, 2:] * 0.5
-        else:
-            raise ValueError(
-                'Last dim of reference_points must be 2 or 4, but get {} instead.'.format(reference_points.shape[-1]))
+        sampling_locations = reference_points[:, :, None, :, None, :2] \
+                                + sampling_offsets / self.n_points * reference_points[:, :, None, :, None, 2:] * 0.5
         attention_weights = F.softmax(attention_weights, -1)
-
         value = value.transpose(1, 2).contiguous().view(N, self.n_heads, self.d_model // self.n_heads, Len_in)
         output = ms_deform_attn_core_pytorch(
             value, input_spatial_shapes, sampling_locations, attention_weights)
