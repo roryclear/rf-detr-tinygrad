@@ -1105,8 +1105,6 @@ class MSDeformAttn(nn.Module):
         output = self.output_proj_tiny(output)
         return output
 
-
-
 class Transformer(nn.Module):
     def __init__(self, d_model=512, sa_nhead=8, ca_nhead=8, num_queries=300,
                  num_decoder_layers=6, dim_feedforward=2048, dropout=0.0,
@@ -1154,15 +1152,6 @@ class Transformer(nn.Module):
 
         self._export = False
 
-    def get_valid_ratio(self, mask):
-        _, H, W = mask.shape
-        valid_H = torch.sum(~mask[:, :, 0], 1)
-        valid_W = torch.sum(~mask[:, 0, :], 1)
-        valid_ratio_h = valid_H.float() / H
-        valid_ratio_w = valid_W.float() / W
-        valid_ratio = torch.stack([valid_ratio_w, valid_ratio_h], -1)
-        return valid_ratio
-
     def forward(self, srcs, masks, pos_embeds, refpoint_embed, query_feat):
         src_flatten = []
         mask_flatten = [] if masks is not None else None
@@ -1184,7 +1173,7 @@ class Transformer(nn.Module):
         memory = torch.cat(src_flatten, 1)    # bs, \sum{hxw}, c
         if masks is not None:
             mask_flatten = torch.cat(mask_flatten, 1)   # bs, \sum{hxw}
-            valid_ratios = torch.stack([self.get_valid_ratio(m) for m in masks], 1)
+            valid_ratios = torch.stack([Tensor([[1,1]]) for m in masks], 1)
         lvl_pos_embed_flatten = torch.cat(lvl_pos_embed_flatten, 1) # bs, \sum{hxw}, c
         spatial_shapes = torch.as_tensor(spatial_shapes, dtype=torch.long, device=memory.device)
         level_start_index = torch.cat((spatial_shapes.new_zeros((1, )), spatial_shapes.prod(1).cumsum(0)[:-1]))
