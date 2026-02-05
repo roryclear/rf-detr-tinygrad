@@ -768,13 +768,14 @@ class TransformerDecoderLayer(nn.Module):
         v = tgt
 
         query_pos = to_torch(query_pos)
-        tgt = to_torch(tgt)
         C = 256
         B, T, C = q.shape
         H = 8
         D = C // H
         w = to_tiny(self.self_attn.in_proj_weight)
         b = to_tiny(self.self_attn.in_proj_bias)
+        wo = to_tiny(self.self_attn.out_proj.weight)
+        bo = to_tiny(self.self_attn.out_proj.bias)
         wq, wk, wv = w.chunk(3, dim=0)
         bq, bk, bv = b.chunk(3, dim=0)
 
@@ -786,18 +787,11 @@ class TransformerDecoderLayer(nn.Module):
         k = k.view(B, T, H, D).transpose(1, 2)
         v = v.view(B, T, H, D).transpose(1, 2)
 
-        q = to_torch(q)
-        k = to_torch(k)
-        v = to_torch(v)
-
-        attn = torch.nn.functional.scaled_dot_product_attention(
-            q, k, v,
-            attn_mask=None,
-            dropout_p=0.0,
-            is_causal=False
-        )
+        attn = tinyTensor.scaled_dot_product_attention(q,k,v)
         attn = attn.transpose(1, 2).contiguous().view(B, T, C)
-        tgt2 = torch.nn.functional.linear(attn, self.self_attn.out_proj.weight, self.self_attn.out_proj.bias)        
+        tgt2 = attn @ wo.T + bo
+        tgt = to_torch(tgt)  
+        tgt2 = to_torch(tgt2) 
         tgt = tgt + tgt2
         tgt = self.norm1(tgt)
         tgt2 = self.cross_attn(
