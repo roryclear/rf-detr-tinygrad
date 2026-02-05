@@ -729,7 +729,7 @@ class TransformerDecoderLayer(nn.Module):
                  skip_self_attn=False):
         super().__init__()
         # Decoder Self-Attention
-        self.self_attn = nn.MultiheadAttention(embed_dim=d_model, num_heads=sa_nhead, dropout=dropout, batch_first=True)
+        self.self_attn = nn.MultiheadAttention(embed_dim=256, num_heads=8, dropout=0, batch_first=True)
         self.norm1 = nn.LayerNorm(d_model)
 
         # Decoder Cross-Attention
@@ -772,8 +772,28 @@ class TransformerDecoderLayer(nn.Module):
         v = to_torch(v)
         query_pos = to_torch(query_pos)
         tgt = to_torch(tgt)
-
-        tgt2 = self.self_attn(q, k, v, attn_mask=None, key_padding_mask=None, need_weights=False)[0]
+        C = 256
+        B, T, C = q.shape
+        H = 8
+        D = C // H
+        W = self.self_attn.in_proj_weight
+        b = self.self_attn.in_proj_bias
+        Wq, Wk, Wv = W.chunk(3, dim=0)
+        bq, bk, bv = b.chunk(3, dim=0)
+        q = torch.nn.functional.linear(q, Wq, bq)
+        k = torch.nn.functional.linear(k, Wk, bk)
+        v = torch.nn.functional.linear(v, Wv, bv)
+        q = q.view(B, T, H, D).transpose(1, 2)
+        k = k.view(B, T, H, D).transpose(1, 2)
+        v = v.view(B, T, H, D).transpose(1, 2)
+        attn = torch.nn.functional.scaled_dot_product_attention(
+            q, k, v,
+            attn_mask=None,
+            dropout_p=0.0,
+            is_causal=False
+        )
+        attn = attn.transpose(1, 2).contiguous().view(B, T, C)
+        tgt2 = torch.nn.functional.linear(attn, self.self_attn.out_proj.weight, self.self_attn.out_proj.bias)        
         tgt = tgt + tgt2
         tgt = self.norm1(tgt)
         tgt2 = self.cross_attn(
@@ -784,8 +804,6 @@ class TransformerDecoderLayer(nn.Module):
             level_start_index,
             memory_key_padding_mask
         )
-
-
         tgt = tgt + tgt2
         tgt = self.norm2(tgt)
         tgt2 = self.linear2(F.relu(self.linear1(tgt)))
