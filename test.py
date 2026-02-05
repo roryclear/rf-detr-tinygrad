@@ -669,13 +669,14 @@ class DinoV2(nn.Module):
         x = self.encoder(x)
         return list(x[0])
 
-# todo later...less easy
 def ms_deform_attn_core_pytorch(value, value_spatial_shapes, sampling_locations, attention_weights):
+    attention_weights = to_tiny(attention_weights)
     sampling_locations = to_tiny(sampling_locations)
+    value = to_tiny(value)
     B, n_heads, head_dim, _ = value.shape
     _, Len_q, n_heads, L, P, _ = sampling_locations.shape
     sampling_grids = 2 * sampling_locations - 1
-    value_l_ = value.view(B * n_heads, head_dim, value_spatial_shapes[0][0], value_spatial_shapes[0][0])
+    value_l_ = value.view(B * n_heads, head_dim, int(value_spatial_shapes[0][0]), int(value_spatial_shapes[0][0]))
     sampling_grid_l_ = sampling_grids[:, :, :, 0].transpose(1, 2).flatten(0, 1)
 
     N, C, H, W = value_l_.shape
@@ -703,37 +704,26 @@ def ms_deform_attn_core_pytorch(value, value_spatial_shapes, sampling_locations,
     v10 = (x1 >= 0) & (x1 < W) & (y0 >= 0) & (y0 < H)
     v11 = (x1 >= 0) & (x1 < W) & (y1 >= 0) & (y1 < H)
 
-    v00 = to_torch(v00)
-    v01 = to_torch(v01)
-    v10 = to_torch(v10)
-    v11 = to_torch(v11)
-    x0 = to_torch(x0).long()
-    y0 = to_torch(y0).long()
-    y1 = to_torch(y1).long()
-    x1 = to_torch(x1).long()
-
-
     x0c = x0.clamp(0, W - 1)
     x1c = x1.clamp(0, W - 1)
     y0c = y0.clamp(0, H - 1)
     y1c = y1.clamp(0, H - 1)
+
     value_flat = value_l_.view(N, C, H * W)
     def gather(xi, yi):
         idx = (yi * W + xi).view(N, 1, -1).expand(-1, C, -1)
-        return torch.gather(value_flat, 2, idx).view(N, C, H_out, W_out)
+        return tinyTensor.gather(value_flat, 2, idx).view(N, C, H_out, W_out)
+
     g00 = gather(x0c, y0c)
     g01 = gather(x0c, y1c)
     g10 = gather(x1c, y0c)
     g11 = gather(x1c, y1c)
-    w00 = to_torch(w00)
-    w01 = to_torch(w01)
-    w10 = to_torch(w10)
-    w11 = to_torch(w11)
     sampling_value_l_ = (g00 * (w00 * v00).unsqueeze(1) + g01 * (w01 * v01).unsqueeze(1) +
     g10 * (w10 * v10).unsqueeze(1) + g11 * (w11 * v11).unsqueeze(1))
     attention_weights = attention_weights.transpose(1, 2).reshape(B * n_heads, 1, Len_q, L * P)
     output = (sampling_value_l_ * attention_weights).sum(-1).view(B, n_heads * head_dim, Len_q)
-    return output.transpose(1, 2).contiguous()
+    ret = output.transpose(1, 2).contiguous()
+    return to_torch(ret)
 
 class TransformerDecoderLayer(nn.Module):
     def __init__(self, d_model, sa_nhead, ca_nhead, dim_feedforward=2048, dropout=0.1,
@@ -2587,7 +2577,8 @@ excepted_xyxys = [[[61.86511,247.66309,652.2484,930.8369,],
 
 models = [RFDETRNano(), RFDETRSmall(), RFDETRMedium(), RFDETRLarge()]
 for i, model in enumerate(models):
-  image = Image.open(requests.get('https://media.roboflow.com/dog.jpg', stream=True).raw)
+  #image = Image.open(requests.get('https://media.roboflow.com/dog.jpg', stream=True).raw)
+  image = Image.open('dog.jpg')
   detections = model.predict(image, threshold=0.5)
   labels = [f"{COCO_CLASSES[class_id]}" for class_id in detections.class_id]
   annotated_image = sv.BoxAnnotator().annotate(image, detections)
