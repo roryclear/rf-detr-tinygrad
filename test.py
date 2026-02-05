@@ -677,21 +677,14 @@ def ms_deform_attn_core_pytorch(value, value_spatial_shapes, sampling_locations,
     _, Len_q, n_heads, L, P, _ = sampling_locations.shape
     x = [value_spatial_shapes[0][0]**2]
     value_list = value.split(x, dim=3)
-    #value_list = to_tiny(value_list)
     sampling_grids = 2 * sampling_locations - 1
     sampling_value_list = []
-    for lid_, (H, W) in enumerate(value_spatial_shapes): # only one in loop?
-        # B, n_heads, head_dim, H, W
-        value_l_ = value_list[lid_].view(B * n_heads, head_dim, H, W)
-        # B, Len_q, n_heads, P, 2 -> B, n_heads, Len_q, P, 2 -> B*n_heads, Len_q, P, 2
-        sampling_grid_l_ = sampling_grids[:, :, :, lid_].transpose(1, 2).flatten(0, 1)
-        # B*n_heads, head_dim, Len_q, P
-        sampling_value_l_ = F.grid_sample(value_l_, sampling_grid_l_,
-                                          mode='bilinear', padding_mode='zeros', align_corners=False)
-        sampling_value_list.append(sampling_value_l_)
-    # (B, Len_q, n_heads, L * P) -> (B, n_heads, Len_q, L, P) -> (B*n_heads, 1, Len_q, L*P)
+    value_l_ = value_list[0].view(B * n_heads, head_dim, value_spatial_shapes[0][0], value_spatial_shapes[0][0])
+    sampling_grid_l_ = sampling_grids[:, :, :, 0].transpose(1, 2).flatten(0, 1)
+    sampling_value_l_ = F.grid_sample(value_l_, sampling_grid_l_,
+                                        mode='bilinear', padding_mode='zeros', align_corners=False)
+    sampling_value_list.append(sampling_value_l_)
     attention_weights = attention_weights.transpose(1, 2).reshape(B * n_heads, 1, Len_q, L * P)
-    # B*n_heads, head_dim, Len_q, L*P
     sampling_value_list = torch.stack(sampling_value_list, dim=-2).flatten(-2)
     output = (sampling_value_list * attention_weights).sum(-1).view(B, n_heads * head_dim, Len_q)
     return output.transpose(1, 2).contiguous()
