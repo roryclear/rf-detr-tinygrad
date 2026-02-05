@@ -732,6 +732,8 @@ class TransformerDecoderLayer(nn.Module):
         self.self_attn = nn.MultiheadAttention(embed_dim=256, num_heads=8, dropout=0, batch_first=True)
         self.norm1 = nn.LayerNorm(d_model)
 
+        self.norm1_tiny = tinynn.LayerNorm(d_model)
+
         # Decoder Cross-Attention
         self.cross_attn = MSDeformAttn(
             d_model, n_levels=num_feature_levels, n_heads=ca_nhead, n_points=dec_n_points)
@@ -762,12 +764,17 @@ class TransformerDecoderLayer(nn.Module):
                      spatial_shapes=None,
                      level_start_index=None,
                      ):
+        
+        # todo move
+        self.norm1_tiny.weight = to_tiny(self.norm1.weight)
+        self.norm1_tiny.bias = to_tiny(self.norm1.bias)
+
+
         tgt = to_tiny(tgt)
         query_pos = to_tiny(query_pos)
         q = k = tgt + query_pos
         v = tgt
 
-        query_pos = to_torch(query_pos)
         C = 256
         B, T, C = q.shape
         H = 8
@@ -791,8 +798,7 @@ class TransformerDecoderLayer(nn.Module):
         attn = attn.transpose(1, 2).contiguous().view(B, T, C)
         tgt2 = attn @ wo.T + bo
         tgt = tgt + tgt2
-        tgt = to_torch(tgt)
-        tgt = self.norm1(tgt)
+        tgt = self.norm1_tiny(tgt)
         tgt2 = self.cross_attn(
             tgt+query_pos,
             reference_points,
@@ -802,6 +808,8 @@ class TransformerDecoderLayer(nn.Module):
             memory_key_padding_mask
         )
         tgt = tgt + tgt2
+        tgt = to_torch(tgt)
+        tgt2 = to_torch(tgt2)
         tgt = self.norm2(tgt)
         tgt2 = self.linear2(F.relu(self.linear1(tgt)))
         tgt += tgt2
@@ -1079,7 +1087,7 @@ class MSDeformAttn(nn.Module):
             value, input_spatial_shapes, sampling_locations, attention_weights)
         output = to_tiny(output)
         output = self.output_proj_tiny(output)
-        return to_torch(output)
+        return output
 
 
 
