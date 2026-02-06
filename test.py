@@ -225,7 +225,7 @@ class Dinov2WithRegistersPatchEmbeddings(nn.Module):
         self.projection_tiny.bias = to_tiny(self.projection.bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if type(x) != tinyTensor: x = to_tiny(x)
+        x = to_tiny(x)
         x = self.projection_tiny(x).flatten(2).transpose(1, 2)
         return to_torch(x)
 
@@ -1077,36 +1077,24 @@ class Transformer(nn.Module):
         self._export = False
 
     def forward(self, srcs, masks, pos_embeds, refpoint_embed, query_feat):
-        src_flatten = []
-        mask_flatten = []
-        lvl_pos_embed_flatten = []
         spatial_shapes = []
-        valid_ratios = []
 
         src = srcs[0]
         pos_embed = pos_embeds[0]
 
         bs, _, h, w = src.shape
-        spatial_shapes.append((h, w))
+        spatial_shapes.append((h, h))
 
         src = src.flatten(2).transpose(1, 2)              # bs, hw, c
         pos_embed = pos_embed.flatten(2).transpose(1, 2)  # bs, hw, c
 
-        lvl_pos_embed_flatten.append(pos_embed)
-        src_flatten.append(src)
-
         mask = masks[0].flatten(1)                      # bs, hw
-        mask_flatten.append(mask)
-
-        memory = torch.cat(src_flatten, 1)    # bs, \sum{hxw}, c
-        mask_flatten = torch.cat(mask_flatten, 1)   # bs, \sum{hxw}
-        valid_ratios = torch.stack([Tensor([[1,1]]) for m in masks], 1)
-        lvl_pos_embed_flatten = torch.cat(lvl_pos_embed_flatten, 1) # bs, \sum{hxw}, c
-        spatial_shapes_t = torch.as_tensor(spatial_shapes, dtype=torch.long, device=memory.device)
+        valid_ratios = Tensor([[[1., 1.]]])
+        spatial_shapes_t = torch.as_tensor(spatial_shapes, dtype=torch.long)
         level_start_index = torch.cat((spatial_shapes_t.new_zeros((1, )), spatial_shapes_t.prod(1).cumsum(0)[:-1]))
 
         output_memory, output_proposals = gen_encoder_output_proposals(
-            memory, mask_flatten, spatial_shapes[0][0], unsigmoid=not self.bbox_reparam)
+            src, mask, h, unsigmoid=not self.bbox_reparam)
         
         output_memory = to_torch(output_memory)
         output_proposals = to_torch(output_proposals)
@@ -1161,11 +1149,11 @@ class Transformer(nn.Module):
         refpoint_embed = torch.concat(
             [refpoint_embed_ts_subset, refpoint_embed_subset], dim=-2)
 
-        hs, references = self.decoder(tgt, memory, memory_key_padding_mask=mask_flatten,
-                        pos=lvl_pos_embed_flatten, refpoints_unsigmoid=refpoint_embed,
+        hs, references = self.decoder(tgt, src, memory_key_padding_mask=mask,
+                        pos=pos_embed, refpoints_unsigmoid=refpoint_embed,
                         level_start_index=level_start_index,
                         spatial_shapes=spatial_shapes_t,
-                        valid_ratios=valid_ratios.to(memory.dtype) if valid_ratios is not None else valid_ratios)
+                        valid_ratios=valid_ratios)
 
         return hs, references, memory_ts, boxes_ts
 
