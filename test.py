@@ -1446,7 +1446,11 @@ class Backbone(BackboneBase):
         feats = self.projector(feats)
         out = []
         m = tensor_list.mask
-        mask = F.interpolate(m.unsqueeze(0).float(), size=feats[0].shape[-2:]).to(torch.bool)[0]
+
+        m = to_tiny(m)
+
+        mask = ~tinyTensor.interpolate(m.unsqueeze(0), size=feats[0].shape[-2:])[0]
+        mask = to_torch(mask).bool()
         out.append(NestedTensor(feats[0], mask))
         return out
 
