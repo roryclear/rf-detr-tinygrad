@@ -1320,19 +1320,11 @@ class MultiScaleProjector(nn.Module):
 
     def forward(self, x):
         results = []
-        for i, stage in enumerate(self.stages):
-            feat_fuse = []
-            for j, stage_sampling in enumerate(self.stages_sampling[i]):
-                feat_fuse.append(stage_sampling(x[j]))
-            if len(feat_fuse) > 1:
-                feat_fuse = torch.cat(feat_fuse, dim=1)
-            else:
-                feat_fuse = feat_fuse[0]
-            results.append(stage(feat_fuse))
-        if self.use_extra_pool:
-            results.append(
-                F.max_pool2d(results[-1], kernel_size=1, stride=2, padding=0)
-            )
+        feat_fuse = []
+        for j, stage_sampling in enumerate(self.stages_sampling[0]):
+            feat_fuse.append(stage_sampling(x[j]))
+        feat_fuse = torch.cat(feat_fuse, dim=1)
+        results.append(self.stages[0](feat_fuse))
         return results
 
 class NestedTensor(object):
