@@ -2008,11 +2008,6 @@ class PostProcess(nn.Module):
                           For visualization, this should be the image size after data augment, but before padding
         """
         out_logits, out_bbox = outputs['pred_logits'], outputs['pred_boxes']
-        out_masks = outputs.get('pred_masks', None)
-
-        assert len(out_logits) == len(target_sizes)
-        assert target_sizes.shape[1] == 2
-
         prob = out_logits.sigmoid()
         topk_values, topk_indexes = torch.topk(prob.view(out_logits.shape[0], -1), self.num_select, dim=1)
         scores = topk_values
@@ -2020,27 +2015,10 @@ class PostProcess(nn.Module):
         labels = topk_indexes % out_logits.shape[2]
         boxes = box_cxcywh_to_xyxy(out_bbox)
         boxes = torch.gather(boxes, 1, topk_boxes.unsqueeze(-1).repeat(1,1,4))
-
-        # and from relative [0, 1] to absolute [0, height] coordinates
         img_h, img_w = target_sizes.unbind(1)
         scale_fct = torch.stack([img_w, img_h, img_w, img_h], dim=1)
         boxes = boxes * scale_fct[:, None, :]
-
-        # Optionally gather masks corresponding to the same top-K queries and resize to original size
-        results = []
-        if out_masks is not None:
-            for i in range(out_masks.shape[0]):
-                res_i = {'scores': scores[i], 'labels': labels[i], 'boxes': boxes[i]}
-                k_idx = topk_boxes[i]
-                masks_i = torch.gather(out_masks[i], 0, k_idx.unsqueeze(-1).unsqueeze(-1).repeat(1, out_masks.shape[-2], out_masks.shape[-1]))  # [K, Hm, Wm]
-                h, w = target_sizes[i].tolist()
-                masks_i = F.interpolate(masks_i.unsqueeze(1), size=(int(h), int(w)), mode='bilinear', align_corners=False)  # [K,1,H,W]
-                res_i['masks'] = masks_i > 0.0
-                results.append(res_i)
-        else:
-            results = [{'scores': s, 'labels': l, 'boxes': b} for s, l, b in zip(scores, labels, boxes)]
-
-        return results
+        return [{'scores': s, 'labels': l, 'boxes': b} for s, l, b in zip(scores, labels, boxes)]
 
 class Model:
     def __init__(self, **kwargs):
@@ -2304,18 +2282,7 @@ class RFDETR:
                                      "by calling model.optimize_for_inference(batch_size=<new_batch_size>).")
 
         with torch.no_grad():
-            if self._is_optimized_for_inference:
-                predictions = self.model.inference_model(batch_tensor.to(dtype=self._optimized_dtype))
-            else:
-                predictions = self.model.model(batch_tensor)
-            if isinstance(predictions, tuple):
-                return_predictions = {
-                    "pred_logits": predictions[1],
-                    "pred_boxes": predictions[0],
-                }
-                if len(predictions) == 3:
-                    return_predictions["pred_masks"] = predictions[2]
-                predictions = return_predictions
+            predictions = self.model.model(batch_tensor)
             target_sizes = torch.tensor(orig_sizes, device=self.model.device)
             results = self.model.postprocess(predictions, target_sizes=target_sizes)
 
