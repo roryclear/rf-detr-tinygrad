@@ -729,21 +729,6 @@ class TransformerDecoderLayer(nn.Module):
                      level_start_index=None,
                      ):
         
-        # todo move
-        self.norm1_tiny.weight = to_tiny(self.norm1.weight)
-        self.norm1_tiny.bias = to_tiny(self.norm1.bias)
-        self.norm2_tiny.weight = to_tiny(self.norm2.weight)
-        self.norm2_tiny.bias = to_tiny(self.norm2.bias)
-        self.norm3_tiny.weight = to_tiny(self.norm3.weight)
-        self.norm3_tiny.bias = to_tiny(self.norm3.bias)
-
-        self.linear1_tiny.weight = to_tiny(self.linear1.weight)
-        self.linear1_tiny.bias = to_tiny(self.linear1.bias)
-
-        self.linear2_tiny.weight = to_tiny(self.linear2.weight)
-        self.linear2_tiny.bias = to_tiny(self.linear2.bias)
-
-
         tgt = to_tiny(tgt)
         query_pos = to_tiny(query_pos)
         q = k = tgt + query_pos
@@ -2000,6 +1985,20 @@ class Model:
                 download_pretrain_weights(args.pretrain_weights, redownload=True)
                 checkpoint = torch.load(args.pretrain_weights, map_location='cpu', weights_only=False)
             self.model.load_state_dict(checkpoint['model'], strict=False)
+            
+            print(len(self.model.transformer.decoder.layers))
+            for i in range(len(self.model.transformer.decoder.layers)):
+                self.model.transformer.decoder.layers[i].norm1_tiny.weight = to_tiny(self.model.transformer.decoder.layers[i].norm1.weight)
+                self.model.transformer.decoder.layers[i].norm1_tiny.bias = to_tiny(self.model.transformer.decoder.layers[i].norm1.bias)
+                self.model.transformer.decoder.layers[i].norm2_tiny.weight = to_tiny(self.model.transformer.decoder.layers[i].norm2.weight)
+                self.model.transformer.decoder.layers[i].norm2_tiny.bias = to_tiny(self.model.transformer.decoder.layers[i].norm2.bias)
+                self.model.transformer.decoder.layers[i].norm3_tiny.weight = to_tiny(self.model.transformer.decoder.layers[i].norm3.weight)
+                self.model.transformer.decoder.layers[i].norm3_tiny.bias = to_tiny(self.model.transformer.decoder.layers[i].norm3.bias)
+                self.model.transformer.decoder.layers[i].linear1_tiny.weight = to_tiny(self.model.transformer.decoder.layers[i].linear1.weight)
+                self.model.transformer.decoder.layers[i].linear1_tiny.bias = to_tiny(self.model.transformer.decoder.layers[i].linear1.bias)
+                self.model.transformer.decoder.layers[i].linear2_tiny.weight = to_tiny(self.model.transformer.decoder.layers[i].linear2.weight)
+                self.model.transformer.decoder.layers[i].linear2_tiny.bias = to_tiny(self.model.transformer.decoder.layers[i].linear2.bias)
+            for k in checkpoint['model'].keys(): print(k)
 
         self.postprocess = PostProcess(num_select=args.num_select)
         self.stop_early = False
