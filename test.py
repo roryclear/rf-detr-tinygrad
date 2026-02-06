@@ -1091,7 +1091,6 @@ class Transformer(nn.Module):
         
 
         # group detr for first stage
-        refpoint_embed_ts, memory_ts, boxes_ts = [], [], []
         output_memory = to_torch(output_memory)
         output_memory_gidx = self.enc_output_norm[0](self.enc_output[0](output_memory))
 
@@ -1109,32 +1108,28 @@ class Transformer(nn.Module):
         topk = min(self.num_queries, enc_outputs_class_unselected_gidx.shape[-2])
         topk_proposals_gidx = torch.topk(enc_outputs_class_unselected_gidx.max(-1)[0], topk, dim=1)[1] # bs, nq
 
-        refpoint_embed_gidx_undetach = torch.gather(
+        boxes_ts = torch.gather(
             enc_outputs_coord_unselected_gidx, 1, topk_proposals_gidx.unsqueeze(-1).repeat(1, 1, 4)) # unsigmoid
         # for decoder layer, detached as initial ones, (bs, nq, 4)
-        refpoint_embed_gidx = refpoint_embed_gidx_undetach.detach()
+        refpoint_embed_gidx = boxes_ts.detach()
 
         # get memory tgt
-        tgt_undetach_gidx = torch.gather(
+        memory_ts = torch.gather(
             output_memory_gidx, 1, topk_proposals_gidx.unsqueeze(-1).repeat(1, 1, self.d_model))
 
-        refpoint_embed_ts.append(refpoint_embed_gidx)
-        memory_ts = tgt_undetach_gidx
-        boxes_ts = refpoint_embed_gidx_undetach
         # concat on dim=1, the nq dimension, (bs, nq, d) --> (bs, nq, d)
-        refpoint_embed_ts = torch.cat(refpoint_embed_ts, dim=1)
         # (bs, nq, d)
 
         tgt = query_feat.unsqueeze(0).repeat(bs, 1, 1)
         refpoint_embed = refpoint_embed.unsqueeze(0).repeat(bs, 1, 1)
 
-        ts_len = refpoint_embed_ts.shape[-2]
+        ts_len = refpoint_embed_gidx.shape[-2]
         refpoint_embed_ts_subset = refpoint_embed[..., :ts_len, :]
         refpoint_embed_subset = refpoint_embed[..., ts_len:, :]
 
-        refpoint_embed_cxcy = refpoint_embed_ts_subset[..., :2] * refpoint_embed_ts[..., 2:]
-        refpoint_embed_cxcy = refpoint_embed_cxcy + refpoint_embed_ts[..., :2]
-        refpoint_embed_wh = refpoint_embed_ts_subset[..., 2:].exp() * refpoint_embed_ts[..., 2:]
+        refpoint_embed_cxcy = refpoint_embed_ts_subset[..., :2] * refpoint_embed_gidx[..., 2:]
+        refpoint_embed_cxcy = refpoint_embed_cxcy + refpoint_embed_gidx[..., :2]
+        refpoint_embed_wh = refpoint_embed_ts_subset[..., 2:].exp() * refpoint_embed_gidx[..., 2:]
         refpoint_embed_ts_subset = torch.concat(
             [refpoint_embed_cxcy, refpoint_embed_wh], dim=-1
         )
