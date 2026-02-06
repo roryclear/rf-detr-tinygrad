@@ -11,7 +11,7 @@ from transformers.configuration_utils import PretrainedConfig
 import torch
 from torch import nn
 from torch import Tensor
-from typing import List, Literal, Optional, Union, Tuple, Callable, Set
+from typing import List, Literal, Optional, Union, Tuple, Callable, Set, Any
 from pydantic import BaseModel, field_validator
 import os
 import torchvision.transforms.functional as vF
@@ -224,7 +224,7 @@ class Dinov2WithRegistersPatchEmbeddings(nn.Module):
         self.projection_tiny.weight = to_tiny(self.projection.weight)
         self.projection_tiny.bias = to_tiny(self.projection.bias)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x):
         x = to_tiny(x)
         x = self.projection_tiny(x).flatten(2).transpose(1, 2)
         return to_torch(x)
@@ -239,8 +239,6 @@ class WindowedDinov2WithRegistersEmbeddings(nn.Module):
 
         self.cls_token = nn.Parameter(torch.randn(1, 1, config.hidden_size))
         self.cls_token_tiny = to_tiny(self.cls_token)
-        self.mask_token = nn.Parameter(torch.zeros(1, config.hidden_size))
-        self.register_tokens = nn.Parameter(torch.zeros(1, config.num_register_tokens, config.hidden_size)) if config.num_register_tokens > 0 else None
         self.patch_embeddings = Dinov2WithRegistersPatchEmbeddings(config)
         num_patches = self.patch_embeddings.num_patches
         self.position_embeddings = nn.Parameter(torch.randn(1, num_patches + 1, config.hidden_size))
@@ -249,7 +247,7 @@ class WindowedDinov2WithRegistersEmbeddings(nn.Module):
         self.config = config
 
 
-    def forward(self, pixel_values: torch.Tensor, bool_masked_pos: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, pixel_values, bool_masked_pos: Optional[Any] = None):
         batch_size, _, height, width = pixel_values.shape
         target_dtype = self.patch_embeddings.projection.weight.dtype
         embeddings = self.patch_embeddings(pixel_values.to(dtype=target_dtype))
@@ -309,7 +307,7 @@ class Dinov2WithRegistersSelfAttention(nn.Module):
         self.value_tiny.weight = to_tiny(self.value.weight)
         self.value_tiny.bias = to_tiny(self.value.bias)
 
-    def transpose_for_scores(self, x: torch.Tensor) -> torch.Tensor:
+    def transpose_for_scores(self, x):
         x = to_tiny(x)
         new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
         x = x.view(new_x_shape)
@@ -329,7 +327,7 @@ class Dinov2WithRegistersSelfOutput(nn.Module):
         self.dense_tiny.weight = to_tiny(self.dense.weight)
         self.dense_tiny.bias = to_tiny(self.dense.bias)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x):
         x = to_tiny(x)
         x = self.dense_tiny(x)
         return to_torch(x)
@@ -343,10 +341,10 @@ class Dinov2WithRegistersAttention(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.Tensor,
-        head_mask: Optional[torch.Tensor] = None,
+        hidden_states: Any,
+        head_mask: Optional[Any] = None,
         output_attentions: bool = False,
-    ) -> Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor]]:
+    ) -> Union[Tuple[Any, Any], Tuple[Any]]:
         self_outputs = self.attention(hidden_states, head_mask, output_attentions)
         attention_output = self.output(self_outputs[0])
         outputs = (attention_output,) + self_outputs[1:]  # add attentions if we output them
@@ -358,8 +356,8 @@ class Dinov2WithRegistersSdpaSelfAttention(Dinov2WithRegistersSelfAttention):
         self.attention_probs_dropout_prob = config.attention_probs_dropout_prob
 
     def forward(
-        self, hidden_states, head_mask: Optional[torch.Tensor] = None, output_attentions: bool = False
-    ) -> Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor]]:
+        self, hidden_states, head_mask: Optional[Any] = None, output_attentions: bool = False
+    ) -> Union[Tuple[Any, Any], Tuple[Any]]:
 
         hidden_states = to_tiny(hidden_states)
         mixed_query_layer = self.query_tiny(hidden_states)
@@ -412,7 +410,7 @@ class Dinov2WithRegistersMLP(nn.Module):
         self.fc2_tiny.weight = to_tiny(self.fc2.weight)
         self.fc2_tiny.bias = to_tiny(self.fc2.bias)
 
-    def forward(self, hidden_state: torch.Tensor) -> torch.Tensor:
+    def forward(self, hidden_state):
         hidden_state = to_tiny(hidden_state)
         hidden_state = self.fc1_tiny(hidden_state)
         hidden_state = hidden_state * 0.5 * (1.0 + tinyTensor.erf(hidden_state / math.sqrt(2.0)))
@@ -425,7 +423,7 @@ class Dinov2WithRegistersLayerScale(nn.Module):
         self.lambda1 = nn.Parameter(config.layerscale_value * torch.ones(config.hidden_size))
         self.lambda1_tiny = to_tiny(self.lambda1)
 
-    def forward(self, hidden_state: torch.Tensor) -> torch.Tensor:
+    def forward(self, hidden_state):
         hidden_state = to_tiny(hidden_state)
         x = hidden_state * self.lambda1_tiny
         return x
@@ -458,13 +456,11 @@ class WindowedDinov2WithRegistersLayer(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.Tensor,
-        head_mask: Optional[torch.Tensor] = None,
+        hidden_states: Any,
+        head_mask: Optional[Any] = None,
         output_attentions: bool = False,
         run_full_attention: bool = False,
-    ) -> Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor]]:
-        assert head_mask is None, "head_mask is not supported for windowed attention"
-        assert not output_attentions, "output_attentions is not supported for windowed attention"
+    ):
         hidden_states = to_tiny(hidden_states)
         shortcut = hidden_states
         if run_full_attention:
@@ -509,8 +505,8 @@ class WindowedDinov2WithRegistersEncoder(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.Tensor,
-        head_mask: Optional[torch.Tensor] = None,
+        hidden_states: Any,
+        head_mask: Optional[Any] = None,
         output_attentions: bool = False,
         output_hidden_states: bool = False,
         return_dict: bool = True,
@@ -551,7 +547,7 @@ class WindowedDinov2WithRegistersBackbone(WindowedDinov2WithRegistersPreTrainedM
 
     def forward(
         self,
-        pixel_values: torch.Tensor,
+        pixel_values,
         output_hidden_states: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         return_dict: Optional[bool] = None,
@@ -1856,11 +1852,6 @@ class LWDETR(nn.Module):
 
         self.bbox_reparam = bbox_reparam
 
-        # init prior_prob setting for focal loss
-        prior_prob = 0.01
-        bias_value = -math.log((1 - prior_prob) / prior_prob)
-        self.class_embed.bias.data = torch.ones(num_classes) * bias_value
-
         # init bbox_mebed
         nn.init.constant_(self.bbox_embed.layers[-1].weight.data, 0)
         nn.init.constant_(self.bbox_embed.layers[-1].bias.data, 0)
@@ -1912,8 +1903,6 @@ def build_model(args):
     # For more details on this, check the following discussion
     # https://github.com/facebookresearch/detr/issues/108#issuecomment-650269223
     num_classes = args.num_classes + 1
-    torch.device(args.device)
-
 
     backbone = build_backbone(
         encoder=args.encoder,
@@ -1947,7 +1936,7 @@ def build_model(args):
     args.num_feature_levels = len(args.projector_scale)
     transformer = build_transformer(args)
 
-    segmentation_head = SegmentationHead(args.hidden_dim, args.dec_layers, downsample_ratio=args.mask_downsample_ratio) if args.segmentation_head else None
+    segmentation_head = None
 
     model = LWDETR(
         backbone,
@@ -1986,7 +1975,7 @@ def download_pretrain_weights(pretrain_weights: str, redownload=False):
                 pretrain_weights,
             )
 
-def box_cxcywh_to_xyxy(x) -> torch.Tensor:
+def box_cxcywh_to_xyxy(x):
     x_c, y_c, w, h = [t.squeeze(-1) for t in x.split(1, dim=-1)]
 
     w_pos = w.clip(0.0, float("inf"))
@@ -2006,7 +1995,6 @@ class PostProcess(nn.Module):
         super().__init__()
         self.num_select = num_select
 
-    @torch.no_grad()
     def forward(self, outputs, target_sizes):
         """ Perform the computation
         Parameters:
@@ -2018,7 +2006,6 @@ class PostProcess(nn.Module):
         out_logits, out_bbox = outputs['pred_logits'], outputs['pred_boxes']
         out_logits = to_tiny(out_logits)
         out_bbox = to_tiny(out_bbox)
-        target_sizes = to_tiny(target_sizes)
         prob = out_logits.sigmoid()
         topk_values, topk_indexes = tinyTensor.topk(prob.view(out_logits.shape[0], -1), self.num_select, dim=1)
         topk_boxes = topk_indexes // out_logits.shape[2]
@@ -2210,32 +2197,10 @@ class RFDETR:
 
     def predict(
         self,
-        images: Union[str, Image.Image, np.ndarray, torch.Tensor, List[Union[str, np.ndarray, Image.Image, torch.Tensor]]],
+        images: Union[str, Image.Image, np.ndarray, Any, List[Union[str, np.ndarray, Image.Image, Any]]],
         threshold: float = 0.5,
         **kwargs,
     ) -> Union[sv.Detections, List[sv.Detections]]:
-        """Performs object detection on the input images and returns bounding box
-        predictions.
-
-        This method accepts a single image or a list of images in various formats
-        (file path, PIL Image, NumPy array, or torch.Tensor). The images should be in
-        RGB channel order. If a torch.Tensor is provided, it must already be normalized
-        to values in the [0, 1] range and have the shape (C, H, W).
-
-        Args:
-            images (Union[str, Image.Image, np.ndarray, torch.Tensor, List[Union[str, np.ndarray, Image.Image, torch.Tensor]]]):
-                A single image or a list of images to process. Images can be provided
-                as file paths, PIL Images, NumPy arrays, or torch.Tensors.
-            threshold (float, optional):
-                The minimum confidence score needed to consider a detected bounding box valid.
-            **kwargs:
-                Additional keyword arguments.
-
-        Returns:
-            Union[sv.Detections, List[sv.Detections]]: A single or multiple Detections
-                objects, each containing bounding box coordinates, confidence scores,
-                and class IDs.
-        """
         if not self._is_optimized_for_inference and not self._has_warned_about_not_being_optimized_for_inference:
             self._has_warned_about_not_being_optimized_for_inference = True
             self.model.model.eval()
@@ -2251,8 +2216,7 @@ class RFDETR:
             if isinstance(img, str):
                 img = Image.open(img)
 
-            if not isinstance(img, torch.Tensor):
-                img = vF.to_tensor(img)
+            img = vF.to_tensor(img)
 
             if (img > 1).any():
                 raise ValueError(
@@ -2274,28 +2238,12 @@ class RFDETR:
 
             processed_images.append(img_tensor)
 
-        batch_tensor = torch.stack(processed_images)
-
-        if self._is_optimized_for_inference:
-            if self._optimized_resolution != batch_tensor.shape[2]:
-                # this could happen if someone manually changes self.model.resolution after optimizing the model
-                raise ValueError(f"Resolution mismatch. "
-                                 f"Model was optimized for resolution {self._optimized_resolution}, "
-                                 f"but got {batch_tensor.shape[2]}. "
-                                 "You can explicitly remove the optimized model by calling model.remove_optimized_model().")
-            if self._optimized_has_been_compiled:
-                if self._optimized_batch_size != batch_tensor.shape[0]:
-                    raise ValueError(f"Batch size mismatch. "
-                                     f"Optimized model was compiled for batch size {self._optimized_batch_size}, "
-                                     f"but got {batch_tensor.shape[0]}. "
-                                     "You can explicitly remove the optimized model by calling model.remove_optimized_model(). "
-                                     "Alternatively, you can recompile the optimized model for a different batch size "
-                                     "by calling model.optimize_for_inference(batch_size=<new_batch_size>).")
-
-        with torch.no_grad():
-            predictions = self.model.model(batch_tensor)
-            target_sizes = torch.tensor(orig_sizes)
-            results = self.model.postprocess(predictions, target_sizes=target_sizes)
+        processed_images = to_tiny(processed_images)
+        batch_tensor = tinyTensor.stack(*processed_images)
+        batch_tensor = to_torch(batch_tensor)
+        predictions = self.model.model(batch_tensor)
+        target_sizes = tinyTensor(orig_sizes)
+        results = self.model.postprocess(predictions, target_sizes=target_sizes)
 
         detections_list = []
         for result in results:
