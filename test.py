@@ -932,16 +932,14 @@ class TransformerDecoder(nn.Module):
         intermediate.append(output)
         return [to_torch(tinyTensor.stack(intermediate)), to_torch(refpoints_unsigmoid.unsqueeze(0))]
 
-def gen_encoder_output_proposals(memory, memory_padding_mask, spatial_shapes, unsigmoid=True):
+def gen_encoder_output_proposals(memory, memory_padding_mask, spatial_shape, unsigmoid=True):
     memory = to_tiny(memory)
     memory_padding_mask = to_tiny(memory_padding_mask).cast(dtype=dtypes.bool)
-    spatial_shapes = to_tiny(spatial_shapes).cast(dtype=dtypes.long)
 
     memory_padding_mask = to_torch(memory_padding_mask).bool()
-    spatial_shapes = to_torch(spatial_shapes).long()
 
     proposals = []
-    H_, W_ = spatial_shapes
+    H_, W_ = spatial_shape, spatial_shape
     mask = memory_padding_mask.reshape(1, H_, W_)
     valid_H = (~mask[:, :, 0]).sum(dim=1)
     valid_W = (~mask[:, 0, :]).sum(dim=1)
@@ -1105,7 +1103,7 @@ class Transformer(nn.Module):
         level_start_index = torch.cat((spatial_shapes.new_zeros((1, )), spatial_shapes.prod(1).cumsum(0)[:-1]))
 
         output_memory, output_proposals = gen_encoder_output_proposals(
-            memory, mask_flatten, spatial_shapes[0], unsigmoid=not self.bbox_reparam)
+            memory, mask_flatten, spatial_shapes[0][0], unsigmoid=not self.bbox_reparam)
         # group detr for first stage
         refpoint_embed_ts, memory_ts, boxes_ts = [], [], []
         output_memory_gidx = self.enc_output_norm[0](self.enc_output[0](output_memory))
