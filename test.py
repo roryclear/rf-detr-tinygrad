@@ -2016,22 +2016,15 @@ class PostProcess(nn.Module):
                           For visualization, this should be the image size after data augment, but before padding
         """
         out_logits, out_bbox = outputs['pred_logits'], outputs['pred_boxes']
-
         out_logits = to_tiny(out_logits)
         out_bbox = to_tiny(out_bbox)
         target_sizes = to_tiny(target_sizes)
         prob = out_logits.sigmoid()
-
         topk_values, topk_indexes = tinyTensor.topk(prob.view(out_logits.shape[0], -1), self.num_select, dim=1)
-
-
         topk_boxes = topk_indexes // out_logits.shape[2]
         labels = topk_indexes % out_logits.shape[2]
-
-
         boxes = box_cxcywh_to_xyxy(out_bbox)
         boxes = tinyTensor.gather(boxes, 1, topk_boxes.unsqueeze(-1).repeat(1,1,4))
-        
         img_h = target_sizes[:, 0]
         img_w = target_sizes[:, 1]
         scale_fct = tinyTensor.stack(img_w, img_h, img_w, img_h, dim=1)
@@ -2047,7 +2040,6 @@ class Model:
         self.args = args
         self.resolution = args.resolution
         self.model = build_model(args)
-        self.device = torch.device(args.device)
         if args.pretrain_weights is not None:
             print("Loading pretrain weights")
             try:
@@ -2060,7 +2052,6 @@ class Model:
                 checkpoint = torch.load(args.pretrain_weights, map_location='cpu', weights_only=False)
             self.model.load_state_dict(checkpoint['model'], strict=False)
 
-        self.model = self.model.to(self.device)
         self.postprocess = PostProcess(num_select=args.num_select)
         self.stop_early = False
 
@@ -2278,7 +2269,6 @@ class RFDETR:
             h, w = img_tensor.shape[1:]
             orig_sizes.append((h, w))
 
-            img_tensor = img_tensor.to(self.model.device)
             img_tensor = vF.normalize(img_tensor, self.means, self.stds)
             img_tensor = vF.resize(img_tensor, (self.model.resolution, self.model.resolution))
 
@@ -2304,7 +2294,7 @@ class RFDETR:
 
         with torch.no_grad():
             predictions = self.model.model(batch_tensor)
-            target_sizes = torch.tensor(orig_sizes, device=self.model.device)
+            target_sizes = torch.tensor(orig_sizes)
             results = self.model.postprocess(predictions, target_sizes=target_sizes)
 
         detections_list = []
