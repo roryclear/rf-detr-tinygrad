@@ -1081,6 +1081,7 @@ class Transformer(nn.Module):
 
         self._export = False
 
+    # todo, no list inputs
     def forward(self, srcs, masks, pos_embeds, refpoint_embed, query_feat):
 
         self.enc_out_class_embed_w = to_tiny(self.enc_out_class_embed[0].weight)
@@ -1088,12 +1089,12 @@ class Transformer(nn.Module):
 
         refpoint_embed = to_tiny(refpoint_embed)
 
-        src = srcs[0]
-        pos_embed = pos_embeds[0]
+        src = srcs[0] if type(srcs) == list else srcs
+        pos_embed = pos_embeds[0] if type(pos_embeds) == list else pos_embeds
         bs, _, h, w = src.shape
         src = src.flatten(2).transpose(1, 2)              # bs, hw, c
         pos_embed = pos_embed.flatten(2).transpose(1, 2)  # bs, hw, c
-        mask = masks[0].flatten(1)                      # bs, hw
+        mask = masks[0].flatten(1) if type(masks) == list else masks.flatten(1)
         spatial_shapes = Tensor([[h,h]]).long()
         level_start_index = Tensor([0])
 
@@ -1871,14 +1872,10 @@ class LWDETR(nn.Module):
     def forward(self, samples: NestedTensor, targets=None):
         samples = nested_tensor_from_tensor_list(samples)
         features, poss = self.backbone(samples)
-        srcs = []
-        masks = []
         src, mask = features[0].tensors, features[0].mask
-        srcs.append(src)
-        masks.append(mask)
         refpoint_embed_weight = self.refpoint_embed.weight[:self.num_queries]
         query_feat_weight = self.query_feat.weight[:self.num_queries]
-        hs, ref_unsigmoid, hs_enc, ref_enc = self.transformer(srcs, masks, poss, refpoint_embed_weight, query_feat_weight)
+        hs, ref_unsigmoid, hs_enc, ref_enc = self.transformer(src, mask, poss, refpoint_embed_weight, query_feat_weight)
         outputs_coord_delta = self.bbox_embed(hs)
         outputs_coord_cxcy = outputs_coord_delta[..., :2] * ref_unsigmoid[..., 2:] + ref_unsigmoid[..., :2]
         outputs_coord_wh = outputs_coord_delta[..., 2:].exp() * ref_unsigmoid[..., 2:]
