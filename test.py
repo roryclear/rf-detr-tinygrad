@@ -1803,11 +1803,22 @@ class MLP(nn.Module):
         for _ in range(num_layers - 2): self.layers.append(nn.Linear(hidden_dim, hidden_dim))
         self.layers.append(nn.Linear(hidden_dim, output_dim))
 
+        self.layers_tiny = []
+        self.layers_tiny.append(tinynn.Linear(input_dim, hidden_dim))
+        for _ in range(num_layers - 2): self.layers_tiny.append(tinynn.Linear(hidden_dim, hidden_dim))
+        self.layers_tiny.append(tinynn.Linear(hidden_dim, output_dim))
 
     def forward(self, x):
-        for i, layer in enumerate(self.layers):
-            x = F.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
-        return x
+        
+        # todo move
+        for i in range(self.num_layers):
+            self.layers_tiny[i].weight = to_tiny(self.layers[i].weight)
+            self.layers_tiny[i].bias = to_tiny(self.layers[i].bias)
+
+        x = to_tiny(x)
+        for i, layer in enumerate(self.layers_tiny):
+            x = tinyTensor.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
+        return to_torch(x)
 
 class LWDETR(nn.Module):
     """ This is the Group DETR v3 module that performs object detection """
