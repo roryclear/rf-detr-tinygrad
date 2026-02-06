@@ -1324,7 +1324,9 @@ class MultiScaleProjector(nn.Module):
         self.stages = nn.ModuleList(stages)
 
     def forward(self, x):
-        feat_fuse = torch.cat(x, dim=1)
+        x = to_tiny(x)
+        feat_fuse = tinyTensor.cat(*x, dim=1)
+        feat_fuse = to_torch(feat_fuse)
         stage_output = self.stages[0](feat_fuse)
         return [stage_output]
 
