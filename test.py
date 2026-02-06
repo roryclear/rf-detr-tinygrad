@@ -1105,17 +1105,20 @@ class Transformer(nn.Module):
         
         enc_outputs_coord_delta_gidx = self.enc_out_bbox_embed[0](output_memory_gidx)
 
-        output_proposals = to_torch(output_proposals)
+        enc_outputs_coord_delta_gidx = to_tiny(enc_outputs_coord_delta_gidx)
+
         enc_outputs_coord_cxcy_gidx = enc_outputs_coord_delta_gidx[...,
             :2] * output_proposals[..., 2:] + output_proposals[..., :2]
         enc_outputs_coord_wh_gidx = enc_outputs_coord_delta_gidx[..., 2:].exp() * output_proposals[..., 2:]
-        enc_outputs_coord_unselected_gidx = torch.concat(
-            [enc_outputs_coord_cxcy_gidx, enc_outputs_coord_wh_gidx], dim=-1)
+        enc_outputs_coord_unselected_gidx = tinyTensor.cat(enc_outputs_coord_cxcy_gidx, enc_outputs_coord_wh_gidx, dim=-1)
+
+        enc_outputs_coord_unselected_gidx = to_torch(enc_outputs_coord_unselected_gidx)
 
 
         topk = min(self.num_queries, enc_outputs_class_unselected_gidx.shape[-2])
-        enc_outputs_class_unselected_gidx = to_torch(enc_outputs_class_unselected_gidx)
-        topk_proposals_gidx = torch.topk(enc_outputs_class_unselected_gidx.max(-1)[0], topk, dim=1)[1] # bs, nq
+        x = enc_outputs_class_unselected_gidx.max(-1)
+        x = to_torch(x)
+        topk_proposals_gidx = torch.topk(x, topk, dim=1)[1] # bs, nq
 
         boxes_ts = torch.gather(
             enc_outputs_coord_unselected_gidx, 1, topk_proposals_gidx.unsqueeze(-1).repeat(1, 1, 4)) # unsigmoid
