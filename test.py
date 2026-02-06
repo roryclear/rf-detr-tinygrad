@@ -158,16 +158,6 @@ class WindowedDinov2WithRegistersConfig(BackboneConfigMixin, PretrainedConfig):
         self.window_block_indexes = list(range(num_hidden_layers)) if window_block_indexes is None else window_block_indexes
         self.gradient_checkpointing = gradient_checkpointing
 
-class WindowedDinov2WithRegistersPreTrainedModel(PreTrainedModel):
-    config_class = WindowedDinov2WithRegistersConfig
-    base_model_prefix = "dinov2_with_registers"
-    main_input_name = "pixel_values"
-    supports_gradient_checkpointing = True
-    _no_split_modules = ["Dinov2WithRegistersSwiGLUFFN"]
-    _supports_sdpa = True
-
-    def _init_weights(self, module: Union[nn.Linear, nn.Conv2d, nn.LayerNorm]) -> None: pass
-
 class Dinov2WithRegistersPatchEmbeddings(nn.Module):
     """
     This class turns `pixel_values` of shape `(batch_size, num_channels, height, width)` into the initial
@@ -494,7 +484,9 @@ class WindowedDinov2WithRegistersEncoder(nn.Module):
         all_hidden_states = all_hidden_states + (hidden_states,)
         return tuple(v for v in [hidden_states, all_hidden_states, all_self_attentions] if v is not None)
     
-class WindowedDinov2WithRegistersBackbone(WindowedDinov2WithRegistersPreTrainedModel, BackboneMixin):
+class WindowedDinov2WithRegistersBackbone(PreTrainedModel, BackboneMixin):
+    _supports_sdpa = True #todo, why need?
+
     def __init__(self, config: WindowedDinov2WithRegistersConfig):
         super().__init__(config)
         super()._init_backbone(config)
