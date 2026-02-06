@@ -933,27 +933,34 @@ class TransformerDecoder(nn.Module):
         return [to_torch(tinyTensor.stack(intermediate)), to_torch(refpoints_unsigmoid.unsqueeze(0))]
 
 def gen_encoder_output_proposals(memory, memory_padding_mask, spatial_shapes, unsigmoid=True):
-    N_, S_, C_ = memory.shape
+    memory = to_tiny(memory)
+    memory_padding_mask = to_tiny(memory_padding_mask).cast(dtype=dtypes.bool)
+    spatial_shapes = to_tiny(spatial_shapes).cast(dtype=dtypes.long)
+
+    memory_padding_mask = to_torch(memory_padding_mask).bool()
+    spatial_shapes = to_torch(spatial_shapes).long()
+
     proposals = []
-    H_, W_ = spatial_shapes[0]
-    mask_flatten_ = memory_padding_mask[:, :H_ * W_].view(N_, H_, W_, 1)
-    valid_H = torch.sum(~mask_flatten_[:, :, 0, 0], dim=1)
-    valid_W = torch.sum(~mask_flatten_[:, 0, :, 0], dim=1)
+    H_, W_ = spatial_shapes
+    mask = memory_padding_mask.reshape(1, H_, W_)
+    valid_H = (~mask[:, :, 0]).sum(dim=1)
+    valid_W = (~mask[:, 0, :]).sum(dim=1)
     grid_y, grid_x = torch.meshgrid(
-        torch.linspace(0, H_ - 1, H_, dtype=torch.float32, device=memory.device),
-        torch.linspace(0, W_ - 1, W_, dtype=torch.float32, device=memory.device),
+        torch.linspace(0, H_ - 1, H_, dtype=torch.float32),
+        torch.linspace(0, W_ - 1, W_, dtype=torch.float32),
         indexing="ij"
     )
     grid = torch.cat([grid_x.unsqueeze(-1), grid_y.unsqueeze(-1)], dim=-1)
-    scale = torch.cat([valid_W.unsqueeze(-1), valid_H.unsqueeze(-1)], dim=1).view(N_, 1, 1, 2)
-    grid = (grid.unsqueeze(0).expand(N_, -1, -1, -1) + 0.5) / scale
+    scale = torch.cat([valid_W.unsqueeze(-1), valid_H.unsqueeze(-1)], dim=1).view(1, 1, 1, 2)
+    grid = (grid.unsqueeze(0).expand(1, -1, -1, -1) + 0.5) / scale
     wh = torch.ones_like(grid) * 0.05
-    proposal = torch.cat((grid, wh), dim=-1).view(N_, -1, 4)
+    proposal = torch.cat((grid, wh), dim=-1).view(1, -1, 4)
     proposals.append(proposal)
     output_proposals = torch.cat(proposals, 1)
     output_proposals_valid = ((output_proposals > 0.01) & (output_proposals < 0.99)).all(-1, keepdim=True)
     output_proposals = output_proposals.masked_fill(memory_padding_mask.unsqueeze(-1), float(0))
     output_proposals = output_proposals.masked_fill(~output_proposals_valid, float(0))
+    memory = to_torch(memory)
     output_memory = memory
     output_memory = output_memory.masked_fill(memory_padding_mask.unsqueeze(-1), float(0))
     output_memory = output_memory.masked_fill(~output_proposals_valid, float(0))
@@ -1098,7 +1105,7 @@ class Transformer(nn.Module):
         level_start_index = torch.cat((spatial_shapes.new_zeros((1, )), spatial_shapes.prod(1).cumsum(0)[:-1]))
 
         output_memory, output_proposals = gen_encoder_output_proposals(
-            memory, mask_flatten, spatial_shapes, unsigmoid=not self.bbox_reparam)
+            memory, mask_flatten, spatial_shapes[0], unsigmoid=not self.bbox_reparam)
         # group detr for first stage
         refpoint_embed_ts, memory_ts, boxes_ts = [], [], []
         output_memory_gidx = self.enc_output_norm[0](self.enc_output[0](output_memory))
