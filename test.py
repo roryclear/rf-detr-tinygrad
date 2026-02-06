@@ -179,11 +179,7 @@ class Dinov2WithRegistersPatchEmbeddings(nn.Module):
         self.num_patches = num_patches
 
         self.projection = nn.Conv2d(num_channels, hidden_size, kernel_size=patch_size, stride=patch_size)
-
         self.projection_tiny = tinynn.Conv2d(num_channels, hidden_size, patch_size, stride=patch_size)
-        self.projection_tiny.weight = to_tiny(self.projection.weight)
-        self.projection_tiny.bias = to_tiny(self.projection.bias)
-
     def forward(self, x):
         x = to_tiny(x)
         x = self.projection_tiny(x).flatten(2).transpose(1, 2)
@@ -1998,6 +1994,10 @@ class Model:
                 self.model.transformer.decoder.layers[i].linear1_tiny.bias = to_tiny(self.model.transformer.decoder.layers[i].linear1.bias)
                 self.model.transformer.decoder.layers[i].linear2_tiny.weight = to_tiny(self.model.transformer.decoder.layers[i].linear2.weight)
                 self.model.transformer.decoder.layers[i].linear2_tiny.bias = to_tiny(self.model.transformer.decoder.layers[i].linear2.bias)
+
+            self.model.backbone[0].encoder.encoder.embeddings.patch_embeddings.projection_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.embeddings.patch_embeddings.projection.weight)
+            self.model.backbone[0].encoder.encoder.embeddings.patch_embeddings.projection_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.embeddings.patch_embeddings.projection.bias)
+
             for k in checkpoint['model'].keys(): print(k)
 
         self.postprocess = PostProcess(num_select=args.num_select)
