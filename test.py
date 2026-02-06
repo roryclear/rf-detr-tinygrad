@@ -1319,13 +1319,9 @@ class MultiScaleProjector(nn.Module):
         self.stages = nn.ModuleList(stages)
 
     def forward(self, x):
-        results = []
-        feat_fuse = []
-        for j, stage_sampling in enumerate(self.stages_sampling[0]):
-            feat_fuse.append(stage_sampling(x[j]))
-        feat_fuse = torch.cat(feat_fuse, dim=1)
-        results.append(self.stages[0](feat_fuse))
-        return results
+        feat_fuse = torch.cat(x, dim=1)
+        stage_output = self.stages[0](feat_fuse)
+        return [stage_output]
 
 class NestedTensor(object):
     def __init__(self, tensors: Tensor, mask: Optional[Tensor]) -> None:
