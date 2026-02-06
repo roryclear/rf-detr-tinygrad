@@ -936,25 +936,32 @@ def gen_encoder_output_proposals(memory, memory_padding_mask, spatial_shape, uns
     memory = to_tiny(memory)
     memory_padding_mask = to_tiny(memory_padding_mask).cast(dtype=dtypes.bool)
 
-    memory_padding_mask = to_torch(memory_padding_mask).bool()
-
     proposals = []
     H_, W_ = spatial_shape, spatial_shape
     mask = memory_padding_mask.reshape(1, H_, W_)
-    valid_H = (~mask[:, :, 0]).sum(dim=1)
-    valid_W = (~mask[:, 0, :]).sum(dim=1)
-    grid_y, grid_x = torch.meshgrid(
-        torch.linspace(0, H_ - 1, H_, dtype=torch.float32),
-        torch.linspace(0, W_ - 1, W_, dtype=torch.float32),
-        indexing="ij"
-    )
-    grid = torch.cat([grid_x.unsqueeze(-1), grid_y.unsqueeze(-1)], dim=-1)
-    scale = torch.cat([valid_W.unsqueeze(-1), valid_H.unsqueeze(-1)], dim=1).view(1, 1, 1, 2)
+
+    memory_padding_mask = to_torch(memory_padding_mask).bool()
+
+    valid_H = (~mask[:, :, 0]).sum(axis=1).unsqueeze(-1)
+    valid_W = (~mask[:, 0, :]).sum(axis=1).unsqueeze(-1)
+
+    x = tinyTensor.linspace(0, H_ - 1, H_)
+    y = tinyTensor.linspace(0, W_ - 1, W_)
+    grid_y, grid_x = tinyTensor.meshgrid(y, x)
+
+    grid = tinyTensor.cat(grid_x.unsqueeze(-1), grid_y.unsqueeze(-1), dim=-1)
+
+
+    scale = tinyTensor.cat(valid_W, valid_H, dim=1).view(1, 1, 1, 2)
     grid = (grid.unsqueeze(0).expand(1, -1, -1, -1) + 0.5) / scale
-    wh = torch.ones_like(grid) * 0.05
-    proposal = torch.cat((grid, wh), dim=-1).view(1, -1, 4)
-    proposals.append(proposal)
-    output_proposals = torch.cat(proposals, 1)
+
+    scale = to_torch(scale)
+
+    wh = tinyTensor.ones_like(grid) * 0.05
+    output_proposals = tinyTensor.cat(grid, wh, dim=-1).view(1, -1, 4)
+
+    output_proposals = to_torch(output_proposals)
+
     output_proposals_valid = ((output_proposals > 0.01) & (output_proposals < 0.99)).all(-1, keepdim=True)
     output_proposals = output_proposals.masked_fill(memory_padding_mask.unsqueeze(-1), float(0))
     output_proposals = output_proposals.masked_fill(~output_proposals_valid, float(0))
