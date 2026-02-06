@@ -1986,11 +1986,19 @@ def download_pretrain_weights(pretrain_weights: str, redownload=False):
                 pretrain_weights,
             )
 
-def box_cxcywh_to_xyxy(x: torch.Tensor) -> torch.Tensor:
-    x_c, y_c, w, h = x.unbind(-1)
-    b = [(x_c - 0.5 * w.clamp(min=0.0)), (y_c - 0.5 * h.clamp(min=0.0)),
-         (x_c + 0.5 * w.clamp(min=0.0)), (y_c + 0.5 * h.clamp(min=0.0))]
-    return torch.stack(b, dim=-1)
+def box_cxcywh_to_xyxy(x) -> torch.Tensor:
+    x_c, y_c, w, h = [t.squeeze(-1) for t in x.split(1, dim=-1)]
+
+    w_pos = w.clip(0.0, float("inf"))
+    h_pos = h.clip(0.0, float("inf"))
+
+    b = [
+        x_c - 0.5 * w_pos,
+        y_c - 0.5 * h_pos,
+        x_c + 0.5 * w_pos,
+        y_c + 0.5 * h_pos,
+    ]
+    return tinyTensor.stack(b, dim=-1)
 
 class PostProcess(nn.Module):
     """ This module converts the model's output into the format expected by the coco api"""
@@ -2008,17 +2016,28 @@ class PostProcess(nn.Module):
                           For visualization, this should be the image size after data augment, but before padding
         """
         out_logits, out_bbox = outputs['pred_logits'], outputs['pred_boxes']
+
+        out_logits = to_tiny(out_logits)
+        out_bbox = to_tiny(out_bbox)
         prob = out_logits.sigmoid()
-        topk_values, topk_indexes = torch.topk(prob.view(out_logits.shape[0], -1), self.num_select, dim=1)
-        scores = topk_values
+
+        topk_values, topk_indexes = tinyTensor.topk(prob.view(out_logits.shape[0], -1), self.num_select, dim=1)
+
+
         topk_boxes = topk_indexes // out_logits.shape[2]
         labels = topk_indexes % out_logits.shape[2]
+
+        topk_boxes = to_torch(topk_boxes).int()
+        labels = to_torch(labels).int()
+
         boxes = box_cxcywh_to_xyxy(out_bbox)
+        boxes = to_torch(boxes)
         boxes = torch.gather(boxes, 1, topk_boxes.unsqueeze(-1).repeat(1,1,4))
         img_h, img_w = target_sizes.unbind(1)
         scale_fct = torch.stack([img_w, img_h, img_w, img_h], dim=1)
         boxes = boxes * scale_fct[:, None, :]
-        return [{'scores': s, 'labels': l, 'boxes': b} for s, l, b in zip(scores, labels, boxes)]
+        topk_values = to_torch(topk_values)
+        return [{'scores': s, 'labels': l, 'boxes': b} for s, l, b in zip(topk_values, labels, boxes)]
 
 class Model:
     def __init__(self, **kwargs):
