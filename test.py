@@ -1082,6 +1082,10 @@ class Transformer(nn.Module):
         self._export = False
 
     def forward(self, srcs, masks, pos_embeds, refpoint_embed, query_feat):
+
+        self.enc_out_class_embed_w = to_tiny(self.enc_out_class_embed[0].weight)
+        self.enc_out_class_embed_b = to_tiny(self.enc_out_class_embed[0].bias)
+
         src = srcs[0]
         pos_embed = pos_embeds[0]
         bs, _, h, w = src.shape
@@ -1095,9 +1099,10 @@ class Transformer(nn.Module):
             src, mask, h, unsigmoid=not self.bbox_reparam)
         
         output_memory_gidx = self.enc_output_norm_tiny(self.enc_output_tiny(output_memory))
+        enc_outputs_class_unselected_gidx = output_memory_gidx @ self.enc_out_class_embed_w.T + self.enc_out_class_embed_b
+
         output_memory_gidx = to_torch(output_memory_gidx)
 
-        enc_outputs_class_unselected_gidx = self.enc_out_class_embed[0](output_memory_gidx)
         enc_outputs_coord_delta_gidx = self.enc_out_bbox_embed[0](output_memory_gidx)
 
         output_proposals = to_torch(output_proposals)
@@ -1109,6 +1114,7 @@ class Transformer(nn.Module):
 
 
         topk = min(self.num_queries, enc_outputs_class_unselected_gidx.shape[-2])
+        enc_outputs_class_unselected_gidx = to_torch(enc_outputs_class_unselected_gidx)
         topk_proposals_gidx = torch.topk(enc_outputs_class_unselected_gidx.max(-1)[0], topk, dim=1)[1] # bs, nq
 
         boxes_ts = torch.gather(
