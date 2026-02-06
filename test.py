@@ -933,58 +933,30 @@ class TransformerDecoder(nn.Module):
         return [to_torch(tinyTensor.stack(intermediate)), to_torch(refpoints_unsigmoid.unsqueeze(0))]
 
 def gen_encoder_output_proposals(memory, memory_padding_mask, spatial_shapes, unsigmoid=True):
-    r"""
-    Input:
-        - memory: bs, \sum{hw}, d_model
-        - memory_padding_mask: bs, \sum{hw}
-        - spatial_shapes: nlevel, 2
-    Output:
-        - output_memory: bs, \sum{hw}, d_model
-        - output_proposals: bs, \sum{hw}, 4
-    """
     N_, S_, C_ = memory.shape
     proposals = []
-    _cur = 0
-    for lvl, (H_, W_) in enumerate(spatial_shapes):
-        if memory_padding_mask is not None:
-            mask_flatten_ = memory_padding_mask[:, _cur:(_cur + H_ * W_)].view(N_, H_, W_, 1)
-            valid_H = torch.sum(~mask_flatten_[:, :, 0, 0], 1)
-            valid_W = torch.sum(~mask_flatten_[:, 0, :, 0], 1)
-        else:
-            valid_H = torch.tensor([H_ for _ in range(N_)], device=memory.device)
-            valid_W = torch.tensor([W_ for _ in range(N_)], device=memory.device)
-
-        grid_y, grid_x = torch.meshgrid(torch.linspace(0, H_ - 1, H_, dtype=torch.float32, device=memory.device),
-                                        torch.linspace(0, W_ - 1, W_, dtype=torch.float32, device=memory.device))
-        grid = torch.cat([grid_x.unsqueeze(-1), grid_y.unsqueeze(-1)], -1) # H_, W_, 2
-
-        scale = torch.cat([valid_W.unsqueeze(-1), valid_H.unsqueeze(-1)], 1).view(N_, 1, 1, 2)
-        grid = (grid.unsqueeze(0).expand(N_, -1, -1, -1) + 0.5) / scale
-
-        wh = torch.ones_like(grid) * 0.05 * (2.0 ** lvl)
-
-        proposal = torch.cat((grid, wh), -1).view(N_, -1, 4)
-        proposals.append(proposal)
-        _cur += (H_ * W_)
-
+    H_, W_ = spatial_shapes[0]
+    mask_flatten_ = memory_padding_mask[:, :H_ * W_].view(N_, H_, W_, 1)
+    valid_H = torch.sum(~mask_flatten_[:, :, 0, 0], dim=1)
+    valid_W = torch.sum(~mask_flatten_[:, 0, :, 0], dim=1)
+    grid_y, grid_x = torch.meshgrid(
+        torch.linspace(0, H_ - 1, H_, dtype=torch.float32, device=memory.device),
+        torch.linspace(0, W_ - 1, W_, dtype=torch.float32, device=memory.device),
+        indexing="ij"
+    )
+    grid = torch.cat([grid_x.unsqueeze(-1), grid_y.unsqueeze(-1)], dim=-1)
+    scale = torch.cat([valid_W.unsqueeze(-1), valid_H.unsqueeze(-1)], dim=1).view(N_, 1, 1, 2)
+    grid = (grid.unsqueeze(0).expand(N_, -1, -1, -1) + 0.5) / scale
+    wh = torch.ones_like(grid) * 0.05
+    proposal = torch.cat((grid, wh), dim=-1).view(N_, -1, 4)
+    proposals.append(proposal)
     output_proposals = torch.cat(proposals, 1)
     output_proposals_valid = ((output_proposals > 0.01) & (output_proposals < 0.99)).all(-1, keepdim=True)
-
-    if unsigmoid:
-        output_proposals = torch.log(output_proposals / (1 - output_proposals)) # unsigmoid
-        if memory_padding_mask is not None:
-            output_proposals = output_proposals.masked_fill(memory_padding_mask.unsqueeze(-1), float('inf'))
-        output_proposals = output_proposals.masked_fill(~output_proposals_valid, float('inf'))
-    else:
-        if memory_padding_mask is not None:
-            output_proposals = output_proposals.masked_fill(memory_padding_mask.unsqueeze(-1), float(0))
-        output_proposals = output_proposals.masked_fill(~output_proposals_valid, float(0))
-
+    output_proposals = output_proposals.masked_fill(memory_padding_mask.unsqueeze(-1), float(0))
+    output_proposals = output_proposals.masked_fill(~output_proposals_valid, float(0))
     output_memory = memory
-    if memory_padding_mask is not None:
-        output_memory = output_memory.masked_fill(memory_padding_mask.unsqueeze(-1), float(0))
+    output_memory = output_memory.masked_fill(memory_padding_mask.unsqueeze(-1), float(0))
     output_memory = output_memory.masked_fill(~output_proposals_valid, float(0))
-
     return output_memory.to(memory.dtype), output_proposals.to(memory.dtype)
 
 class MSDeformAttn(nn.Module):
