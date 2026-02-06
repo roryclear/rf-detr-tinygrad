@@ -940,8 +940,6 @@ def gen_encoder_output_proposals(memory, memory_padding_mask, spatial_shape, uns
     H_, W_ = spatial_shape, spatial_shape
     mask = memory_padding_mask.reshape(1, H_, W_)
 
-    memory_padding_mask = to_torch(memory_padding_mask).bool()
-
     valid_H = (~mask[:, :, 0]).sum(axis=1).unsqueeze(-1)
     valid_W = (~mask[:, 0, :]).sum(axis=1).unsqueeze(-1)
 
@@ -960,16 +958,13 @@ def gen_encoder_output_proposals(memory, memory_padding_mask, spatial_shape, uns
     wh = tinyTensor.ones_like(grid) * 0.05
     output_proposals = tinyTensor.cat(grid, wh, dim=-1).view(1, -1, 4)
 
-    output_proposals = to_torch(output_proposals)
-
     output_proposals_valid = ((output_proposals > 0.01) & (output_proposals < 0.99)).all(-1, keepdim=True)
     output_proposals = output_proposals.masked_fill(memory_padding_mask.unsqueeze(-1), float(0))
     output_proposals = output_proposals.masked_fill(~output_proposals_valid, float(0))
-    memory = to_torch(memory)
     output_memory = memory
     output_memory = output_memory.masked_fill(memory_padding_mask.unsqueeze(-1), float(0))
     output_memory = output_memory.masked_fill(~output_proposals_valid, float(0))
-    return output_memory.to(memory.dtype), output_proposals.to(memory.dtype)
+    return to_torch(output_memory), to_torch(output_proposals)
 
 class MSDeformAttn(nn.Module):
     """Multi-Scale Deformable Attention Module
