@@ -248,20 +248,11 @@ class Dinov2WithRegistersSelfAttention(nn.Module):
         self.query = nn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
 
         self.query_tiny = tinynn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
-        self.query_tiny.weight = to_tiny(self.query.weight)
-        self.query_tiny.bias = to_tiny(self.query.bias)
 
         self.key = nn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
-
         self.key_tiny = tinynn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
-        self.key_tiny.weight = to_tiny(self.key.weight)
-        self.key_tiny.bias = to_tiny(self.key.bias)
-
         self.value = nn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
-
         self.value_tiny = tinynn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
-        self.value_tiny.weight = to_tiny(self.value.weight)
-        self.value_tiny.bias = to_tiny(self.value.bias)
 
     def transpose_for_scores(self, x):
         x = to_tiny(x)
@@ -1982,7 +1973,14 @@ class Model:
                 checkpoint = torch.load(args.pretrain_weights, map_location='cpu', weights_only=False)
             self.model.load_state_dict(checkpoint['model'], strict=False)
             
-            print(len(self.model.transformer.decoder.layers))
+            for i in range(len(self.model.backbone[0].encoder.encoder.encoder.layer)):
+                self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.query_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.query.weight)
+                self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.query_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.query.bias)
+                self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.key_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.key.weight)
+                self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.key_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.key.bias)
+                self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.value_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.value.weight)
+                self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.value_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.value.bias)
+
             for i in range(len(self.model.transformer.decoder.layers)):
                 self.model.transformer.decoder.layers[i].norm1_tiny.weight = to_tiny(self.model.transformer.decoder.layers[i].norm1.weight)
                 self.model.transformer.decoder.layers[i].norm1_tiny.bias = to_tiny(self.model.transformer.decoder.layers[i].norm1.bias)
