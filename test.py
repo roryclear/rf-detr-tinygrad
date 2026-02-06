@@ -1101,7 +1101,6 @@ class Transformer(nn.Module):
         output_memory_gidx = self.enc_output_norm_tiny(self.enc_output_tiny(output_memory))
         enc_outputs_class_unselected_gidx = output_memory_gidx @ self.enc_out_class_embed_w.T + self.enc_out_class_embed_b
 
-        output_memory_gidx = to_torch(output_memory_gidx)
         
         enc_outputs_coord_delta_gidx = self.enc_out_bbox_embed[0](output_memory_gidx)
 
@@ -1112,23 +1111,17 @@ class Transformer(nn.Module):
         enc_outputs_coord_wh_gidx = enc_outputs_coord_delta_gidx[..., 2:].exp() * output_proposals[..., 2:]
         enc_outputs_coord_unselected_gidx = tinyTensor.cat(enc_outputs_coord_cxcy_gidx, enc_outputs_coord_wh_gidx, dim=-1)
 
-        enc_outputs_coord_unselected_gidx = to_torch(enc_outputs_coord_unselected_gidx)
 
 
         topk = min(self.num_queries, enc_outputs_class_unselected_gidx.shape[-2])
         x = enc_outputs_class_unselected_gidx.max(-1)
         topk_proposals_gidx = tinyTensor.topk(x, topk, dim=1)[1] # bs, nq
 
-        topk_proposals_gidx = to_torch(topk_proposals_gidx).int()
-
-        boxes_ts = torch.gather(
-            enc_outputs_coord_unselected_gidx, 1, topk_proposals_gidx.unsqueeze(-1).repeat(1, 1, 4)) # unsigmoid
-        # for decoder layer, detached as initial ones, (bs, nq, 4)
-        refpoint_embed_gidx = boxes_ts.detach()
+        boxes_ts = enc_outputs_coord_unselected_gidx.gather(dim=1, index=topk_proposals_gidx.unsqueeze(-1).repeat(1, 1, 4))
 
         # get memory tgt
-        memory_ts = torch.gather(
-            output_memory_gidx, 1, topk_proposals_gidx.unsqueeze(-1).repeat(1, 1, self.d_model))
+        memory_ts = output_memory_gidx.gather(dim=1, index=topk_proposals_gidx.unsqueeze(-1).repeat(1, 1, self.d_model))
+        memory_ts = to_torch(memory_ts)
 
         # concat on dim=1, the nq dimension, (bs, nq, d) --> (bs, nq, d)
         # (bs, nq, d)
@@ -1136,13 +1129,14 @@ class Transformer(nn.Module):
         tgt = query_feat.unsqueeze(0).repeat(bs, 1, 1)
         refpoint_embed = refpoint_embed.unsqueeze(0).repeat(bs, 1, 1)
 
-        ts_len = refpoint_embed_gidx.shape[-2]
+        ts_len = boxes_ts.shape[-2]
         refpoint_embed_ts_subset = refpoint_embed[..., :ts_len, :]
         refpoint_embed_subset = refpoint_embed[..., ts_len:, :]
 
-        refpoint_embed_cxcy = refpoint_embed_ts_subset[..., :2] * refpoint_embed_gidx[..., 2:]
-        refpoint_embed_cxcy = refpoint_embed_cxcy + refpoint_embed_gidx[..., :2]
-        refpoint_embed_wh = refpoint_embed_ts_subset[..., 2:].exp() * refpoint_embed_gidx[..., 2:]
+        boxes_ts = to_torch(boxes_ts)
+        refpoint_embed_cxcy = refpoint_embed_ts_subset[..., :2] * boxes_ts[..., 2:]
+        refpoint_embed_cxcy = refpoint_embed_cxcy + boxes_ts[..., :2]
+        refpoint_embed_wh = refpoint_embed_ts_subset[..., 2:].exp() * boxes_ts[..., 2:]
         refpoint_embed_ts_subset = torch.concat(
             [refpoint_embed_cxcy, refpoint_embed_wh], dim=-1
         )
