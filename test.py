@@ -1099,8 +1099,8 @@ class Transformer(nn.Module):
         mask_flatten = torch.cat(mask_flatten, 1)   # bs, \sum{hxw}
         valid_ratios = torch.stack([Tensor([[1,1]]) for m in masks], 1)
         lvl_pos_embed_flatten = torch.cat(lvl_pos_embed_flatten, 1) # bs, \sum{hxw}, c
-        spatial_shapes = torch.as_tensor(spatial_shapes, dtype=torch.long, device=memory.device)
-        level_start_index = torch.cat((spatial_shapes.new_zeros((1, )), spatial_shapes.prod(1).cumsum(0)[:-1]))
+        spatial_shapes_t = torch.as_tensor(spatial_shapes, dtype=torch.long, device=memory.device)
+        level_start_index = torch.cat((spatial_shapes_t.new_zeros((1, )), spatial_shapes_t.prod(1).cumsum(0)[:-1]))
 
         output_memory, output_proposals = gen_encoder_output_proposals(
             memory, mask_flatten, spatial_shapes[0][0], unsigmoid=not self.bbox_reparam)
@@ -1157,7 +1157,7 @@ class Transformer(nn.Module):
         hs, references = self.decoder(tgt, memory, memory_key_padding_mask=mask_flatten,
                         pos=lvl_pos_embed_flatten, refpoints_unsigmoid=refpoint_embed,
                         level_start_index=level_start_index,
-                        spatial_shapes=spatial_shapes,
+                        spatial_shapes=spatial_shapes_t,
                         valid_ratios=valid_ratios.to(memory.dtype) if valid_ratios is not None else valid_ratios)
 
         return hs, references, memory_ts, boxes_ts
