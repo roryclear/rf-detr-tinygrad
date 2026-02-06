@@ -271,8 +271,6 @@ class Dinov2WithRegistersSelfOutput(nn.Module):
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
         self.dense_tiny = tinynn.Linear(config.hidden_size, config.hidden_size)
-        self.dense_tiny.weight = to_tiny(self.dense.weight)
-        self.dense_tiny.bias = to_tiny(self.dense.bias)
 
     def forward(self, x):
         x = to_tiny(x)
@@ -349,13 +347,8 @@ class Dinov2WithRegistersMLP(nn.Module):
         self.fc1 = nn.Linear(in_features, hidden_features, bias=True)
         self.fc2 = nn.Linear(hidden_features, out_features, bias=True)
 
-        self.fc1_tiny = tinynn.Linear(in_features, hidden_features, bias=True)
-        self.fc1_tiny.weight = to_tiny(self.fc1.weight)
-        self.fc1_tiny.bias = to_tiny(self.fc1.bias)
-        
+        self.fc1_tiny = tinynn.Linear(in_features, hidden_features, bias=True) 
         self.fc2_tiny = tinynn.Linear(hidden_features, out_features, bias=True)
-        self.fc2_tiny.weight = to_tiny(self.fc2.weight)
-        self.fc2_tiny.bias = to_tiny(self.fc2.bias)
 
     def forward(self, hidden_state):
         hidden_state = to_tiny(hidden_state)
@@ -1980,6 +1973,15 @@ class Model:
                 self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.key_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.key.bias)
                 self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.value_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.value.weight)
                 self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.value_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.value.bias)
+
+                self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.output.dense_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.output.dense.weight)
+                self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.output.dense_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.output.dense.bias)
+
+                self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc1_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc1.weight)
+                self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc1_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc1.bias)
+
+                self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc2_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc2.weight)
+                self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc2_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc2.bias)
 
             for i in range(len(self.model.transformer.decoder.layers)):
                 self.model.transformer.decoder.layers[i].norm1_tiny.weight = to_tiny(self.model.transformer.decoder.layers[i].norm1.weight)
