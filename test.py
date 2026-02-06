@@ -948,11 +948,8 @@ def gen_encoder_output_proposals(memory, memory_padding_mask, spatial_shape, uns
     grid_y, grid_x = tinyTensor.meshgrid(y, x)
 
     grid = tinyTensor.cat(grid_x.unsqueeze(-1), grid_y.unsqueeze(-1), dim=-1)
-
-
     scale = tinyTensor.cat(valid_W, valid_H, dim=1).view(1, 1, 1, 2)
     grid = (grid.unsqueeze(0).expand(1, -1, -1, -1) + 0.5) / scale
-
     scale = to_torch(scale)
 
     wh = tinyTensor.ones_like(grid) * 0.05
@@ -1067,6 +1064,14 @@ class Transformer(nn.Module):
             self.enc_output = nn.ModuleList([nn.Linear(d_model, d_model) for _ in range(group_detr)])
             self.enc_output_norm = nn.ModuleList([nn.LayerNorm(d_model) for _ in range(group_detr)])
 
+        self.enc_output_tiny = tinynn.Linear(d_model, d_model)
+        self.enc_output_tiny.weight = to_tiny(self.enc_output[0].weight)
+        self.enc_output_tiny.bias = to_tiny(self.enc_output[0].bias)
+
+        self.enc_output_norm_tiny = tinynn.LayerNorm(d_model)
+        self.enc_output_norm_tiny.weight = to_tiny(self.enc_output_norm[0].weight)
+        self.enc_output_norm_tiny.bias = to_tiny(self.enc_output_norm[0].bias)
+
         self.num_queries = num_queries
         self.d_model = d_model
         self.dec_layers = num_decoder_layers
@@ -1089,10 +1094,8 @@ class Transformer(nn.Module):
         output_memory, output_proposals = gen_encoder_output_proposals(
             src, mask, h, unsigmoid=not self.bbox_reparam)
         
-
-        # group detr for first stage
-        output_memory = to_torch(output_memory)
-        output_memory_gidx = self.enc_output_norm[0](self.enc_output[0](output_memory))
+        output_memory_gidx = self.enc_output_norm_tiny(self.enc_output_tiny(output_memory))
+        output_memory_gidx = to_torch(output_memory_gidx)
 
         enc_outputs_class_unselected_gidx = self.enc_out_class_embed[0](output_memory_gidx)
         enc_outputs_coord_delta_gidx = self.enc_out_bbox_embed[0](output_memory_gidx)
