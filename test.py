@@ -2308,33 +2308,9 @@ class RFDETRMediumConfig(RFDETRBaseConfig):
     pretrain_weights: Optional[str] = "rf-detr-medium.pth"
 
 class RFDETRMedium(RFDETR):
-    size = "rfdetr-medium"
-    def get_model_config(self, **kwargs):
-        return RFDETRMediumConfig(**kwargs)
+    def get_model_config(self, **kwargs): return RFDETRMediumConfig(**kwargs)
 
 class RFDETRLarge(RFDETR):
-    size = "rfdetr-large"
-    def __init__(self, **kwargs):
-        self.init_error = None
-        self.is_deprecated = False
-        try:
-            super().__init__(**kwargs)
-        except Exception as e:
-            self.init_error = e
-            self.is_deprecated = True
-            try:
-                super().__init__(**kwargs)
-                logger.warning(
-                    "\n"
-                    "="*100 + "\n"
-                    "WARNING: Automatically switched to deprecated model configuration, due to using deprecated weights. "
-                    "This will be removed in a future version.\n"
-                    "Please retrain your model with the new weights and configuration.\n"
-                    "="*100 + "\n"
-                )
-            except Exception:
-                raise self.init_error
-
     def get_model_config(self, **kwargs): return RFDETRLargeConfig(**kwargs)
 
 #res 704, ps 16, 2 windows, 4 dec layers, 300 queries, ViT-S basis
