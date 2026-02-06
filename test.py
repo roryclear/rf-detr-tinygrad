@@ -2019,6 +2019,7 @@ class PostProcess(nn.Module):
 
         out_logits = to_tiny(out_logits)
         out_bbox = to_tiny(out_bbox)
+        target_sizes = to_tiny(target_sizes)
         prob = out_logits.sigmoid()
 
         topk_values, topk_indexes = tinyTensor.topk(prob.view(out_logits.shape[0], -1), self.num_select, dim=1)
@@ -2027,15 +2028,17 @@ class PostProcess(nn.Module):
         topk_boxes = topk_indexes // out_logits.shape[2]
         labels = topk_indexes % out_logits.shape[2]
 
-        labels = to_torch(labels).int()
 
         boxes = box_cxcywh_to_xyxy(out_bbox)
         boxes = tinyTensor.gather(boxes, 1, topk_boxes.unsqueeze(-1).repeat(1,1,4))
-        boxes = to_torch(boxes)
-        img_h, img_w = target_sizes.unbind(1)
-        scale_fct = torch.stack([img_w, img_h, img_w, img_h], dim=1)
+        
+        img_h = target_sizes[:, 0]
+        img_w = target_sizes[:, 1]
+        scale_fct = tinyTensor.stack(img_w, img_h, img_w, img_h, dim=1)
         boxes = boxes * scale_fct[:, None, :]
         topk_values = to_torch(topk_values)
+        labels = to_torch(labels).int()
+        boxes = to_torch(boxes)
         return [{'scores': s, 'labels': l, 'boxes': b} for s, l, b in zip(topk_values, labels, boxes)]
 
 class Model:
