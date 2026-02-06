@@ -1084,22 +1084,21 @@ class Transformer(nn.Module):
         pos_embed = pos_embed.flatten(2).transpose(1, 2)  # bs, hw, c
         mask = masks[0].flatten(1)                      # bs, hw
         spatial_shapes = Tensor([[h,h]]).long()
-
-
         level_start_index = Tensor([0])
 
         output_memory, output_proposals = gen_encoder_output_proposals(
             src, mask, h, unsigmoid=not self.bbox_reparam)
         
-        output_memory = to_torch(output_memory)
-        output_proposals = to_torch(output_proposals)
 
         # group detr for first stage
         refpoint_embed_ts, memory_ts, boxes_ts = [], [], []
+        output_memory = to_torch(output_memory)
         output_memory_gidx = self.enc_output_norm[0](self.enc_output[0](output_memory))
 
         enc_outputs_class_unselected_gidx = self.enc_out_class_embed[0](output_memory_gidx)
         enc_outputs_coord_delta_gidx = self.enc_out_bbox_embed[0](output_memory_gidx)
+
+        output_proposals = to_torch(output_proposals)
         enc_outputs_coord_cxcy_gidx = enc_outputs_coord_delta_gidx[...,
             :2] * output_proposals[..., 2:] + output_proposals[..., :2]
         enc_outputs_coord_wh_gidx = enc_outputs_coord_delta_gidx[..., 2:].exp() * output_proposals[..., 2:]
@@ -1120,13 +1119,11 @@ class Transformer(nn.Module):
             output_memory_gidx, 1, topk_proposals_gidx.unsqueeze(-1).repeat(1, 1, self.d_model))
 
         refpoint_embed_ts.append(refpoint_embed_gidx)
-        memory_ts.append(tgt_undetach_gidx)
-        boxes_ts.append(refpoint_embed_gidx_undetach)
+        memory_ts = tgt_undetach_gidx
+        boxes_ts = refpoint_embed_gidx_undetach
         # concat on dim=1, the nq dimension, (bs, nq, d) --> (bs, nq, d)
         refpoint_embed_ts = torch.cat(refpoint_embed_ts, dim=1)
         # (bs, nq, d)
-        memory_ts = torch.cat(memory_ts, dim=1)#.transpose(0, 1)
-        boxes_ts = torch.cat(boxes_ts, dim=1)#.transpose(0, 1)
 
         tgt = query_feat.unsqueeze(0).repeat(bs, 1, 1)
         refpoint_embed = refpoint_embed.unsqueeze(0).repeat(bs, 1, 1)
