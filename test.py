@@ -33,10 +33,10 @@ def to_tiny(x):
         return tuple(ret)
     return tinyTensor(x.detach().numpy()) if type(x) != tinyTensor else x
 def to_torch(x):
-    if type(x) == tuple:
+    if type(x) in [tuple, list]:
         ret = []
         for i in range(len(x)): ret.append(to_torch(x[i]))
-        return tuple(ret)
+        return tuple(ret) if type(x) == tuple else ret
     return Tensor(x.numpy()) if type(x) != Tensor else x
 
 COCO_CLASSES = {1: "person", 2: "bicycle", 3: "car", 4: "motorcycle", 5: "airplane", 6: "bus", 7: "train", 8: "truck", 9: "boat",
@@ -877,9 +877,9 @@ class TransformerDecoder(nn.Module):
 
         self.ref_point_head = MLP(2 * d_model, d_model, d_model, 2)
 
-        self.norm_tiny = tinynn.LayerNorm(self.norm.normalized_shape)
-        self.norm_tiny.weight = to_tiny(self.norm_tiny.weight)
-        self.norm_tiny.bias = to_tiny(self.norm_tiny.bias)
+        self.norm_tiny = tinynn.LayerNorm(self.norm.normalized_shape, eps=self.norm.eps)
+        self.norm_tiny.weight = to_tiny(self.norm.weight)
+        self.norm_tiny.bias = to_tiny(self.norm.bias)
 
         self._export = False
 
@@ -925,15 +925,12 @@ class TransformerDecoder(nn.Module):
 
             output = to_tiny(output)
             x = self.norm_tiny(output)
-            x = to_torch(x)
             intermediate.append(x)
         
-        output = to_torch(output)
-        output = self.norm(output)
+        output = self.norm_tiny(output)
         intermediate.pop()
         intermediate.append(output)
-        refpoints_unsigmoid = to_torch(refpoints_unsigmoid)
-        return [torch.stack(intermediate), refpoints_unsigmoid.unsqueeze(0)]
+        return [to_torch(tinyTensor.stack(intermediate)), to_torch(refpoints_unsigmoid.unsqueeze(0))]
 
 def gen_encoder_output_proposals(memory, memory_padding_mask, spatial_shapes, unsigmoid=True):
     r"""
