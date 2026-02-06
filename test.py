@@ -964,7 +964,8 @@ def gen_encoder_output_proposals(memory, memory_padding_mask, spatial_shape, uns
     output_memory = memory
     output_memory = output_memory.masked_fill(memory_padding_mask.unsqueeze(-1), float(0))
     output_memory = output_memory.masked_fill(~output_proposals_valid, float(0))
-    return to_torch(output_memory), to_torch(output_proposals)
+    return output_memory, output_proposals
+    #return to_torch(output_memory), to_torch(output_proposals)
 
 class MSDeformAttn(nn.Module):
     """Multi-Scale Deformable Attention Module
@@ -1106,6 +1107,10 @@ class Transformer(nn.Module):
 
         output_memory, output_proposals = gen_encoder_output_proposals(
             memory, mask_flatten, spatial_shapes[0][0], unsigmoid=not self.bbox_reparam)
+        
+        output_memory = to_torch(output_memory)
+        output_proposals = to_torch(output_proposals)
+
         # group detr for first stage
         refpoint_embed_ts, memory_ts, boxes_ts = [], [], []
         output_memory_gidx = self.enc_output_norm[0](self.enc_output[0](output_memory))
