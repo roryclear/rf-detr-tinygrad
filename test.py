@@ -1117,8 +1117,9 @@ class Transformer(nn.Module):
 
         topk = min(self.num_queries, enc_outputs_class_unselected_gidx.shape[-2])
         x = enc_outputs_class_unselected_gidx.max(-1)
-        x = to_torch(x)
-        topk_proposals_gidx = torch.topk(x, topk, dim=1)[1] # bs, nq
+        topk_proposals_gidx = tinyTensor.topk(x, topk, dim=1)[1] # bs, nq
+
+        topk_proposals_gidx = to_torch(topk_proposals_gidx).int()
 
         boxes_ts = torch.gather(
             enc_outputs_coord_unselected_gidx, 1, topk_proposals_gidx.unsqueeze(-1).repeat(1, 1, 4)) # unsigmoid
