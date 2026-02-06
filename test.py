@@ -877,6 +877,10 @@ class TransformerDecoder(nn.Module):
 
         self.ref_point_head = MLP(2 * d_model, d_model, d_model, 2)
 
+        self.norm_tiny = tinynn.LayerNorm(self.norm.normalized_shape)
+        self.norm_tiny.weight = to_tiny(self.norm_tiny.weight)
+        self.norm_tiny.bias = to_tiny(self.norm_tiny.bias)
+
         self._export = False
 
     def forward(self, tgt, memory,
@@ -893,25 +897,22 @@ class TransformerDecoder(nn.Module):
         output = tgt
 
         intermediate = []
-        hs_refpoints_unsigmoid = [refpoints_unsigmoid]
-
-        def get_reference(refpoints):
-            obj_center = refpoints[..., :4]
-            refpoints_input = obj_center[:, :, None] \
-                                    * torch.cat([valid_ratios, valid_ratios], -1)[:, None] # bs, nq, nlevel, 4
+        refpoints_unsigmoid = to_tiny(refpoints_unsigmoid)
+        def get_reference(refpoints_unsigmoid, valid_ratios):
+            valid_ratios = to_tiny(valid_ratios)
+            obj_center = refpoints_unsigmoid[..., :4]
+            refpoints_input = obj_center[:, :, None] * tinyTensor.cat(valid_ratios, valid_ratios, dim=-1)[:, None]
+            refpoints_input = to_torch(refpoints_input)
             query_sine_embed = gen_sineembed_for_position(
                 refpoints_input[:, :, 0, :], self.d_model / 2) # bs, nq, 256*2
             query_pos = self.ref_point_head(query_sine_embed)
-            return obj_center, refpoints_input, query_pos, query_sine_embed
-
-        obj_center, refpoints_input, query_pos, query_sine_embed = get_reference(refpoints_unsigmoid)
+            return refpoints_input, query_pos, query_sine_embed
 
         for layer_id, layer in enumerate(self.layers):
-            if self.bbox_reparam: obj_center, refpoints_input, query_pos, query_sine_embed = get_reference(refpoints_unsigmoid)
+            refpoints_input, query_pos, query_sine_embed = get_reference(refpoints_unsigmoid, valid_ratios) #todo
             pos_transformation = 1
 
             query_pos = query_pos * pos_transformation
-
             output = layer(output, memory, tgt_mask=tgt_mask,
                            memory_mask=memory_mask,
                            tgt_key_padding_mask=tgt_key_padding_mask,
@@ -922,12 +923,16 @@ class TransformerDecoder(nn.Module):
                            spatial_shapes=spatial_shapes,
                            level_start_index=level_start_index)
 
-            intermediate.append(self.norm(output))
-
-
+            output = to_tiny(output)
+            x = self.norm_tiny(output)
+            x = to_torch(x)
+            intermediate.append(x)
+        
+        output = to_torch(output)
         output = self.norm(output)
         intermediate.pop()
         intermediate.append(output)
+        refpoints_unsigmoid = to_torch(refpoints_unsigmoid)
         return [torch.stack(intermediate), refpoints_unsigmoid.unsqueeze(0)]
 
 def gen_encoder_output_proposals(memory, memory_padding_mask, spatial_shapes, unsigmoid=True):
