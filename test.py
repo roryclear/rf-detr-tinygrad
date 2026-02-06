@@ -27,10 +27,10 @@ from tinygrad.dtype import dtypes
 from tinygrad import Tensor as tinyTensor, nn as tinynn
 
 def to_tiny(x):
-    if type(x) == tuple:
+    if type(x) in [tuple, list]:
         ret = []
         for i in range(len(x)): ret.append(to_tiny(x[i]))
-        return tuple(ret)
+        return tuple(ret) if type(x) is tuple else ret
     return tinyTensor(x.detach().numpy()) if type(x) != tinyTensor else x
 def to_torch(x):
     if type(x) in [tuple, list]:
@@ -1222,8 +1222,12 @@ class C2f(nn.Module):
     def forward(self, x):
         """Forward pass using split() instead of chunk()."""
         y = list(self.cv1(x).split((self.c, self.c), 1))
-        y.extend(m(y[-1]) for m in self.m)
-        return self.cv2(torch.cat(y, 1))
+        y = to_tiny(y)
+        y.extend(to_tiny(m(y[-1])) for m in self.m)
+        y = tinyTensor.cat(*y, dim=1)
+        y = self.cv2(y)
+        y = to_torch(y)
+        return y
 
 class LayerNorm(nn.Module):
     """
