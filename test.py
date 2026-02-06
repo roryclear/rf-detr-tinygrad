@@ -1899,7 +1899,6 @@ class LWDETR(nn.Module):
         cls_enc = []
         cls_enc_gidx = self.transformer.enc_out_class_embed[0](hs_enc_list[0])
         cls_enc.append(cls_enc_gidx)
-        cls_enc = torch.cat(cls_enc, dim=1)
         out['enc_outputs'] = {'pred_logits': cls_enc, 'pred_boxes': ref_enc}
         return out
 
