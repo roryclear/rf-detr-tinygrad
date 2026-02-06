@@ -378,8 +378,6 @@ class WindowedDinov2WithRegistersLayer(nn.Module):
 
         self.norm1 = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.norm1_tiny = tinynn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-        self.norm1_tiny.weight = to_tiny(self.norm1.weight)
-        self.norm1_tiny.bias = to_tiny(self.norm1.bias)
         self.attention = DINOV2_WITH_REGISTERS_ATTENTION_CLASSES[config._attn_implementation](config)
         self.layer_scale1 = Dinov2WithRegistersLayerScale(config)
         self.drop_path = nn.Identity()
@@ -387,8 +385,6 @@ class WindowedDinov2WithRegistersLayer(nn.Module):
         self.norm2 = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
 
         self.norm2_tiny = tinynn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-        self.norm2_tiny.weight = to_tiny(self.norm2.weight)
-        self.norm2_tiny.bias = to_tiny(self.norm2.bias)
 
 
         self.mlp = Dinov2WithRegistersMLP(config)
@@ -1979,9 +1975,13 @@ class Model:
 
                 self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc1_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc1.weight)
                 self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc1_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc1.bias)
-
                 self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc2_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc2.weight)
                 self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc2_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc2.bias)
+
+                self.model.backbone[0].encoder.encoder.encoder.layer[i].norm1_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].norm1.weight)
+                self.model.backbone[0].encoder.encoder.encoder.layer[i].norm1_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].norm1.bias)
+                self.model.backbone[0].encoder.encoder.encoder.layer[i].norm2_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].norm2.weight)
+                self.model.backbone[0].encoder.encoder.encoder.layer[i].norm2_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].norm2.bias)
 
             for i in range(len(self.model.transformer.decoder.layers)):
                 self.model.transformer.decoder.layers[i].norm1_tiny.weight = to_tiny(self.model.transformer.decoder.layers[i].norm1.weight)
