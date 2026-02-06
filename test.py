@@ -1442,19 +1442,12 @@ class Backbone(BackboneBase):
         self._export = False
 
     def forward(self, tensor_list: NestedTensor):
-        """ """
-        # (H, W, B, C)
         feats = self.encoder(tensor_list.tensors)
         feats = self.projector(feats)
-        # x: [(B, C, H, W)]
         out = []
-        for feat in feats:
-            m = tensor_list.mask
-            assert m is not None
-            mask = F.interpolate(m[None].float(), size=feat.shape[-2:]).to(torch.bool)[
-                0
-            ]
-            out.append(NestedTensor(feat, mask))
+        m = tensor_list.mask
+        mask = F.interpolate(m.unsqueeze(0).float(), size=feats[0].shape[-2:]).to(torch.bool)[0]
+        out.append(NestedTensor(feats[0], mask))
         return out
 
 def build_backbone(
