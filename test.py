@@ -1446,9 +1446,7 @@ class Backbone(BackboneBase):
         feats = self.projector(feats)
         out = []
         m = tensor_list.mask
-
         m = to_tiny(m)
-
         mask = ~tinyTensor.interpolate(m.unsqueeze(0), size=feats[0].shape[-2:])[0]
         mask = to_torch(mask).bool()
         out.append(NestedTensor(feats[0], mask))
@@ -1871,74 +1869,29 @@ class LWDETR(nn.Module):
         self._export = False
 
     def forward(self, samples: NestedTensor, targets=None):
-        if isinstance(samples, (list, torch.Tensor)):
-            samples = nested_tensor_from_tensor_list(samples)
+        samples = nested_tensor_from_tensor_list(samples)
         features, poss = self.backbone(samples)
-
         srcs = []
         masks = []
-        for l, feat in enumerate(features):
-            src, mask = feat.tensors, feat.mask
-            srcs.append(src)
-            masks.append(mask)
-            assert mask is not None
+        src, mask = features[0].tensors, features[0].mask
+        srcs.append(src)
+        masks.append(mask)
+        refpoint_embed_weight = self.refpoint_embed.weight[:self.num_queries]
+        query_feat_weight = self.query_feat.weight[:self.num_queries]
+        hs, ref_unsigmoid, hs_enc, ref_enc = self.transformer(srcs, masks, poss, refpoint_embed_weight, query_feat_weight)
+        outputs_coord_delta = self.bbox_embed(hs)
+        outputs_coord_cxcy = outputs_coord_delta[..., :2] * ref_unsigmoid[..., 2:] + ref_unsigmoid[..., :2]
+        outputs_coord_wh = outputs_coord_delta[..., 2:].exp() * ref_unsigmoid[..., 2:]
+        outputs_coord = torch.concat([outputs_coord_cxcy, outputs_coord_wh], dim=-1)
+        outputs_class = self.class_embed(hs)
+        out = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
+        hs_enc_list = hs_enc.chunk(1, dim=1)
+        cls_enc = []
+        cls_enc_gidx = self.transformer.enc_out_class_embed[0](hs_enc_list[0])
+        cls_enc.append(cls_enc_gidx)
 
-        if self.training:
-            refpoint_embed_weight = self.refpoint_embed.weight
-            query_feat_weight = self.query_feat.weight
-        else:
-            # only use one group in inference
-            refpoint_embed_weight = self.refpoint_embed.weight[:self.num_queries]
-            query_feat_weight = self.query_feat.weight[:self.num_queries]
-
-        if self.segmentation_head is not None:
-            seg_head_fwd = self.segmentation_head.sparse_forward if self.training else self.segmentation_head.forward
-
-        hs, ref_unsigmoid, hs_enc, ref_enc = self.transformer(
-            srcs, masks, poss, refpoint_embed_weight, query_feat_weight)
-
-        if hs is not None:
-            if self.bbox_reparam:
-                outputs_coord_delta = self.bbox_embed(hs)
-                outputs_coord_cxcy = outputs_coord_delta[..., :2] * ref_unsigmoid[..., 2:] + ref_unsigmoid[..., :2]
-                outputs_coord_wh = outputs_coord_delta[..., 2:].exp() * ref_unsigmoid[..., 2:]
-                outputs_coord = torch.concat(
-                    [outputs_coord_cxcy, outputs_coord_wh], dim=-1
-                )
-            else:
-                outputs_coord = (self.bbox_embed(hs) + ref_unsigmoid).sigmoid()
-
-            outputs_class = self.class_embed(hs)
-
-            if self.segmentation_head is not None:
-                outputs_masks = seg_head_fwd(features[0].tensors, hs, samples.tensors.shape[-2:])
-
-            out = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
-            if self.segmentation_head is not None:
-                out['pred_masks'] = outputs_masks[-1]
-
-        if self.two_stage:
-            group_detr = self.group_detr if self.training else 1
-            hs_enc_list = hs_enc.chunk(group_detr, dim=1)
-            cls_enc = []
-            for g_idx in range(group_detr):
-                cls_enc_gidx = self.transformer.enc_out_class_embed[g_idx](hs_enc_list[g_idx])
-                cls_enc.append(cls_enc_gidx)
-
-            cls_enc = torch.cat(cls_enc, dim=1)
-
-            if self.segmentation_head is not None:
-                masks_enc = seg_head_fwd(features[0].tensors, [hs_enc,], samples.tensors.shape[-2:], skip_blocks=True)[0]
-
-            if hs is not None:
-                out['enc_outputs'] = {'pred_logits': cls_enc, 'pred_boxes': ref_enc}
-                if self.segmentation_head is not None:
-                    out['enc_outputs']['pred_masks'] = masks_enc
-            else:
-                out = {'pred_logits': cls_enc, 'pred_boxes': ref_enc}
-                if self.segmentation_head is not None:
-                    out['pred_masks'] = masks_enc
-
+        cls_enc = torch.cat(cls_enc, dim=1)
+        out['enc_outputs'] = {'pred_logits': cls_enc, 'pred_boxes': ref_enc}
         return out
 
 def build_model(args):
