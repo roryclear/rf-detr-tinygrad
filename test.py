@@ -1086,6 +1086,8 @@ class Transformer(nn.Module):
         self.enc_out_class_embed_w = to_tiny(self.enc_out_class_embed[0].weight)
         self.enc_out_class_embed_b = to_tiny(self.enc_out_class_embed[0].bias)
 
+        refpoint_embed = to_tiny(refpoint_embed)
+
         src = srcs[0]
         pos_embed = pos_embeds[0]
         bs, _, h, w = src.shape
@@ -1121,7 +1123,6 @@ class Transformer(nn.Module):
 
         # get memory tgt
         memory_ts = output_memory_gidx.gather(dim=1, index=topk_proposals_gidx.unsqueeze(-1).repeat(1, 1, self.d_model))
-        memory_ts = to_torch(memory_ts)
 
         # concat on dim=1, the nq dimension, (bs, nq, d) --> (bs, nq, d)
         # (bs, nq, d)
@@ -1133,15 +1134,12 @@ class Transformer(nn.Module):
         refpoint_embed_ts_subset = refpoint_embed[..., :ts_len, :]
         refpoint_embed_subset = refpoint_embed[..., ts_len:, :]
 
-        boxes_ts = to_torch(boxes_ts)
+
         refpoint_embed_cxcy = refpoint_embed_ts_subset[..., :2] * boxes_ts[..., 2:]
         refpoint_embed_cxcy = refpoint_embed_cxcy + boxes_ts[..., :2]
         refpoint_embed_wh = refpoint_embed_ts_subset[..., 2:].exp() * boxes_ts[..., 2:]
-        refpoint_embed_ts_subset = torch.concat(
-            [refpoint_embed_cxcy, refpoint_embed_wh], dim=-1
-        )
-        refpoint_embed = torch.concat(
-            [refpoint_embed_ts_subset, refpoint_embed_subset], dim=-2)
+        refpoint_embed_ts_subset = tinyTensor.cat(refpoint_embed_cxcy, refpoint_embed_wh, dim=-1)
+        refpoint_embed = tinyTensor.cat(refpoint_embed_ts_subset, refpoint_embed_subset, dim=-2)
 
         hs, references = self.decoder(tgt, src, memory_key_padding_mask=mask,
                         pos=pos_embed, refpoints_unsigmoid=refpoint_embed,
@@ -1149,7 +1147,7 @@ class Transformer(nn.Module):
                         spatial_shapes=spatial_shapes,
                         valid_ratios=Tensor([[[1., 1.]]]))
 
-        return hs, references, memory_ts, boxes_ts
+        return hs, references, to_torch(memory_ts), boxes_ts
 
 def build_transformer(args):
     return Transformer(
