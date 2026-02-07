@@ -580,8 +580,6 @@ class TransformerDecoder(nn.Module):
 def gen_encoder_output_proposals(memory, memory_padding_mask, spatial_shape, unsigmoid=True):
     memory = to_tiny(memory)
     memory_padding_mask = to_tiny(memory_padding_mask).cast(dtype=dtypes.bool)
-
-    proposals = []
     H_, W_ = spatial_shape, spatial_shape
     mask = memory_padding_mask.reshape(1, H_, W_)
 
@@ -1241,9 +1239,6 @@ class RFDETRNano(RFDETR):
     def get_model_config(self, **kwargs): return RFDETRNanoConfig(**kwargs)
 
 class RFDETRSmallConfig(RFDETRBaseConfig):
-    """
-    The configuration for an RF-DETR Small model.
-    """
     out_feature_indexes: List[int] = [3, 6, 9, 12]
     num_windows: int = 2
     dec_layers: int = 3
