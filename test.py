@@ -1361,7 +1361,6 @@ class Backbone(BackboneBase):
 
 def build_backbone(
     encoder,
-    vit_encoder_num_layers,
     pretrained_encoder,
     window_block_indexes,
     drop_path,
@@ -1376,7 +1375,6 @@ def build_backbone(
     target_shape,
     rms_norm,
     backbone_lora,
-    force_no_pretrain,
     gradient_checkpointing,
     load_dinov2_weights,
     patch_size,
@@ -1810,7 +1808,6 @@ def build_model(args):
 
     backbone = build_backbone(
         encoder=args.encoder,
-        vit_encoder_num_layers=args.vit_encoder_num_layers,
         pretrained_encoder=args.pretrained_encoder,
         window_block_indexes=args.window_block_indexes,
         drop_path=args.drop_path,
@@ -1825,7 +1822,6 @@ def build_model(args):
         target_shape=args.shape if hasattr(args, 'shape') else (args.resolution, args.resolution) if hasattr(args, 'resolution') else (640, 640),
         rms_norm=args.rms_norm,
         backbone_lora=args.backbone_lora,
-        force_no_pretrain=args.force_no_pretrain,
         gradient_checkpointing=args.gradient_checkpointing,
         load_dinov2_weights=args.pretrain_weights is None,
         patch_size=args.patch_size,
