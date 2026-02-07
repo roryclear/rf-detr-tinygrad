@@ -23,6 +23,7 @@ import argparse
 import json
 import collections.abc
 from tinygrad.dtype import dtypes
+import pickle
 
 from tinygrad import Tensor as tinyTensor, nn as tinynn
 
@@ -103,83 +104,11 @@ OPEN_SOURCE_MODELS = {
 
 class WindowedDinov2WithRegistersConfig(BackboneConfigMixin, PretrainedConfig):
     model_type = "dinov2_with_registers"
-    def __init__(
-        self,
-        hidden_size=768,
-        num_hidden_layers=12,
-        num_attention_heads=12,
-        mlp_ratio=4,
-        hidden_act="gelu",
-        hidden_dropout_prob=0.0,
-        attention_probs_dropout_prob=0.0,
-        initializer_range=0.02,
-        layer_norm_eps=1e-6,
-        image_size=224,
-        patch_size=16,
-        num_channels=3,
-        qkv_bias=True,
-        layerscale_value=1.0,
-        drop_path_rate=0.0,
-        use_swiglu_ffn=False,
-        num_register_tokens=4,
-        out_features=None,
-        out_indices=None,
-        apply_layernorm=True,
-        reshape_hidden_states=True,
-        num_windows=1,
-        window_block_indexes=None,
-        gradient_checkpointing=False,
-        **kwargs,
-    ):
-        super().__init__(**kwargs)
-
-        self.hidden_size = hidden_size
-        self.num_hidden_layers = num_hidden_layers
-        self.num_attention_heads = num_attention_heads
-        self.mlp_ratio = mlp_ratio
-        self.hidden_act = hidden_act
-        self.hidden_dropout_prob = hidden_dropout_prob
-        self.attention_probs_dropout_prob = attention_probs_dropout_prob
-        self.initializer_range = initializer_range
-        self.layer_norm_eps = layer_norm_eps
-        self.image_size = image_size
-        self.patch_size = patch_size
-        self.num_channels = num_channels
-        self.qkv_bias = qkv_bias
-        self.layerscale_value = layerscale_value
-        self.drop_path_rate = drop_path_rate
-        self.use_swiglu_ffn = use_swiglu_ffn
-        self.num_register_tokens = num_register_tokens
-        self.stage_names = ["stem"] + [f"stage{idx}" for idx in range(1, num_hidden_layers + 1)]
-        self._out_features = ['stage3', 'stage6', 'stage9', 'stage12']
-        self.apply_layernorm = apply_layernorm
-        self.reshape_hidden_states = reshape_hidden_states
-        self.num_windows = num_windows
-        self.window_block_indexes = list(range(num_hidden_layers)) if window_block_indexes is None else window_block_indexes
-        self.gradient_checkpointing = gradient_checkpointing
+    def __init__(): pass
 
 class Dinov2WithRegistersPatchEmbeddings(nn.Module):
-    """
-    This class turns `pixel_values` of shape `(batch_size, num_channels, height, width)` into the initial
-    `hidden_states` (patch embeddings) of shape `(batch_size, seq_length, hidden_size)` to be consumed by a
-    Transformer.
-    """
-
     def __init__(self, config):
         super().__init__()
-        image_size, patch_size = config.image_size, config.patch_size
-        num_channels, hidden_size = config.num_channels, config.hidden_size
-
-        image_size = image_size if isinstance(image_size, collections.abc.Iterable) else (image_size, image_size)
-        patch_size = patch_size if isinstance(patch_size, collections.abc.Iterable) else (patch_size, patch_size)
-        num_patches = (image_size[1] // patch_size[1]) * (image_size[0] // patch_size[0])
-        self.image_size = image_size
-        self.patch_size = patch_size
-        self.num_channels = num_channels
-        self.num_patches = num_patches
-
-        self.projection = nn.Conv2d(num_channels, hidden_size, kernel_size=patch_size, stride=patch_size)
-        self.projection_tiny = tinynn.Conv2d(num_channels, hidden_size, patch_size, stride=patch_size)
     def forward(self, x):
         x = to_tiny(x)
         x = self.projection_tiny(x).flatten(2).transpose(1, 2)
@@ -192,16 +121,6 @@ class WindowedDinov2WithRegistersEmbeddings(nn.Module):
 
     def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
         super().__init__()
-
-        self.cls_token = nn.Parameter(torch.randn(1, 1, config.hidden_size))
-        self.cls_token_tiny = to_tiny(self.cls_token)
-        self.patch_embeddings = Dinov2WithRegistersPatchEmbeddings(config)
-        num_patches = self.patch_embeddings.num_patches
-        self.position_embeddings = nn.Parameter(torch.randn(1, num_patches + 1, config.hidden_size))
-        self.position_embeddings_tiny = to_tiny(self.position_embeddings)
-        self.patch_size = config.patch_size
-        self.config = config
-
 
     def forward(self, pixel_values, bool_masked_pos: Optional[Any] = None):
         batch_size, _, height, width = pixel_values.shape
@@ -235,24 +154,6 @@ class WindowedDinov2WithRegistersEmbeddings(nn.Module):
 class Dinov2WithRegistersSelfAttention(nn.Module):
     def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
         super().__init__()
-        if config.hidden_size % config.num_attention_heads != 0 and not hasattr(config, "embedding_size"):
-            raise ValueError(
-                f"The hidden size {config.hidden_size,} is not a multiple of the number of attention "
-                f"heads {config.num_attention_heads}."
-            )
-
-        self.num_attention_heads = config.num_attention_heads
-        self.attention_head_size = int(config.hidden_size / config.num_attention_heads)
-        self.all_head_size = self.num_attention_heads * self.attention_head_size
-
-        self.query = nn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
-
-        self.query_tiny = tinynn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
-
-        self.key = nn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
-        self.key_tiny = tinynn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
-        self.value = nn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
-        self.value_tiny = tinynn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
 
     def transpose_for_scores(self, x):
         x = to_tiny(x)
@@ -278,11 +179,7 @@ class Dinov2WithRegistersSelfOutput(nn.Module):
         return to_torch(x)
 
 class Dinov2WithRegistersAttention(nn.Module):
-    def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
-        super().__init__()
-        self.attention = Dinov2WithRegistersSelfAttention(config)
-        self.output = Dinov2WithRegistersSelfOutput(config)
-        self.pruned_heads = set()
+    def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None: pass
 
     def forward(
         self,
@@ -298,7 +195,6 @@ class Dinov2WithRegistersAttention(nn.Module):
 class Dinov2WithRegistersSdpaSelfAttention(Dinov2WithRegistersSelfAttention):
     def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
         super().__init__(config)
-        self.attention_probs_dropout_prob = config.attention_probs_dropout_prob
 
     def forward(
         self, hidden_states, head_mask: Optional[Any] = None, output_attentions: bool = False
@@ -340,15 +236,7 @@ DINOV2_WITH_REGISTERS_ATTENTION_CLASSES = {
 HOSTED_MODELS = {**OPEN_SOURCE_MODELS, **PLATFORM_MODELS}
 
 class Dinov2WithRegistersMLP(nn.Module):
-    def __init__(self, config) -> None:
-        super().__init__()
-        in_features = out_features = config.hidden_size
-        hidden_features = int(config.hidden_size * config.mlp_ratio)
-        self.fc1 = nn.Linear(in_features, hidden_features, bias=True)
-        self.fc2 = nn.Linear(hidden_features, out_features, bias=True)
-
-        self.fc1_tiny = tinynn.Linear(in_features, hidden_features, bias=True) 
-        self.fc2_tiny = tinynn.Linear(hidden_features, out_features, bias=True)
+    def __init__(self, config) -> None: pass
 
     def forward(self, hidden_state):
         hidden_state = to_tiny(hidden_state)
@@ -358,10 +246,7 @@ class Dinov2WithRegistersMLP(nn.Module):
         return to_torch(hidden_state)
 
 class Dinov2WithRegistersLayerScale(nn.Module):
-    def __init__(self, config) -> None:
-        super().__init__()
-        self.lambda1 = nn.Parameter(config.layerscale_value * torch.ones(config.hidden_size))
-        self.lambda1_tiny = to_tiny(self.lambda1)
+    def __init__(self, config) -> None: pass
 
     def forward(self, hidden_state):
         hidden_state = to_tiny(hidden_state)
@@ -371,25 +256,7 @@ class Dinov2WithRegistersLayerScale(nn.Module):
 class WindowedDinov2WithRegistersLayer(nn.Module):
     """This corresponds to the Block class in the original implementation."""
 
-    def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
-        super().__init__()
-
-        self.num_windows = config.num_windows
-
-        self.norm1 = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-        self.norm1_tiny = tinynn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-        self.attention = DINOV2_WITH_REGISTERS_ATTENTION_CLASSES[config._attn_implementation](config)
-        self.layer_scale1 = Dinov2WithRegistersLayerScale(config)
-        self.drop_path = nn.Identity()
-
-        self.norm2 = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-
-        self.norm2_tiny = tinynn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-
-
-        self.mlp = Dinov2WithRegistersMLP(config)
-        self.layer_scale2 = Dinov2WithRegistersLayerScale(config)
-
+    def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None: pass
     def forward(
         self,
         hidden_states: Any,
@@ -433,12 +300,7 @@ class WindowedDinov2WithRegistersLayer(nn.Module):
         return outputs
 
 class WindowedDinov2WithRegistersEncoder(nn.Module):
-    def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
-        super().__init__()
-        self.config = config
-        self.layer = nn.ModuleList([WindowedDinov2WithRegistersLayer(config) for _ in range(config.num_hidden_layers)])
-        self.gradient_checkpointing = config.gradient_checkpointing
-
+    def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None: pass
     def forward(
         self,
         hidden_states: Any,
@@ -463,20 +325,7 @@ class WindowedDinov2WithRegistersEncoder(nn.Module):
 class WindowedDinov2WithRegistersBackbone(PreTrainedModel, BackboneMixin):
     _supports_sdpa = True #todo, why need?
 
-    def __init__(self, config: WindowedDinov2WithRegistersConfig):
-        super().__init__(config)
-        super()._init_backbone(config)
-        self.num_features = [config.hidden_size for _ in range(config.num_hidden_layers + 1)]
-        self.embeddings = WindowedDinov2WithRegistersEmbeddings(config)
-        self.encoder = WindowedDinov2WithRegistersEncoder(config)
-
-        self.layernorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-        self.layernorm_tiny = tinynn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-
-        self.num_register_tokens = config.num_register_tokens
-
-        # Initialize weights and apply final processing
-        self.post_init()
+    def __init__(self, config: WindowedDinov2WithRegistersConfig): pass
 
     def get_input_embeddings(self) -> Dinov2WithRegistersPatchEmbeddings:
         return self.embeddings.patch_embeddings
@@ -539,58 +388,7 @@ class DinoV2(nn.Module):
             patch_size=14,
             num_windows=4,
             positional_encoding_size=37,
-            ):
-        super().__init__()
-
-        name = f"facebook/dinov2-with-registers-{size}" if use_registers else f"facebook/dinov2-{size}"
-
-        self.shape = shape
-        self.patch_size = patch_size
-        self.num_windows = num_windows
-
-        window_block_indexes = set(range(out_feature_indexes[-1] + 1))
-        window_block_indexes.difference_update(out_feature_indexes)
-        window_block_indexes = list(window_block_indexes)
-
-        dino_config = configs[size]
-
-        dino_config["return_dict"] = False
-        dino_config["out_features"] = [f"stage{i}" for i in out_feature_indexes]
-
-        implied_resolution = positional_encoding_size * patch_size
-
-        if implied_resolution != dino_config["image_size"]:
-            print("Using a different number of positional encodings than DINOv2, which means we're not loading DINOv2 backbone weights. This is not a problem if finetuning a pretrained RF-DETR model.")
-            dino_config["image_size"] = implied_resolution
-            load_dinov2_weights = False
-
-        if patch_size != 14:
-            print(f"Using patch size {patch_size} instead of 14, which means we're not loading DINOv2 backbone weights. This is not a problem if finetuning a pretrained RF-DETR model.")
-            dino_config["patch_size"] = patch_size
-            load_dinov2_weights = False
-
-        if use_registers:
-            windowed_dino_config = WindowedDinov2WithRegistersConfig(
-                **dino_config,
-                num_windows=num_windows,
-                window_block_indexes=window_block_indexes,
-                gradient_checkpointing=gradient_checkpointing,
-            )
-        else:
-            windowed_dino_config = WindowedDinov2WithRegistersConfig(
-                **dino_config,
-                num_windows=num_windows,
-                window_block_indexes=window_block_indexes,
-                num_register_tokens=0,
-                gradient_checkpointing=gradient_checkpointing,
-            )
-        self.encoder = WindowedDinov2WithRegistersBackbone.from_pretrained(
-            name,
-            config=windowed_dino_config,
-        ) if load_dinov2_weights else WindowedDinov2WithRegistersBackbone(windowed_dino_config)
-
-        self._out_feature_channels = [size_to_width[size]] * len(out_feature_indexes)
-        self._export = False
+            ): pass
 
     def forward(self, x):
         block_size = self.patch_size * self.num_windows
@@ -658,34 +456,7 @@ class TransformerDecoderLayer(nn.Module):
     def __init__(self, d_model, sa_nhead, ca_nhead, dim_feedforward=2048, dropout=0.1,
                  activation="relu", normalize_before=False, group_detr=1,
                  num_feature_levels=4, dec_n_points=4,
-                 skip_self_attn=False):
-        super().__init__()
-        # Decoder Self-Attention
-        self.self_attn = nn.MultiheadAttention(embed_dim=256, num_heads=8, dropout=0, batch_first=True)
-        self.norm1 = nn.LayerNorm(d_model)
-
-        self.norm1_tiny = tinynn.LayerNorm(d_model)
-        self.norm2_tiny = tinynn.LayerNorm(d_model)
-        self.norm3_tiny = tinynn.LayerNorm(d_model)
-
-        # Decoder Cross-Attention
-        self.cross_attn = MSDeformAttn(
-            d_model, n_levels=num_feature_levels, n_heads=ca_nhead, n_points=dec_n_points)
-
-        self.nhead = ca_nhead
-
-        # Implementation of Feedforward model
-        self.linear1 = nn.Linear(d_model, dim_feedforward)
-        self.linear2 = nn.Linear(dim_feedforward, d_model)
-
-        self.linear1_tiny = tinynn.Linear(d_model, dim_feedforward)
-        self.linear2_tiny = tinynn.Linear(dim_feedforward, d_model)
-
-        self.norm2 = nn.LayerNorm(d_model)
-        self.norm3 = nn.LayerNorm(d_model)
-        
-        self.normalize_before = normalize_before
-        self.group_detr = group_detr
+                 skip_self_attn=False): pass
 
     def with_pos_embed(self, tensor, pos: Optional[Tensor]): return tensor + pos
 
@@ -782,21 +553,7 @@ class TransformerDecoder(nn.Module):
                  return_intermediate=False,
                  d_model=256,
                  lite_refpoint_refine=False,
-                 bbox_reparam=False):
-        super().__init__()
-        self.layers = _get_clones(decoder_layer, num_layers)
-        self.num_layers = num_layers
-        self.d_model = d_model
-        self.norm = norm
-        self.return_intermediate = return_intermediate
-        self.lite_refpoint_refine = lite_refpoint_refine
-        self.bbox_reparam = bbox_reparam
-
-        self.ref_point_head = MLP(2 * d_model, d_model, d_model, 2)
-
-        self.norm_tiny = tinynn.LayerNorm(self.norm.normalized_shape, eps=self.norm.eps)
-
-        self._export = False
+                 bbox_reparam=False): pass
 
     def forward(self, tgt, memory,
                 tgt_mask: Optional[Tensor] = None,
@@ -882,26 +639,7 @@ def gen_encoder_output_proposals(memory, memory_padding_mask, spatial_shape, uns
 class MSDeformAttn(nn.Module):
     """Multi-Scale Deformable Attention Module
     """
-    def __init__(self, d_model=256, n_levels=4, n_heads=8, n_points=4):
-        super().__init__()
-        self.im2col_step = 64
-
-        self.d_model = d_model
-        self.n_levels = n_levels
-        self.n_heads = n_heads
-        self.n_points = n_points
-
-        self.sampling_offsets = nn.Linear(d_model, n_heads * n_levels * n_points * 2)
-        self.attention_weights = nn.Linear(d_model, n_heads * n_levels * n_points)
-        self.value_proj = nn.Linear(d_model, d_model)
-        self.output_proj = nn.Linear(d_model, d_model)
-
-        self.value_proj_tiny = tinynn.Linear(d_model, d_model)
-        self.sampling_offsets_tiny = tinynn.Linear(d_model, n_heads * n_levels * n_points * 2)
-        self.attention_weights_tiny = tinynn.Linear(d_model, n_heads * n_levels * n_points)
-        self.output_proj_tiny = tinynn.Linear(d_model, d_model)
-
-        self._export = False
+    def __init__(self, d_model=256, n_levels=4, n_heads=8, n_points=4): pass
 
     def forward(self, query, reference_points, input_flatten, input_spatial_shapes,
                 input_level_start_index, input_padding_mask=None):
@@ -939,48 +677,7 @@ class Transformer(nn.Module):
                  num_feature_levels=4, dec_n_points=4,
                  lite_refpoint_refine=False,
                  decoder_norm_type='LN',
-                 bbox_reparam=False):
-        super().__init__()
-        self.encoder = None
-
-        decoder_layer = TransformerDecoderLayer(d_model, sa_nhead, ca_nhead, dim_feedforward,
-                                                dropout, activation, normalize_before,
-                                                group_detr=group_detr,
-                                                num_feature_levels=num_feature_levels,
-                                                dec_n_points=dec_n_points,
-                                                skip_self_attn=False,)
-        assert decoder_norm_type in ['LN', 'Identity']
-        norm = {
-            "LN": lambda channels: nn.LayerNorm(channels),
-            "Identity": lambda channels: nn.Identity(),
-        }
-        decoder_norm = norm[decoder_norm_type](d_model)
-
-        self.decoder = TransformerDecoder(decoder_layer, num_decoder_layers, decoder_norm,
-                                          return_intermediate=return_intermediate_dec,
-                                          d_model=d_model,
-                                          lite_refpoint_refine=lite_refpoint_refine,
-                                          bbox_reparam=bbox_reparam)
-
-
-        self.two_stage = two_stage
-        if two_stage:
-            self.enc_output = nn.ModuleList([nn.Linear(d_model, d_model) for _ in range(group_detr)])
-            self.enc_output_norm = nn.ModuleList([nn.LayerNorm(d_model) for _ in range(group_detr)])
-
-        
-        self.enc_output_tiny = tinynn.Linear(d_model, d_model)
-
-        self.enc_output_norm_tiny = tinynn.LayerNorm(d_model)
-
-        self.num_queries = num_queries
-        self.d_model = d_model
-        self.dec_layers = num_decoder_layers
-        self.group_detr = group_detr
-        self.num_feature_levels = num_feature_levels
-        self.bbox_reparam = bbox_reparam
-
-        self._export = False
+                 bbox_reparam=False): pass
 
     # todo, no list inputs
     def forward(self, srcs, masks, pos_embeds, refpoint_embed, query_feat):
@@ -1092,6 +789,7 @@ class ConvX(nn.Module):
         if type(x) != tinyTensor: x = to_tiny(x)
         out = tinyTensor.silu(x)
         return to_torch(out)
+    
 
 class Bottleneck(nn.Module):
     """Standard bottleneck."""
@@ -1130,23 +828,7 @@ class C2f(nn.Module):
         return y
 
 class LayerNorm(nn.Module):
-    """
-    A LayerNorm variant, popularized by Transformers, that performs point-wise mean and
-    variance normalization over the channel dimension for inputs that have shape
-    (batch_size, channels, height, width).
-    https://github.com/facebookresearch/ConvNeXt/blob/d1fa8f6fef0a165b27399986cc2bdacc92777e40/models/convnext.py#L119
-    """
-
-    def __init__(self, normalized_shape, eps=1e-6):
-        super().__init__()
-        self.weight = nn.Parameter(torch.ones(normalized_shape))
-        self.bias = nn.Parameter(torch.zeros(normalized_shape))
-
-        self.weight_tiny = to_tiny(self.weight)
-        self.bias_tiny = to_tiny(self.bias)
-
-        self.eps = eps
-        self.normalized_shape = (normalized_shape,)
+    def __init__(self, normalized_shape, eps=1e-6): pass
 
     def forward(self, x):
         if type(x) != tinyTensor: x = to_tiny(x)
@@ -1198,30 +880,7 @@ class MultiScaleProjector(nn.Module):
         rms_norm=False,
         survival_prob=1.0,
         force_drop_last_n_features=0,
-    ):
-        super(MultiScaleProjector, self).__init__()
-
-        self.scale_factors = scale_factors
-        self.survival_prob = survival_prob
-        self.force_drop_last_n_features = force_drop_last_n_features
-
-        stages_sampling = []
-        stages = []
-        self.use_extra_pool = False
-        for scale in scale_factors:
-            stages_sampling.append([])
-            for in_dim in in_channels:
-                stages_sampling[-1].append(nn.Sequential())
-            stages_sampling[-1] = nn.ModuleList(stages_sampling[-1])
-            in_dim = int(sum(in_channel // max(1, scale) for in_channel in in_channels))
-            layers = [
-                C2f(in_dim, out_channels, num_blocks, layer_norm=layer_norm),
-                get_norm('LN', out_channels),
-            ]
-            layers = nn.Sequential(*layers)
-            stages.append(layers)
-        self.stages_sampling = nn.ModuleList(stages_sampling)
-        self.stages = nn.ModuleList(stages)
+    ): pass
 
     def forward(self, x):
         x = to_tiny(x)
@@ -1242,17 +901,7 @@ def build_position_encoding(hidden_dim, position_embedding):
     return position_embedding
 
 class PositionEmbeddingSine(nn.Module):
-    def __init__(self, num_pos_feats=64, temperature=10000, normalize=False, scale=None):
-        super().__init__()
-        self.num_pos_feats = num_pos_feats
-        self.temperature = temperature
-        self.normalize = normalize
-        if scale is not None and normalize is False:
-            raise ValueError("normalize should be True if scale is passed")
-        if scale is None:
-            scale = 2 * math.pi
-        self.scale = scale
-        self._export = False
+    def __init__(self, num_pos_feats=64, temperature=10000, normalize=False, scale=None): pass
 
     def forward(self, tensor_list: NestedTensor, align_dim_orders = True):
         mask = tensor_list.mask
@@ -1293,60 +942,7 @@ class Backbone(BackboneBase):
                  patch_size: int = 14,
                  num_windows: int = 4,
                  positional_encoding_size: bool = False,
-                 ):
-        super().__init__()
-        # an example name here would be "dinov2_base" or "dinov2_registers_windowed_base"
-        # if "registers" is in the name, then use_registers is set to True, otherwise it is set to False
-        # similarly, if "windowed" is in the name, then use_windowed_attn is set to True, otherwise it is set to False
-        # the last part of the name should be the size
-        # and the start should be dinov2
-        name_parts = name.split("_")
-        assert name_parts[0] == "dinov2"
-        # name_parts[-1]
-        use_registers = False
-        if "registers" in name_parts:
-            use_registers = True
-            name_parts.remove("registers")
-        use_windowed_attn = False
-        if "windowed" in name_parts:
-            use_windowed_attn = True
-            name_parts.remove("windowed")
-        assert len(name_parts) == 2, "name should be dinov2, then either registers, windowed, both, or none, then the size"
-        self.encoder = DinoV2(
-            size=name_parts[-1],
-            out_feature_indexes=out_feature_indexes,
-            shape=target_shape,
-            use_registers=use_registers,
-            use_windowed_attn=use_windowed_attn,
-            gradient_checkpointing=gradient_checkpointing,
-            load_dinov2_weights=load_dinov2_weights,
-            patch_size=patch_size,
-            num_windows=num_windows,
-            positional_encoding_size=positional_encoding_size,
-        )
-        # build encoder + projector as backbone module
-        if freeze_encoder:
-            for param in self.encoder.parameters():
-                param.requires_grad = False
-
-        self.projector_scale = projector_scale
-        assert len(self.projector_scale) > 0
-        # x[0]
-        assert (
-            sorted(self.projector_scale) == self.projector_scale
-        ), "only support projector scale P3/P4/P5/P6 in ascending order."
-        level2scalefactor = dict(P3=2.0, P4=1.0, P5=0.5, P6=0.25)
-        scale_factors = [level2scalefactor[lvl] for lvl in self.projector_scale]
-
-        self.projector = MultiScaleProjector(
-            in_channels=self.encoder._out_feature_channels,
-            out_channels=out_channels,
-            scale_factors=scale_factors,
-            layer_norm=layer_norm,
-            rms_norm=rms_norm,
-        )
-
-        self._export = False
+                 ): pass
 
     def forward(self, tensor_list: NestedTensor):
         feats = self.encoder(tensor_list.tensors)
@@ -1642,9 +1238,7 @@ def populate_args(
     return args
 
 class Joiner(nn.Sequential):
-    def __init__(self, backbone, position_embedding):
-        super().__init__(backbone, position_embedding)
-        self._export = False
+    def __init__(self, backbone, position_embedding): pass
 
     def forward(self, tensor_list: NestedTensor):
         """ """
@@ -1679,21 +1273,9 @@ def nested_tensor_from_tensor_list(tensor_list: List[Tensor]) -> NestedTensor:
 class MLP(nn.Module):
     """ Very simple multi-layer perceptron (also called FFN)"""
 
-    def __init__(self, input_dim, hidden_dim, output_dim, num_layers):
-        super().__init__()
-        self.num_layers = num_layers
-        self.layers = nn.ModuleList()
-        self.layers.append(nn.Linear(input_dim, hidden_dim))
-        for _ in range(num_layers - 2): self.layers.append(nn.Linear(hidden_dim, hidden_dim))
-        self.layers.append(nn.Linear(hidden_dim, output_dim))
-
-        self.layers_tiny = []
-        self.layers_tiny.append(tinynn.Linear(input_dim, hidden_dim))
-        for _ in range(num_layers - 2): self.layers_tiny.append(tinynn.Linear(hidden_dim, hidden_dim))
-        self.layers_tiny.append(tinynn.Linear(hidden_dim, output_dim))
+    def __init__(self, input_dim, hidden_dim, output_dim, num_layers): pass
 
     def forward(self, x):
-        
         # todo move
         for i in range(self.num_layers):
             self.layers_tiny[i].weight = to_tiny(self.layers[i].weight)
@@ -1716,57 +1298,7 @@ class LWDETR(nn.Module):
                  group_detr=1,
                  two_stage=False,
                  lite_refpoint_refine=False,
-                 bbox_reparam=False):
-        """ Initializes the model.
-        Parameters:
-            backbone: torch module of the backbone to be used. See backbone.py
-            transformer: torch module of the transformer architecture. See transformer.py
-            num_classes: number of object classes
-            num_queries: number of object queries, ie detection slot. This is the maximal number of objects
-                         Conditional DETR can detect in a single image. For COCO, we recommend 100 queries.
-            aux_loss: True if auxiliary decoding losses (loss at each decoder layer) are to be used.
-            group_detr: Number of groups to speed detr training. Default is 1.
-            lite_refpoint_refine: TODO
-        """
-        super().__init__()
-        self.num_queries = num_queries
-        self.transformer = transformer
-        hidden_dim = transformer.d_model
-        self.class_embed = nn.Linear(hidden_dim, num_classes)
-        self.bbox_embed = MLP(hidden_dim, hidden_dim, 4, 3)
-        self.segmentation_head = segmentation_head
-
-        query_dim=4
-        self.refpoint_embed = nn.Embedding(num_queries * group_detr, query_dim)
-        self.query_feat = nn.Embedding(num_queries * group_detr, hidden_dim)
-        nn.init.constant_(self.refpoint_embed.weight.data, 0)
-
-        self.backbone = backbone
-        self.aux_loss = aux_loss
-        self.group_detr = group_detr
-
-        # iter update
-        self.lite_refpoint_refine = lite_refpoint_refine
-        if not self.lite_refpoint_refine:
-            self.transformer.decoder.bbox_embed = self.bbox_embed
-        else:
-            self.transformer.decoder.bbox_embed = None
-
-        self.bbox_reparam = bbox_reparam
-
-        # init bbox_mebed
-        nn.init.constant_(self.bbox_embed.layers[-1].weight.data, 0)
-        nn.init.constant_(self.bbox_embed.layers[-1].bias.data, 0)
-
-        # two_stage
-        self.two_stage = two_stage
-        if self.two_stage:
-            self.transformer.enc_out_bbox_embed = nn.ModuleList(
-                [copy.deepcopy(self.bbox_embed) for _ in range(group_detr)])
-            self.transformer.enc_out_class_embed = nn.ModuleList(
-                [copy.deepcopy(self.class_embed) for _ in range(group_detr)])
-
-        self._export = False
+                 bbox_reparam=False): pass
 
     def forward(self, samples: NestedTensor, targets=None):
         samples = nested_tensor_from_tensor_list(samples)
@@ -1794,86 +1326,6 @@ class LWDETR(nn.Module):
         cls_enc.append(cls_enc_gidx)
         out['enc_outputs'] = {'pred_logits': cls_enc, 'pred_boxes': ref_enc}
         return out
-
-def build_model(args):
-    # the `num_classes` naming here is somewhat misleading.
-    # it indeed corresponds to `max_obj_id + 1`, where max_obj_id
-    # is the maximum id for a class in your dataset. For example,
-    # COCO has a max_obj_id of 90, so we pass `num_classes` to be 91.
-    # As another example, for a dataset that has a single class with id 1,
-    # you should pass `num_classes` to be 2 (max_obj_id + 1).
-    # For more details on this, check the following discussion
-    # https://github.com/facebookresearch/detr/issues/108#issuecomment-650269223
-    num_classes = args.num_classes + 1
-
-    backbone = build_backbone(
-        encoder=args.encoder,
-        pretrained_encoder=args.pretrained_encoder,
-        window_block_indexes=args.window_block_indexes,
-        drop_path=args.drop_path,
-        out_channels=args.hidden_dim,
-        out_feature_indexes=args.out_feature_indexes,
-        projector_scale=args.projector_scale,
-        use_cls_token=args.use_cls_token,
-        hidden_dim=args.hidden_dim,
-        position_embedding=args.position_embedding,
-        freeze_encoder=args.freeze_encoder,
-        layer_norm=args.layer_norm,
-        target_shape=args.shape if hasattr(args, 'shape') else (args.resolution, args.resolution) if hasattr(args, 'resolution') else (640, 640),
-        rms_norm=args.rms_norm,
-        backbone_lora=args.backbone_lora,
-        gradient_checkpointing=args.gradient_checkpointing,
-        load_dinov2_weights=args.pretrain_weights is None,
-        patch_size=args.patch_size,
-        num_windows=args.num_windows,
-        positional_encoding_size=args.positional_encoding_size,
-    )
-    if args.encoder_only:
-        return backbone[0].encoder, None, None
-    if args.backbone_only:
-        return backbone, None, None
-
-    args.num_feature_levels = len(args.projector_scale)
-    transformer = build_transformer(args)
-
-    segmentation_head = None
-
-    model = LWDETR(
-        backbone,
-        transformer,
-        segmentation_head,
-        num_classes=num_classes,
-        num_queries=args.num_queries,
-        aux_loss=args.aux_loss,
-        group_detr=args.group_detr,
-        two_stage=args.two_stage,
-        lite_refpoint_refine=args.lite_refpoint_refine,
-        bbox_reparam=args.bbox_reparam,
-    )
-    return model
-
-def download_file(url: str, filename: str) -> None:
-    print("rory downloading url",url)
-    response = requests.get(url, stream=True)
-    total_size = int(response.headers['content-length'])
-    with open(filename, "wb") as f, tqdm(
-        desc=filename,
-        total=total_size,
-        unit='iB',
-        unit_scale=True,
-        unit_divisor=1024,
-    ) as pbar:
-        for data in response.iter_content(chunk_size=1024):
-            size = f.write(data)
-            pbar.update(size)
-
-def download_pretrain_weights(pretrain_weights: str, redownload=False):
-    if pretrain_weights in HOSTED_MODELS:
-        if redownload or not os.path.exists(pretrain_weights):
-            download_file(
-                HOSTED_MODELS[pretrain_weights],
-                pretrain_weights,
-            )
 
 def box_cxcywh_to_xyxy(x):
     x_c, y_c, w, h = [t.squeeze(-1) for t in x.split(1, dim=-1)]
@@ -1926,92 +1378,12 @@ class Model:
         args = populate_args(**kwargs)
         self.args = args
         self.resolution = args.resolution
-        self.model = build_model(args)
-        if args.pretrain_weights is not None:
-            print("Loading pretrain weights")
-            try:
-                checkpoint = torch.load(args.pretrain_weights, map_location='cpu', weights_only=False)
-            except Exception as e:
-                print(f"Failed to load pretrain weights: {e}")
-                # re-download weights if they are corrupted
-                print("Failed to load pretrain weights, re-downloading")
-                download_pretrain_weights(args.pretrain_weights, redownload=True)
-                checkpoint = torch.load(args.pretrain_weights, map_location='cpu', weights_only=False)
+
+        with open(f'tiny_{args.pretrain_weights}.pkl', 'rb') as f: self.model = pickle.load(f)
 
 
-            model_dict = self.model.state_dict()
-            for key, value in checkpoint['model'].items():
-                if key in model_dict:
-                    model_dict[key].copy_(value)
 
-            for i in range(len(self.model.backbone[0].encoder.encoder.encoder.layer)):
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.query_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.query.weight)
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.query_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.query.bias)
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.key_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.key.weight)
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.key_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.key.bias)
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.value_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.value.weight)
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.value_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.value.bias)
-
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.output.dense_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.output.dense.weight)
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.output.dense_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.output.dense.bias)
-
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc1_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc1.weight)
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc1_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc1.bias)
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc2_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc2.weight)
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc2_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc2.bias)
-
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].norm1_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].norm1.weight)
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].norm1_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].norm1.bias)
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].norm2_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].norm2.weight)
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].norm2_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].norm2.bias)
-
-                self.model.backbone[0].encoder.encoder.layernorm_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.layernorm.weight)
-                self.model.backbone[0].encoder.encoder.layernorm_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.layernorm.bias)
-
-            for i in range(len(self.model.transformer.decoder.layers)):
-                self.model.transformer.decoder.layers[i].norm1_tiny.weight = to_tiny(self.model.transformer.decoder.layers[i].norm1.weight)
-                self.model.transformer.decoder.layers[i].norm1_tiny.bias = to_tiny(self.model.transformer.decoder.layers[i].norm1.bias)
-                self.model.transformer.decoder.layers[i].norm2_tiny.weight = to_tiny(self.model.transformer.decoder.layers[i].norm2.weight)
-                self.model.transformer.decoder.layers[i].norm2_tiny.bias = to_tiny(self.model.transformer.decoder.layers[i].norm2.bias)
-                self.model.transformer.decoder.layers[i].norm3_tiny.weight = to_tiny(self.model.transformer.decoder.layers[i].norm3.weight)
-                self.model.transformer.decoder.layers[i].norm3_tiny.bias = to_tiny(self.model.transformer.decoder.layers[i].norm3.bias)
-                self.model.transformer.decoder.layers[i].linear1_tiny.weight = to_tiny(self.model.transformer.decoder.layers[i].linear1.weight)
-                self.model.transformer.decoder.layers[i].linear1_tiny.bias = to_tiny(self.model.transformer.decoder.layers[i].linear1.bias)
-                self.model.transformer.decoder.layers[i].linear2_tiny.weight = to_tiny(self.model.transformer.decoder.layers[i].linear2.weight)
-                self.model.transformer.decoder.layers[i].linear2_tiny.bias = to_tiny(self.model.transformer.decoder.layers[i].linear2.bias)
-
-            for i in range(len(self.model.transformer.decoder.layers)):
-                self.model.transformer.decoder.layers[i].cross_attn.value_proj_tiny.weight = to_tiny(self.model.transformer.decoder.layers[i].cross_attn.value_proj.weight)
-                self.model.transformer.decoder.layers[i].cross_attn.value_proj_tiny.bias = to_tiny(self.model.transformer.decoder.layers[i].cross_attn.value_proj.bias)
-                self.model.transformer.decoder.layers[i].cross_attn.output_proj_tiny.weight = to_tiny(self.model.transformer.decoder.layers[i].cross_attn.output_proj.weight)
-                self.model.transformer.decoder.layers[i].cross_attn.output_proj_tiny.bias = to_tiny(self.model.transformer.decoder.layers[i].cross_attn.output_proj.bias)
-
-            self.model.transformer.decoder.norm_tiny.weight = to_tiny(self.model.transformer.decoder.norm.weight)
-            self.model.transformer.decoder.norm_tiny.bias = to_tiny(self.model.transformer.decoder.norm.bias)
-
-            self.model.backbone[0].encoder.encoder.embeddings.patch_embeddings.projection_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.embeddings.patch_embeddings.projection.weight)
-            self.model.backbone[0].encoder.encoder.embeddings.patch_embeddings.projection_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.embeddings.patch_embeddings.projection.bias)
-            
-            self.model.transformer.enc_output_norm_tiny.weight = to_tiny(self.model.transformer.enc_output_norm[0].weight)
-            self.model.transformer.enc_output_norm_tiny.bias = to_tiny(self.model.transformer.enc_output_norm[0].bias)
-
-            self.model.transformer.enc_output_tiny.weight = to_tiny(self.model.transformer.enc_output[0].weight)
-            self.model.transformer.enc_output_tiny.bias = to_tiny(self.model.transformer.enc_output[0].bias)
-
-            self.model.backbone[0].projector.stages[0][0].cv1.conv_tiny.weight = to_tiny(self.model.backbone[0].projector.stages[0][0].cv1.conv.weight)
-            self.model.backbone[0].projector.stages[0][0].cv2.conv_tiny.weight = to_tiny(self.model.backbone[0].projector.stages[0][0].cv2.conv.weight)
-
-            for i in range(len(self.model.backbone[0].projector.stages[0][0].m)):
-                self.model.backbone[0].projector.stages[0][0].m[i].cv1.conv_tiny.weight =  to_tiny(self.model.backbone[0].projector.stages[0][0].m[i].cv1.conv.weight)
-                self.model.backbone[0].projector.stages[0][0].m[i].cv2.conv_tiny.weight =  to_tiny(self.model.backbone[0].projector.stages[0][0].m[i].cv2.conv.weight)
-
-            for i in range(len(self.model.transformer.decoder.layers)):
-                self.model.transformer.decoder.layers[i].cross_attn.sampling_offsets_tiny.weight.assign(to_tiny(self.model.transformer.decoder.layers[i].cross_attn.sampling_offsets.weight))
-                self.model.transformer.decoder.layers[i].cross_attn.sampling_offsets_tiny.bias.assign(to_tiny(self.model.transformer.decoder.layers[i].cross_attn.sampling_offsets.bias))
-                self.model.transformer.decoder.layers[i].cross_attn.attention_weights_tiny.weight.assign(to_tiny(self.model.transformer.decoder.layers[i].cross_attn.attention_weights.weight))
-                self.model.transformer.decoder.layers[i].cross_attn.attention_weights_tiny.bias.assign(to_tiny(self.model.transformer.decoder.layers[i].cross_attn.attention_weights.bias))
-
-            for k in checkpoint['model'].keys(): print(k)
+        #with open(f'tiny_{args.pretrain_weights}.pkl', 'wb') as f: pickle.dump(self.model, f)
 
         self.postprocess = PostProcess(num_select=args.num_select)
         self.stop_early = False
@@ -2130,7 +1502,6 @@ class RFDETR:
 
     def __init__(self, **kwargs):
         self.model_config = self.get_model_config(**kwargs)
-        self.maybe_download_pretrain_weights()
         self.model = self.get_model(self.model_config)
         self.callbacks = defaultdict(list)
 
@@ -2141,12 +1512,6 @@ class RFDETR:
         self._optimized_batch_size = None
         self._optimized_resolution = None
         self._optimized_dtype = None
-
-    def maybe_download_pretrain_weights(self):
-        """
-        Download pre-trained weights if they are not already downloaded.
-        """
-        download_pretrain_weights(self.model_config.pretrain_weights)
 
 
     def get_model(self, config: ModelConfig):
