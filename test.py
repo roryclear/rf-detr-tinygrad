@@ -905,11 +905,6 @@ class MSDeformAttn(nn.Module):
 
     def forward(self, query, reference_points, input_flatten, input_spatial_shapes,
                 input_level_start_index, input_padding_mask=None):
-        
-        # todo move to weight load, cant
-        self.attention_weights_tiny.weight.assign(to_tiny(self.attention_weights.weight))
-        self.attention_weights_tiny.bias.assign(to_tiny(self.attention_weights.bias))
-
         query = to_tiny(query)
         reference_points = to_tiny(reference_points)
         input_flatten = to_tiny(input_flatten)
@@ -2012,6 +2007,8 @@ class Model:
             for i in range(len(self.model.transformer.decoder.layers)):
                 self.model.transformer.decoder.layers[i].cross_attn.sampling_offsets_tiny.weight.assign(to_tiny(self.model.transformer.decoder.layers[i].cross_attn.sampling_offsets.weight))
                 self.model.transformer.decoder.layers[i].cross_attn.sampling_offsets_tiny.bias.assign(to_tiny(self.model.transformer.decoder.layers[i].cross_attn.sampling_offsets.bias))
+                self.model.transformer.decoder.layers[i].cross_attn.attention_weights_tiny.weight.assign(to_tiny(self.model.transformer.decoder.layers[i].cross_attn.attention_weights.weight))
+                self.model.transformer.decoder.layers[i].cross_attn.attention_weights_tiny.bias.assign(to_tiny(self.model.transformer.decoder.layers[i].cross_attn.attention_weights.bias))
 
             for k in checkpoint['model'].keys(): print(k)
 
