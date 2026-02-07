@@ -115,9 +115,6 @@ class Dinov2WithRegistersPatchEmbeddings(nn.Module):
         return to_torch(x)
 
 class WindowedDinov2WithRegistersEmbeddings(nn.Module):
-    """
-    Construct the CLS token, mask token, register tokens, position and patch embeddings.
-    """
 
     def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
         super().__init__()
@@ -168,10 +165,7 @@ class Dinov2WithRegistersSelfOutput(nn.Module):
     layernorm applied before each block.
     """
 
-    def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
-        super().__init__()
-        self.dense = nn.Linear(config.hidden_size, config.hidden_size)
-        self.dense_tiny = tinynn.Linear(config.hidden_size, config.hidden_size)
+    def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None: pass
 
     def forward(self, x):
         x = to_tiny(x)
@@ -377,18 +371,7 @@ class WindowedDinov2WithRegistersBackbone(PreTrainedModel, BackboneMixin):
         return output
 
 class DinoV2(nn.Module):
-    def __init__(self,
-            shape=(640, 640),
-            out_feature_indexes=[2, 4, 5, 9],
-            size="base",
-            use_registers=True,
-            use_windowed_attn=True,
-            gradient_checkpointing=False,
-            load_dinov2_weights=True,
-            patch_size=14,
-            num_windows=4,
-            positional_encoding_size=37,
-            ): pass
+    def __init__(self): pass
 
     def forward(self, x):
         block_size = self.patch_size * self.num_windows
@@ -453,10 +436,7 @@ def ms_deform_attn_core_pytorch(value, value_spatial_shapes, sampling_locations,
     return to_torch(ret)
 
 class TransformerDecoderLayer(nn.Module):
-    def __init__(self, d_model, sa_nhead, ca_nhead, dim_feedforward=2048, dropout=0.1,
-                 activation="relu", normalize_before=False, group_detr=1,
-                 num_feature_levels=4, dec_n_points=4,
-                 skip_self_attn=False): pass
+    def __init__(self): pass
 
     def with_pos_embed(self, tensor, pos: Optional[Tensor]): return tensor + pos
 
@@ -546,14 +526,7 @@ def _get_clones(module, N):
 
 class TransformerDecoder(nn.Module):
 
-    def __init__(self,
-                 decoder_layer,
-                 num_layers,
-                 norm=None,
-                 return_intermediate=False,
-                 d_model=256,
-                 lite_refpoint_refine=False,
-                 bbox_reparam=False): pass
+    def __init__(self): pass
 
     def forward(self, tgt, memory,
                 tgt_mask: Optional[Tensor] = None,
@@ -639,7 +612,7 @@ def gen_encoder_output_proposals(memory, memory_padding_mask, spatial_shape, uns
 class MSDeformAttn(nn.Module):
     """Multi-Scale Deformable Attention Module
     """
-    def __init__(self, d_model=256, n_levels=4, n_heads=8, n_points=4): pass
+    def __init__(self): pass
 
     def forward(self, query, reference_points, input_flatten, input_spatial_shapes,
                 input_level_start_index, input_padding_mask=None):
@@ -669,15 +642,7 @@ class MSDeformAttn(nn.Module):
         return output
 
 class Transformer(nn.Module):
-    def __init__(self, d_model=512, sa_nhead=8, ca_nhead=8, num_queries=300,
-                 num_decoder_layers=6, dim_feedforward=2048, dropout=0.0,
-                 activation="relu", normalize_before=False,
-                 return_intermediate_dec=False, group_detr=1,
-                 two_stage=False,
-                 num_feature_levels=4, dec_n_points=4,
-                 lite_refpoint_refine=False,
-                 decoder_norm_type='LN',
-                 bbox_reparam=False): pass
+    def __init__(self): pass
 
     # todo, no list inputs
     def forward(self, srcs, masks, pos_embeds, refpoint_embed, query_feat):
@@ -828,7 +793,7 @@ class C2f(nn.Module):
         return y
 
 class LayerNorm(nn.Module):
-    def __init__(self, normalized_shape, eps=1e-6): pass
+    def __init__(self): pass
 
     def forward(self, x):
         if type(x) != tinyTensor: x = to_tiny(x)
@@ -870,17 +835,7 @@ class MultiScaleProjector(nn.Module):
     It creates pyramid features built on top of the input feature map.
     """
 
-    def __init__(
-        self,
-        in_channels,
-        out_channels,
-        scale_factors,
-        num_blocks=3,
-        layer_norm=False,
-        rms_norm=False,
-        survival_prob=1.0,
-        force_drop_last_n_features=0,
-    ): pass
+    def __init__(self): pass
 
     def forward(self, x):
         x = to_tiny(x)
@@ -923,26 +878,7 @@ class PositionEmbeddingSine(nn.Module):
 
 class Backbone(BackboneBase):
     """backbone."""
-    def __init__(self,
-                 name: str,
-                 pretrained_encoder: str=None,
-                 window_block_indexes: list=None,
-                 drop_path=0.0,
-                 out_channels=256,
-                 out_feature_indexes: list=None,
-                 projector_scale: list=None,
-                 use_cls_token: bool = False,
-                 freeze_encoder: bool = False,
-                 layer_norm: bool = False,
-                 target_shape: tuple[int, int] = (640, 640),
-                 rms_norm: bool = False,
-                 backbone_lora: bool = False,
-                 gradient_checkpointing: bool = False,
-                 load_dinov2_weights: bool = True,
-                 patch_size: int = 14,
-                 num_windows: int = 4,
-                 positional_encoding_size: bool = False,
-                 ): pass
+    def __init__(self): pass
 
     def forward(self, tensor_list: NestedTensor):
         feats = self.encoder(tensor_list.tensors)
@@ -1238,7 +1174,7 @@ def populate_args(
     return args
 
 class Joiner(nn.Sequential):
-    def __init__(self, backbone, position_embedding): pass
+    def __init__(self): pass
 
     def forward(self, tensor_list: NestedTensor):
         """ """
@@ -1273,7 +1209,7 @@ def nested_tensor_from_tensor_list(tensor_list: List[Tensor]) -> NestedTensor:
 class MLP(nn.Module):
     """ Very simple multi-layer perceptron (also called FFN)"""
 
-    def __init__(self, input_dim, hidden_dim, output_dim, num_layers): pass
+    def __init__(self): pass
 
     def forward(self, x):
         # todo move
@@ -1288,17 +1224,7 @@ class MLP(nn.Module):
 
 class LWDETR(nn.Module):
     """ This is the Group DETR v3 module that performs object detection """
-    def __init__(self,
-                 backbone,
-                 transformer,
-                 segmentation_head,
-                 num_classes,
-                 num_queries,
-                 aux_loss=False,
-                 group_detr=1,
-                 two_stage=False,
-                 lite_refpoint_refine=False,
-                 bbox_reparam=False): pass
+    def __init__(self): pass
 
     def forward(self, samples: NestedTensor, targets=None):
         samples = nested_tensor_from_tensor_list(samples)
@@ -1458,47 +1384,14 @@ class ModelConfig(BaseModel):
         return os.path.realpath(os.path.expanduser(v))
 
 class RFDETR:
-    """
-    The base RF-DETR class implements the core methods for training RF-DETR models,
-    running inference on the models, optimising models, and uploading trained
-    models for deployment.
-    """
     means = [0.485, 0.456, 0.406]
     stds = [0.229, 0.224, 0.225]
-    size = None
 
     def __init__(self, **kwargs):
         self.model_config = self.get_model_config(**kwargs)
         self.model = self.get_model(self.model_config)
-        self.callbacks = defaultdict(list)
 
-        self._is_optimized_for_inference = False
-        self._has_warned_about_not_being_optimized_for_inference = False
-        self._optimized_has_been_compiled = False
-        self._optimized_batch_size = None
-        self._optimized_resolution = None
-        self._optimized_dtype = None
-
-
-    def get_model(self, config: ModelConfig):
-        """
-        Retrieve a model instance based on the provided configuration.
-        """
-        return Model(**config.dict())
-
-    # Get class_names from the model
-    @property
-    def class_names(self):
-        """
-        Retrieve the class names supported by the loaded model.
-
-        Returns:
-            dict: A dictionary mapping class IDs to class names. The keys are integers starting from
-        """
-        if hasattr(self.model, 'class_names') and self.model.class_names:
-            return {i+1: name for i, name in enumerate(self.model.class_names)}
-
-        return COCO_CLASSES
+    def get_model(self, config: ModelConfig): return Model(**config.dict())
 
     def predict(
         self,
