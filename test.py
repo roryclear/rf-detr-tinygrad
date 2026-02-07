@@ -906,7 +906,7 @@ class MSDeformAttn(nn.Module):
     def forward(self, query, reference_points, input_flatten, input_spatial_shapes,
                 input_level_start_index, input_padding_mask=None):
         
-        # todo move to weight load
+        # todo move to weight load, cant
         self.sampling_offsets_tiny.weight = to_tiny(self.sampling_offsets.weight)
         self.sampling_offsets_tiny.bias = to_tiny(self.sampling_offsets.bias)
         self.attention_weights_tiny.weight = to_tiny(self.attention_weights.weight)
@@ -975,9 +975,8 @@ class Transformer(nn.Module):
             self.enc_output = nn.ModuleList([nn.Linear(d_model, d_model) for _ in range(group_detr)])
             self.enc_output_norm = nn.ModuleList([nn.LayerNorm(d_model) for _ in range(group_detr)])
 
+        
         self.enc_output_tiny = tinynn.Linear(d_model, d_model)
-        self.enc_output_tiny.weight = to_tiny(self.enc_output[0].weight)
-        self.enc_output_tiny.bias = to_tiny(self.enc_output[0].bias)
 
         self.enc_output_norm_tiny = tinynn.LayerNorm(d_model)
 
@@ -2002,6 +2001,9 @@ class Model:
             
             self.model.transformer.enc_output_norm_tiny.weight = to_tiny(self.model.transformer.enc_output_norm[0].weight)
             self.model.transformer.enc_output_norm_tiny.bias = to_tiny(self.model.transformer.enc_output_norm[0].bias)
+
+            self.model.transformer.enc_output_tiny.weight = to_tiny(self.model.transformer.enc_output[0].weight)
+            self.model.transformer.enc_output_tiny.bias = to_tiny(self.model.transformer.enc_output[0].bias)
 
             for k in checkpoint['model'].keys(): print(k)
 
