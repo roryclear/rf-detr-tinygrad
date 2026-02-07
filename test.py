@@ -1090,7 +1090,6 @@ class ConvX(nn.Module):
                               dilation=dilation, bias=False)
         
         self.conv_tiny = tinynn.Conv2d(in_planes, out_planes, (kernel, kernel), stride, padding, dilation, groups, False)
-        self.conv_tiny.weight = to_tiny(self.conv.weight)
         self.bn = LayerNorm(out_planes)
 
     def forward(self, x):
@@ -2004,6 +2003,14 @@ class Model:
 
             self.model.transformer.enc_output_tiny.weight = to_tiny(self.model.transformer.enc_output[0].weight)
             self.model.transformer.enc_output_tiny.bias = to_tiny(self.model.transformer.enc_output[0].bias)
+
+            self.model.backbone[0].projector.stages[0][0].cv1.conv_tiny.weight = to_tiny(self.model.backbone[0].projector.stages[0][0].cv1.conv.weight)
+            self.model.backbone[0].projector.stages[0][0].cv2.conv_tiny.weight = to_tiny(self.model.backbone[0].projector.stages[0][0].cv2.conv.weight)
+
+            for i in range(len(self.model.backbone[0].projector.stages[0][0].m)):
+                self.model.backbone[0].projector.stages[0][0].m[i].cv1.conv_tiny.weight =  to_tiny(self.model.backbone[0].projector.stages[0][0].m[i].cv1.conv.weight)
+                self.model.backbone[0].projector.stages[0][0].m[i].cv2.conv_tiny.weight =  to_tiny(self.model.backbone[0].projector.stages[0][0].m[i].cv2.conv.weight)
+
 
             for k in checkpoint['model'].keys(): print(k)
 
