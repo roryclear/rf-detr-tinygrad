@@ -907,8 +907,6 @@ class MSDeformAttn(nn.Module):
                 input_level_start_index, input_padding_mask=None):
         
         # todo move to weight load
-        self.value_proj_tiny.weight = to_tiny(self.value_proj.weight)
-        self.value_proj_tiny.bias = to_tiny(self.value_proj.bias)
         self.sampling_offsets_tiny.weight = to_tiny(self.sampling_offsets.weight)
         self.sampling_offsets_tiny.bias = to_tiny(self.sampling_offsets.bias)
         self.attention_weights_tiny.weight = to_tiny(self.attention_weights.weight)
@@ -1994,13 +1992,18 @@ class Model:
                 self.model.transformer.decoder.layers[i].linear2_tiny.weight = to_tiny(self.model.transformer.decoder.layers[i].linear2.weight)
                 self.model.transformer.decoder.layers[i].linear2_tiny.bias = to_tiny(self.model.transformer.decoder.layers[i].linear2.bias)
 
+            for i in range(len(self.model.transformer.decoder.layers)):
+                self.model.transformer.decoder.layers[i].cross_attn.value_proj_tiny.weight = to_tiny(self.model.transformer.decoder.layers[i].cross_attn.value_proj.weight)
+                self.model.transformer.decoder.layers[i].cross_attn.value_proj_tiny.bias = to_tiny(self.model.transformer.decoder.layers[i].cross_attn.value_proj.bias)
+
             self.model.transformer.decoder.norm_tiny.weight = to_tiny(self.model.transformer.decoder.norm.weight)
             self.model.transformer.decoder.norm_tiny.bias = to_tiny(self.model.transformer.decoder.norm.bias)
 
             self.model.backbone[0].encoder.encoder.embeddings.patch_embeddings.projection_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.embeddings.patch_embeddings.projection.weight)
             self.model.backbone[0].encoder.encoder.embeddings.patch_embeddings.projection_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.embeddings.patch_embeddings.projection.bias)
-
+            
             for k in checkpoint['model'].keys(): print(k)
+
         self.postprocess = PostProcess(num_select=args.num_select)
         self.stop_early = False
 
