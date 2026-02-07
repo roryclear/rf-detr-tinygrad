@@ -1378,7 +1378,6 @@ class Model:
         args = populate_args(**kwargs)
         self.args = args
         self.resolution = args.resolution
-
         with open(f'tiny_{args.pretrain_weights}.pkl', 'rb') as f: self.model = pickle.load(f)
 
 
@@ -1419,9 +1418,6 @@ class ModelConfig(BaseModel):
 
 
 class RFDETRBaseConfig(ModelConfig):
-    """
-    The configuration for an RF-DETR Base model.
-    """
     encoder: Literal["dinov2_windowed_small", "dinov2_windowed_base"] = "dinov2_windowed_small"
     hidden_dim: int = 256
     patch_size: int = 14
@@ -1436,12 +1432,8 @@ class RFDETRBaseConfig(ModelConfig):
     out_feature_indexes: List[int] = [2, 5, 8, 11]
     pretrain_weights: Optional[str] = "rf-detr-base.pth"
     resolution: int = 560
-    positional_encoding_size: int = 37
 
 class RFDETRNanoConfig(RFDETRBaseConfig):
-    """
-    The configuration for an RF-DETR Nano model.
-    """
     out_feature_indexes: List[int] = [3, 6, 9, 12]
     num_windows: int = 2
     dec_layers: int = 2
@@ -1451,33 +1443,8 @@ class RFDETRNanoConfig(RFDETRBaseConfig):
     pretrain_weights: Optional[str] = "rf-detr-nano.pth"
 
 class ModelConfig(BaseModel):
-    encoder: Literal["dinov2_windowed_small", "dinov2_windowed_base"]
-    out_feature_indexes: List[int]
-    dec_layers: int
-    two_stage: bool = True
-    projector_scale: List[Literal["P3", "P4", "P5"]]
-    hidden_dim: int
-    patch_size: int
-    num_windows: int
-    sa_nheads: int
-    ca_nheads: int
-    dec_n_points: int
-    bbox_reparam: bool = True
-    lite_refpoint_refine: bool = True
-    layer_norm: bool = True
-    amp: bool = True
-    num_classes: int = 90
     pretrain_weights: Optional[str] = None
-    device: Literal["cpu", "cuda", "mps"] = DEVICE
     resolution: int
-    group_detr: int = 13
-    gradient_checkpointing: bool = False
-    positional_encoding_size: int
-    ia_bce_loss: bool = True
-    cls_loss_coef: float = 1.0
-    segmentation_head: bool = False
-    mask_downsample_ratio: int = 4
-    license: str = "Apache-2.0"
 
     @field_validator("pretrain_weights", mode="after")
     @classmethod
@@ -1505,7 +1472,6 @@ class RFDETR:
         self.model = self.get_model(self.model_config)
         self.callbacks = defaultdict(list)
 
-        self.model.inference_model = None
         self._is_optimized_for_inference = False
         self._has_warned_about_not_being_optimized_for_inference = False
         self._optimized_has_been_compiled = False
