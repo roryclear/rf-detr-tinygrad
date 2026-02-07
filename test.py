@@ -947,16 +947,6 @@ def build_backbone(
     model = Joiner(backbone, position_embedding)
     return model
 
-def populate_args(
-    num_select=100,
-    **extra_kwargs  # To handle any unexpected arguments
-):
-    args = argparse.Namespace(
-        num_select=num_select,
-        **extra_kwargs
-    )
-    return args
-
 class Joiner(nn.Sequential):
     def __init__(self): pass
 
@@ -1085,7 +1075,10 @@ class PostProcess():
 
 class Model:
     def __init__(self, **kwargs):
-        args = populate_args(**kwargs)
+        args = argparse.Namespace(
+            num_select=kwargs.get('num_select', 100),
+            **{k: v for k, v in kwargs.items() if k != 'num_select'}
+        )
         self.args = args
         self.resolution = args.resolution
         with open(f'tiny_{args.pretrain_weights}.pkl', 'rb') as f: self.model = pickle.load(f)
@@ -1234,22 +1227,11 @@ class RFDETR:
             labels = labels[keep]
             boxes = boxes[keep]
 
-            if "masks" in result:
-                masks = result["masks"]
-                masks = masks[keep]
-
-                detections = sv.Detections(
-                    xyxy=boxes.float().cpu().numpy(),
-                    confidence=scores.float().cpu().numpy(),
-                    class_id=labels.cpu().numpy(),
-                    mask=masks.squeeze(1).cpu().numpy(),
-                )
-            else:
-                detections = sv.Detections(
-                    xyxy=boxes.float().cpu().numpy(),
-                    confidence=scores.float().cpu().numpy(),
-                    class_id=labels.cpu().numpy(),
-                )
+            detections = sv.Detections(
+                xyxy=boxes.float().cpu().numpy(),
+                confidence=scores.float().cpu().numpy(),
+                class_id=labels.cpu().numpy(),
+            )
 
             detections_list.append(detections)
 
