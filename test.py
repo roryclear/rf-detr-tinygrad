@@ -795,8 +795,6 @@ class TransformerDecoder(nn.Module):
         self.ref_point_head = MLP(2 * d_model, d_model, d_model, 2)
 
         self.norm_tiny = tinynn.LayerNorm(self.norm.normalized_shape, eps=self.norm.eps)
-        self.norm_tiny.weight = to_tiny(self.norm.weight)
-        self.norm_tiny.bias = to_tiny(self.norm.bias)
 
         self._export = False
 
@@ -1996,11 +1994,13 @@ class Model:
                 self.model.transformer.decoder.layers[i].linear2_tiny.weight = to_tiny(self.model.transformer.decoder.layers[i].linear2.weight)
                 self.model.transformer.decoder.layers[i].linear2_tiny.bias = to_tiny(self.model.transformer.decoder.layers[i].linear2.bias)
 
+            self.model.transformer.decoder.norm_tiny.weight = to_tiny(self.model.transformer.decoder.norm.weight)
+            self.model.transformer.decoder.norm_tiny.bias = to_tiny(self.model.transformer.decoder.norm.bias)
+
             self.model.backbone[0].encoder.encoder.embeddings.patch_embeddings.projection_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.embeddings.patch_embeddings.projection.weight)
             self.model.backbone[0].encoder.encoder.embeddings.patch_embeddings.projection_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.embeddings.patch_embeddings.projection.bias)
 
             for k in checkpoint['model'].keys(): print(k)
-
         self.postprocess = PostProcess(num_select=args.num_select)
         self.stop_early = False
 
