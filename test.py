@@ -2179,10 +2179,6 @@ class RFDETR:
         threshold: float = 0.5,
         **kwargs,
     ) -> Union[sv.Detections, List[sv.Detections]]:
-        if not self._is_optimized_for_inference and not self._has_warned_about_not_being_optimized_for_inference:
-            self._has_warned_about_not_being_optimized_for_inference = True
-            self.model.model.eval()
-
         if not isinstance(images, list):
             images = [images]
 
