@@ -1893,13 +1893,13 @@ def box_cxcywh_to_xyxy(x):
     ]
     return tinyTensor.stack(b, dim=-1)
 
-class PostProcess(nn.Module):
+class PostProcess():
     """ This module converts the model's output into the format expected by the coco api"""
     def __init__(self, num_select=300) -> None:
         super().__init__()
         self.num_select = num_select
 
-    def forward(self, outputs, target_sizes):
+    def __call__(self, outputs, target_sizes):
         """ Perform the computation
         Parameters:
             outputs: raw outputs of the model
