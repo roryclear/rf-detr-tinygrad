@@ -1941,8 +1941,13 @@ class Model:
                 print("Failed to load pretrain weights, re-downloading")
                 download_pretrain_weights(args.pretrain_weights, redownload=True)
                 checkpoint = torch.load(args.pretrain_weights, map_location='cpu', weights_only=False)
-            self.model.load_state_dict(checkpoint['model'], strict=False)
-            
+
+
+            model_dict = self.model.state_dict()
+            for key, value in checkpoint['model'].items():
+                if key in model_dict:
+                    model_dict[key].copy_(value)
+
             for i in range(len(self.model.backbone[0].encoder.encoder.encoder.layer)):
                 self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.query_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.query.weight)
                 self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.query_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.query.bias)
