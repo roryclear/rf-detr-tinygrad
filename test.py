@@ -980,8 +980,6 @@ class Transformer(nn.Module):
         self.enc_output_tiny.bias = to_tiny(self.enc_output[0].bias)
 
         self.enc_output_norm_tiny = tinynn.LayerNorm(d_model)
-        self.enc_output_norm_tiny.weight = to_tiny(self.enc_output_norm[0].weight)
-        self.enc_output_norm_tiny.bias = to_tiny(self.enc_output_norm[0].bias)
 
         self.num_queries = num_queries
         self.d_model = d_model
@@ -2002,6 +2000,9 @@ class Model:
             self.model.backbone[0].encoder.encoder.embeddings.patch_embeddings.projection_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.embeddings.patch_embeddings.projection.weight)
             self.model.backbone[0].encoder.encoder.embeddings.patch_embeddings.projection_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.embeddings.patch_embeddings.projection.bias)
             
+            self.model.transformer.enc_output_norm_tiny.weight = to_tiny(self.model.transformer.enc_output_norm[0].weight)
+            self.model.transformer.enc_output_norm_tiny.bias = to_tiny(self.model.transformer.enc_output_norm[0].bias)
+
             for k in checkpoint['model'].keys(): print(k)
 
         self.postprocess = PostProcess(num_select=args.num_select)
