@@ -907,10 +907,8 @@ class MSDeformAttn(nn.Module):
                 input_level_start_index, input_padding_mask=None):
         
         # todo move to weight load, cant
-        self.sampling_offsets_tiny.weight = to_tiny(self.sampling_offsets.weight)
-        self.sampling_offsets_tiny.bias = to_tiny(self.sampling_offsets.bias)
-        self.attention_weights_tiny.weight = to_tiny(self.attention_weights.weight)
-        self.attention_weights_tiny.bias = to_tiny(self.attention_weights.bias)
+        self.attention_weights_tiny.weight.assign(to_tiny(self.attention_weights.weight))
+        self.attention_weights_tiny.bias.assign(to_tiny(self.attention_weights.bias))
 
         query = to_tiny(query)
         reference_points = to_tiny(reference_points)
@@ -2011,6 +2009,9 @@ class Model:
                 self.model.backbone[0].projector.stages[0][0].m[i].cv1.conv_tiny.weight =  to_tiny(self.model.backbone[0].projector.stages[0][0].m[i].cv1.conv.weight)
                 self.model.backbone[0].projector.stages[0][0].m[i].cv2.conv_tiny.weight =  to_tiny(self.model.backbone[0].projector.stages[0][0].m[i].cv2.conv.weight)
 
+            for i in range(len(self.model.transformer.decoder.layers)):
+                self.model.transformer.decoder.layers[i].cross_attn.sampling_offsets_tiny.weight.assign(to_tiny(self.model.transformer.decoder.layers[i].cross_attn.sampling_offsets.weight))
+                self.model.transformer.decoder.layers[i].cross_attn.sampling_offsets_tiny.bias.assign(to_tiny(self.model.transformer.decoder.layers[i].cross_attn.sampling_offsets.bias))
 
             for k in checkpoint['model'].keys(): print(k)
 
