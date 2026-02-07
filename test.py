@@ -911,8 +911,6 @@ class MSDeformAttn(nn.Module):
         self.sampling_offsets_tiny.bias = to_tiny(self.sampling_offsets.bias)
         self.attention_weights_tiny.weight = to_tiny(self.attention_weights.weight)
         self.attention_weights_tiny.bias = to_tiny(self.attention_weights.bias)
-        self.output_proj_tiny.weight = to_tiny(self.output_proj.weight)
-        self.output_proj_tiny.bias = to_tiny(self.output_proj.bias)
 
         query = to_tiny(query)
         reference_points = to_tiny(reference_points)
@@ -1995,6 +1993,8 @@ class Model:
             for i in range(len(self.model.transformer.decoder.layers)):
                 self.model.transformer.decoder.layers[i].cross_attn.value_proj_tiny.weight = to_tiny(self.model.transformer.decoder.layers[i].cross_attn.value_proj.weight)
                 self.model.transformer.decoder.layers[i].cross_attn.value_proj_tiny.bias = to_tiny(self.model.transformer.decoder.layers[i].cross_attn.value_proj.bias)
+                self.model.transformer.decoder.layers[i].cross_attn.output_proj_tiny.weight = to_tiny(self.model.transformer.decoder.layers[i].cross_attn.output_proj.weight)
+                self.model.transformer.decoder.layers[i].cross_attn.output_proj_tiny.bias = to_tiny(self.model.transformer.decoder.layers[i].cross_attn.output_proj.bias)
 
             self.model.transformer.decoder.norm_tiny.weight = to_tiny(self.model.transformer.decoder.norm.weight)
             self.model.transformer.decoder.norm_tiny.bias = to_tiny(self.model.transformer.decoder.norm.bias)
