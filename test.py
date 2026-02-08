@@ -683,7 +683,7 @@ class Transformer_tiny():
         enc_outputs_class_unselected_gidx = output_memory_gidx @ self.enc_out_class_embed_w.T + self.enc_out_class_embed_b
 
         
-        enc_outputs_coord_delta_gidx = self.enc_out_bbox_embed[0](output_memory_gidx)
+        enc_outputs_coord_delta_gidx = self.enc_out_bbox_embed(output_memory_gidx)
 
         enc_outputs_coord_delta_gidx = to_tiny(enc_outputs_coord_delta_gidx)
 
@@ -798,7 +798,7 @@ class C2f(nn.Module):
         self.c = int(c2 * e)  # hidden channels
         self.cv1 = ConvX(c1, 2 * self.c, 1, 1, act=act, layer_norm=layer_norm, rms_norm=rms_norm)
         self.cv2 = ConvX((2 + n) * self.c, c2, 1, act=act, layer_norm=layer_norm, rms_norm=rms_norm)  # optional act=FReLU(c2)
-        self.m = nn.ModuleList(Bottleneck(self.c, self.c, shortcut, g, k=(3, 3), e=1.0, act=act, layer_norm=layer_norm, rms_norm=rms_norm) for _ in range(n))
+        self.m = Bottleneck(self.c, self.c, shortcut, g, k=(3, 3), e=1.0, act=act, layer_norm=layer_norm, rms_norm=rms_norm)
 
     def forward(self, x):
         """Forward pass using split() instead of chunk()."""
@@ -1136,6 +1136,7 @@ class Model:
         with open(f'tiny_{args.pretrain_weights}.pkl', 'rb') as f: self.model = pickle.load(f)
 
         print(self.model)
+        self.model.transformer.enc_out_bbox_embed = self.model.transformer.enc_out_bbox_embed[0]
         for k in self.model.state_dict().keys(): print(k)
 
         self.model_tiny = LWDETR_tiny(self.model)
@@ -1146,6 +1147,8 @@ class Model:
         self.model_tiny.backbone = Joiner_tiny(self.model.backbone)
         self.model_tiny.transformer.decoder = TransformerDecoder_tiny(self.model.transformer.decoder)
         self.model_tiny.transformer.decoder.ref_point_head = MLP_tiny(self.model.transformer.decoder.ref_point_head)
+
+        print(type(self.model_tiny.transformer.enc_out_bbox_embed))
 
         # TransformerDecoder - 
         # self.layers: ModuleList
