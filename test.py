@@ -545,7 +545,7 @@ class TransformerDecoder_tiny():
                     spatial_shapes: Optional[Tensor] = None, # bs, num_levels, 2
                     valid_ratios: Optional[Tensor] = None):
             output = tgt
-
+            
             intermediate = []
             refpoints_unsigmoid = to_tiny(refpoints_unsigmoid)
             def get_reference(refpoints_unsigmoid, valid_ratios):
@@ -730,6 +730,8 @@ class Transformer_tiny():
 
 class Transformer(nn.Module):
     def __init__(self): pass
+
+    def forward(self): exit()
 
 def build_transformer(args):
     return Transformer(
@@ -1040,7 +1042,6 @@ class MLP(nn.Module):
 class LWDETR_tiny():
     """ This is the Group DETR v3 module that performs object detection """
     def __init__(self, model):
-        self.model = model  # ← real nn.Module lives here
         self.backbone = model.backbone
         self.transformer = model.transformer
         self.refpoint_embed = model.refpoint_embed
@@ -1149,6 +1150,10 @@ class Model:
         self.model_tiny.transformer.decoder.ref_point_head = MLP_tiny(self.model.transformer.decoder.ref_point_head)
         self.model_tiny.transformer.enc_out_bbox_embed = MLP_tiny(self.model.transformer.enc_out_bbox_embed)
 
+        print("tiny:\n",vars(self.model_tiny))
+        print(type(self.model_tiny))
+        #exit()
+        
         # TransformerDecoder - 
         # self.layers: ModuleList
         # self.norm_tiny: tinynn.layernorm
