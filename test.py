@@ -1147,8 +1147,7 @@ class Model:
         self.model_tiny.backbone = Joiner_tiny(self.model.backbone)
         self.model_tiny.transformer.decoder = TransformerDecoder_tiny(self.model.transformer.decoder)
         self.model_tiny.transformer.decoder.ref_point_head = MLP_tiny(self.model.transformer.decoder.ref_point_head)
-
-        print(type(self.model_tiny.transformer.enc_out_bbox_embed))
+        self.model_tiny.transformer.enc_out_bbox_embed = MLP_tiny(self.model.transformer.enc_out_bbox_embed)
 
         # TransformerDecoder - 
         # self.layers: ModuleList
