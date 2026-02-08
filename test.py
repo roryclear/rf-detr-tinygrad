@@ -1007,13 +1007,14 @@ def nested_tensor_from_tensor_list(tensor_list: List[Tensor]) -> NestedTensor:
         m[: img.shape[1], :img.shape[2]] = False
     return NestedTensor(tensor, mask)
 
-class MLP(nn.Module):
-    """ Very simple multi-layer perceptron (also called FFN)"""
+class MLP_tiny():
+    def __init__(self, mlp):
+        super().__init__()
+        self.num_layers = mlp.num_layers
+        self.layers = copy.deepcopy(mlp.layers)
+        self.layers_tiny = copy.deepcopy(mlp.layers_tiny)
 
-    def __init__(self): pass
-
-    def forward(self, x):
-        # todo move
+    def __call__(self, x):
         for i in range(self.num_layers):
             self.layers_tiny[i].weight = to_tiny(self.layers[i].weight)
             self.layers_tiny[i].bias = to_tiny(self.layers[i].bias)
@@ -1022,6 +1023,19 @@ class MLP(nn.Module):
         for i, layer in enumerate(self.layers_tiny):
             x = tinyTensor.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
         return to_torch(x)
+
+class MLP(nn.Module):
+    def __init__(self): pass
+    def __call__(self, x):
+        for i in range(self.num_layers):
+            self.layers_tiny[i].weight = to_tiny(self.layers[i].weight)
+            self.layers_tiny[i].bias = to_tiny(self.layers[i].bias)
+
+        x = to_tiny(x)
+        for i, layer in enumerate(self.layers_tiny):
+            x = tinyTensor.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
+        return to_torch(x)
+
 
 class LWDETR_tiny():
     """ This is the Group DETR v3 module that performs object detection """
@@ -1131,6 +1145,7 @@ class Model:
         self.model_tiny.transformer.d_model)
         self.model_tiny.backbone = Joiner_tiny(self.model.backbone)
         self.model_tiny.transformer.decoder = TransformerDecoder_tiny(self.model.transformer.decoder)
+        self.model_tiny.transformer.decoder.ref_point_head = MLP_tiny(self.model.transformer.decoder.ref_point_head)
 
         # TransformerDecoder - 
         # self.layers: ModuleList
