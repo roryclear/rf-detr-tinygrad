@@ -1136,9 +1136,9 @@ class Model:
         self.resolution = args.resolution
         with open(f'tiny_{args.pretrain_weights}.pkl', 'rb') as f: self.model = pickle.load(f)
 
-        print(self.model)
+        #print(self.model)
         self.model.transformer.enc_out_bbox_embed = self.model.transformer.enc_out_bbox_embed[0]
-        for k in self.model.state_dict().keys(): print(k)
+        #for k in self.model.state_dict().keys(): print(k)
 
         self.model_tiny = LWDETR_tiny(self.model)
         self.model_tiny.transformer = Transformer_tiny(self.model.transformer.decoder, self.model.transformer.enc_output, \
@@ -1150,9 +1150,24 @@ class Model:
         self.model_tiny.transformer.decoder.ref_point_head = MLP_tiny(self.model.transformer.decoder.ref_point_head)
         self.model_tiny.transformer.enc_out_bbox_embed = MLP_tiny(self.model.transformer.enc_out_bbox_embed)
 
-        print("tiny:\n",vars(self.model_tiny))
-        print(type(self.model_tiny))
-        #exit()
+        #print("tiny:\n",vars(self.model_tiny))
+
+        def print_obj(obj, s=""):
+            if not hasattr(obj, "__dict__"): return
+            if hasattr(obj, "__len__") and type(obj) not in [Tensor, tinyTensor]:
+                try:
+                    for i in range(len(obj)):
+                        print(s + "." + str(i), type(obj[i]))
+                        print_obj(obj[i], s + "." + str(i))
+                except: a=0
+            for k in list(vars(obj).keys()):
+                print(s + "." + k, type(getattr(obj, k)))
+                if type(getattr(obj, k)) == List: print(len(getattr(obj, k)))
+                if type(getattr(obj, k)) in [dict, collections.OrderedDict]: print(len(getattr(obj, k).keys()))
+                print_obj(getattr(obj, k), s + "." + k)
+
+        print(list(vars(self.model_tiny).keys()))
+        print_obj(self.model_tiny, "model")
         
         # TransformerDecoder - 
         # self.layers: ModuleList
