@@ -1309,7 +1309,7 @@ class Model:
                 return
             
             # Objects - just print class name and recurse
-            print(f"{path}: {obj.__class__.__name__}")
+            print(f"{path}: {type(obj)}")
             
             if not hasattr(obj, "__dict__"):
                 return
