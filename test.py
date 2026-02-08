@@ -1214,6 +1214,12 @@ class PostProcess():
         boxes = to_torch(boxes)
         return [{'scores': s, 'labels': l, 'boxes': b} for s, l, b in zip(topk_values, labels, boxes)]
 
+def to_tiny_seq(x):
+    ret = tiny_seq(len(x))
+    for i in range(len(x)):
+        ret[i] = x[i]
+    return ret
+
 class Model:
     def __init__(self, **kwargs):
         args = argparse.Namespace(
@@ -1243,6 +1249,11 @@ class Model:
         for i in range(len(self.model.transformer.decoder.layers)):
             self.model_tiny.transformer.decoder.layers[i] = TransformerDecoderLayer_tiny(self.model.transformer.decoder.layers[i])
 
+        self.model_tiny.transformer.enc_output = to_tiny_seq(self.model.transformer.enc_output)
+        self.model_tiny.transformer.decoder.ref_point_head.layers = to_tiny_seq(self.model.transformer.decoder.ref_point_head.layers)
+        self.model_tiny.transformer.enc_out_bbox_embed.layers = to_tiny_seq(self.model.transformer.enc_out_bbox_embed.layers)
+        self.model_tiny.transformer.enc_out_class_embed = to_tiny_seq(self.model.transformer.enc_out_class_embed)
+
         #print("tiny:\n",vars(self.model_tiny))
         to_del = []
         def print_obj(obj, s=""):
@@ -1260,7 +1271,7 @@ class Model:
                 print_obj(getattr(obj, k), s + "." + k)
 
         print(list(vars(self.model_tiny).keys()))
-        print_obj(self.model_tiny, "model")
+        print_obj(self.model_tiny, "self.model")
         
         # TransformerDecoder - 
         # self.layers: ModuleList
