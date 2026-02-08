@@ -875,6 +875,30 @@ def build_position_encoding(hidden_dim, position_embedding):
         position_embedding = PositionEmbeddingSine(N_steps, normalize=True)
     return position_embedding
 
+class PositionEmbeddingSine_tiny():
+    def __init__(self, pos):
+        self.num_pos_feats = pos.num_pos_feats
+        self.temperature = pos.temperature
+        self.scale = pos.scale
+
+    def __call__(self, tensor_list: NestedTensor, align_dim_orders = True):
+        mask = tensor_list.mask
+        if type(mask) != tinyTensor: mask = to_tiny(mask)
+        not_mask = ~mask
+        y_embed = not_mask.cumsum(1)
+        x_embed = not_mask.cumsum(2)
+        eps = 1e-6
+        y_embed = y_embed / (y_embed[:, -1:, :] + eps) * self.scale
+        x_embed = x_embed / (x_embed[:, :, -1:] + eps) * self.scale
+        dim_t = tinyTensor.arange(self.num_pos_feats)
+        dim_t = self.temperature ** (2 * (dim_t // 2) / self.num_pos_feats)
+        pos_x = x_embed[:, :, :, None] / dim_t
+        pos_y = y_embed[:, :, :, None] / dim_t
+        pos_x = tinyTensor.stack((pos_x[:, :, :, 0::2].sin(), pos_x[:, :, :, 1::2].cos()), dim=4).flatten(3)
+        pos_y = tinyTensor.stack((pos_y[:, :, :, 0::2].sin(), pos_y[:, :, :, 1::2].cos()), dim=4).flatten(3)
+        pos = tinyTensor.cat(pos_y, pos_x, dim=3).permute(0, 3, 1, 2)
+        return to_torch(pos)
+
 class PositionEmbeddingSine(nn.Module):
     def __init__(self, num_pos_feats=64, temperature=10000, normalize=False, scale=None): pass
 
@@ -895,6 +919,23 @@ class PositionEmbeddingSine(nn.Module):
         pos_y = tinyTensor.stack((pos_y[:, :, :, 0::2].sin(), pos_y[:, :, :, 1::2].cos()), dim=4).flatten(3)
         pos = tinyTensor.cat(pos_y, pos_x, dim=3).permute(0, 3, 1, 2)
         return to_torch(pos)
+
+class Backbone_tiny():
+    """backbone."""
+    def __init__(self, backbone):
+        self.encoder = backbone.encoder
+        self.projector = backbone.projector
+
+    def __call__(self, tensor_list: NestedTensor):
+        feats = self.encoder(tensor_list.tensors)
+        feats = self.projector(feats)
+        out = []
+        m = tensor_list.mask
+        m = to_tiny(m)
+        mask = ~tinyTensor.interpolate(m.unsqueeze(0), size=feats[0].shape[-2:])[0]
+        mask = to_torch(mask).bool()
+        out.append(NestedTensor(feats[0], mask))
+        return out
 
 class Backbone(BackboneBase):
     """backbone."""
@@ -972,6 +1013,25 @@ class Joiner_tiny():
         super().__init__()
         self.backbone = copy.deepcopy(joiner[0])
         self.position_embedding = copy.deepcopy(joiner[1])
+
+    def __len__(self):
+        return 2
+
+    def __getitem__(self, idx):
+        if idx == 0:
+            return self.backbone
+        elif idx == 1:
+            return self.position_embedding
+        else:
+            raise IndexError(f"Joiner_tiny index {idx} out of range")
+
+    def __setitem__(self, idx, value):
+        if idx == 0:
+            self.backbone = value
+        elif idx == 1:
+            self.position_embedding = value
+        else:
+            raise IndexError(f"Joiner_tiny index {idx} out of range")
 
     def __call__(self, tensor_list):
         x = self.backbone(tensor_list)
@@ -1149,9 +1209,10 @@ class Model:
         self.model_tiny.transformer.decoder = TransformerDecoder_tiny(self.model.transformer.decoder)
         self.model_tiny.transformer.decoder.ref_point_head = MLP_tiny(self.model.transformer.decoder.ref_point_head)
         self.model_tiny.transformer.enc_out_bbox_embed = MLP_tiny(self.model.transformer.enc_out_bbox_embed)
+        self.model_tiny.backbone[1] = PositionEmbeddingSine_tiny(self.model.backbone[1])
 
         #print("tiny:\n",vars(self.model_tiny))
-
+        to_del = []
         def print_obj(obj, s=""):
             if not hasattr(obj, "__dict__"): return
             if hasattr(obj, "__len__") and type(obj) not in [Tensor, tinyTensor]:
@@ -1162,8 +1223,8 @@ class Model:
                 except: a=0
             for k in list(vars(obj).keys()):
                 print(s + "." + k, type(getattr(obj, k)))
-                if type(getattr(obj, k)) == List: print(len(getattr(obj, k)))
-                if type(getattr(obj, k)) in [dict, collections.OrderedDict]: print(len(getattr(obj, k).keys()))
+                if type(getattr(obj, k)) == List and len(getattr(obj, k)) > 0: print(len(getattr(obj, k)))
+                if type(getattr(obj, k)) in [dict, collections.OrderedDict] and len(getattr(obj, k).keys()) > 0: print(len(getattr(obj, k).keys()))
                 print_obj(getattr(obj, k), s + "." + k)
 
         print(list(vars(self.model_tiny).keys()))
