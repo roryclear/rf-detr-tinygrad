@@ -521,61 +521,69 @@ def gen_sineembed_for_position(pos_tensor, dim=128):
     pos = tinyTensor.cat(pos_y, pos_x, pos_w, pos_h, dim=2)
     return to_torch(pos)
 
-def _get_clones(module, N):
-    return nn.ModuleList([copy.deepcopy(module) for i in range(N)])
+class TransformerDecoder_tiny(nn.Module):
+    def __init__(self, decoder: nn.Module):
+        super().__init__()
 
-class TransformerDecoder(nn.Module):
+        # copy modules / attributes
+        self.layers = copy.deepcopy(decoder.layers)
+        self.norm_tiny = copy.deepcopy(decoder.norm_tiny)
+        self.ref_point_head = copy.deepcopy(decoder.ref_point_head)
 
-    def __init__(self): pass
+        # copy simple attributes
+        self.d_model = decoder.d_model
 
     def forward(self, tgt, memory,
-                tgt_mask: Optional[Tensor] = None,
-                memory_mask: Optional[Tensor] = None,
-                tgt_key_padding_mask: Optional[Tensor] = None,
-                memory_key_padding_mask: Optional[Tensor] = None,
-                pos: Optional[Tensor] = None,
-                refpoints_unsigmoid: Optional[Tensor] = None,
-                # for memory
-                level_start_index: Optional[Tensor] = None, # num_levels
-                spatial_shapes: Optional[Tensor] = None, # bs, num_levels, 2
-                valid_ratios: Optional[Tensor] = None):
-        output = tgt
+                    tgt_mask: Optional[Tensor] = None,
+                    memory_mask: Optional[Tensor] = None,
+                    tgt_key_padding_mask: Optional[Tensor] = None,
+                    memory_key_padding_mask: Optional[Tensor] = None,
+                    pos: Optional[Tensor] = None,
+                    refpoints_unsigmoid: Optional[Tensor] = None,
+                    # for memory
+                    level_start_index: Optional[Tensor] = None, # num_levels
+                    spatial_shapes: Optional[Tensor] = None, # bs, num_levels, 2
+                    valid_ratios: Optional[Tensor] = None):
+            output = tgt
 
-        intermediate = []
-        refpoints_unsigmoid = to_tiny(refpoints_unsigmoid)
-        def get_reference(refpoints_unsigmoid, valid_ratios):
-            valid_ratios = to_tiny(valid_ratios)
-            obj_center = refpoints_unsigmoid[..., :4]
-            refpoints_input = obj_center[:, :, None] * tinyTensor.cat(valid_ratios, valid_ratios, dim=-1)[:, None]
-            refpoints_input = to_torch(refpoints_input)
-            query_sine_embed = gen_sineembed_for_position(
-                refpoints_input[:, :, 0, :], self.d_model / 2) # bs, nq, 256*2
-            query_pos = self.ref_point_head(query_sine_embed)
-            return refpoints_input, query_pos, query_sine_embed
+            intermediate = []
+            refpoints_unsigmoid = to_tiny(refpoints_unsigmoid)
+            def get_reference(refpoints_unsigmoid, valid_ratios):
+                valid_ratios = to_tiny(valid_ratios)
+                obj_center = refpoints_unsigmoid[..., :4]
+                refpoints_input = obj_center[:, :, None] * tinyTensor.cat(valid_ratios, valid_ratios, dim=-1)[:, None]
+                refpoints_input = to_torch(refpoints_input)
+                query_sine_embed = gen_sineembed_for_position(
+                    refpoints_input[:, :, 0, :], self.d_model / 2) # bs, nq, 256*2
+                query_pos = self.ref_point_head(query_sine_embed)
+                return refpoints_input, query_pos, query_sine_embed
 
-        for layer_id, layer in enumerate(self.layers):
-            refpoints_input, query_pos, query_sine_embed = get_reference(refpoints_unsigmoid, valid_ratios) #todo
-            pos_transformation = 1
+            for layer_id, layer in enumerate(self.layers):
+                refpoints_input, query_pos, query_sine_embed = get_reference(refpoints_unsigmoid, valid_ratios) #todo
+                pos_transformation = 1
 
-            query_pos = query_pos * pos_transformation
-            output = layer(output, memory, tgt_mask=tgt_mask,
-                           memory_mask=memory_mask,
-                           tgt_key_padding_mask=tgt_key_padding_mask,
-                           memory_key_padding_mask=memory_key_padding_mask,
-                           pos=pos, query_pos=query_pos, query_sine_embed=query_sine_embed,
-                           is_first=(layer_id == 0),
-                           reference_points=refpoints_input,
-                           spatial_shapes=spatial_shapes,
-                           level_start_index=level_start_index)
+                query_pos = query_pos * pos_transformation
+                output = layer(output, memory, tgt_mask=tgt_mask,
+                            memory_mask=memory_mask,
+                            tgt_key_padding_mask=tgt_key_padding_mask,
+                            memory_key_padding_mask=memory_key_padding_mask,
+                            pos=pos, query_pos=query_pos, query_sine_embed=query_sine_embed,
+                            is_first=(layer_id == 0),
+                            reference_points=refpoints_input,
+                            spatial_shapes=spatial_shapes,
+                            level_start_index=level_start_index)
 
-            output = to_tiny(output)
-            x = self.norm_tiny(output)
-            intermediate.append(x)
-        
-        output = self.norm_tiny(output)
-        intermediate.pop()
-        intermediate.append(output)
-        return [to_torch(tinyTensor.stack(intermediate)), to_torch(refpoints_unsigmoid.unsqueeze(0))]
+                output = to_tiny(output)
+                x = self.norm_tiny(output)
+                intermediate.append(x)
+            
+            output = self.norm_tiny(output)
+            intermediate.pop()
+            intermediate.append(output)
+            return [to_torch(tinyTensor.stack(intermediate)), to_torch(refpoints_unsigmoid.unsqueeze(0))]
+
+class TransformerDecoder(nn.Module):
+    def __init__(self): pass
 
 def gen_encoder_output_proposals(memory, memory_padding_mask, spatial_shape, unsigmoid=True):
     memory = to_tiny(memory)
@@ -1124,7 +1132,9 @@ class Model:
         self.model_tiny.backbone = Joiner_tiny(self.model.backbone)
 
 
-        print(self.model_tiny)
+        self.model_tiny.transformer.decoder = TransformerDecoder_tiny(self.model.transformer.decoder)
+
+        #print(self.model_tiny)
         with open(f'tiny_{args.pretrain_weights}2.pkl', 'wb') as f: pickle.dump(self.model, f)
 
         self.postprocess = PostProcess(num_select=args.num_select)
