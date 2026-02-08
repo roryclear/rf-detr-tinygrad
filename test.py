@@ -957,16 +957,25 @@ def build_backbone(
     model = Joiner(backbone, position_embedding)
     return model
 
-class Joiner(nn.Sequential):
-    def __init__(self): pass
+class Joiner_tiny(nn.Module):
+    def __init__(self, joiner: nn.Module):
+        super().__init__()
+        self.backbone = copy.deepcopy(joiner[0])
+        self.position_embedding = copy.deepcopy(joiner[1])
 
-    def forward(self, tensor_list: NestedTensor):
-        """ """
-        x = self[0](tensor_list)
+    def forward(self, tensor_list):
+        x = self.backbone(tensor_list)
         pos = []
         for x_ in x:
-            pos.append(self[1](x_, align_dim_orders=False).to(x_.tensors.dtype))
+            pos.append(
+                self.position_embedding(
+                    x_, align_dim_orders=False
+                ).to(x_.tensors.dtype)
+            )
         return x, pos
+
+class Joiner(nn.Sequential):
+    def __init__(self): pass
     
 def _max_by_axis(the_list: List[List[int]]) -> List[int]:
     maxes = the_list[0]
@@ -1109,9 +1118,10 @@ class Model:
 
         self.model_tiny = LWDETR_tiny(self.model)
         self.model_tiny.transformer = Transformer_tiny(self.model.transformer.decoder, self.model.transformer.enc_output, \
-        self.model.transformer.enc_out_bbox_embed, self.model.transformer.enc_out_class_embed, self.model.transformer.bbox_reparam,\
-        self.model.transformer.enc_output_norm_tiny, self.model.transformer.enc_output_tiny, self.model.transformer.num_queries,\
-        self.model.transformer.d_model)
+        self.model_tiny.transformer.enc_out_bbox_embed, self.model.transformer.enc_out_class_embed, self.model.transformer.bbox_reparam,\
+        self.model_tiny.transformer.enc_output_norm_tiny, self.model.transformer.enc_output_tiny, self.model.transformer.num_queries,\
+        self.model_tiny.transformer.d_model)
+        self.model_tiny.backbone = Joiner_tiny(self.model.backbone)
 
 
         print(self.model_tiny)
