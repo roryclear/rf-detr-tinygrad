@@ -521,8 +521,8 @@ def gen_sineembed_for_position(pos_tensor, dim=128):
     pos = tinyTensor.cat(pos_y, pos_x, pos_w, pos_h, dim=2)
     return to_torch(pos)
 
-class TransformerDecoder_tiny(nn.Module):
-    def __init__(self, decoder: nn.Module):
+class TransformerDecoder_tiny():
+    def __init__(self, decoder):
         super().__init__()
 
         # copy modules / attributes
@@ -533,7 +533,7 @@ class TransformerDecoder_tiny(nn.Module):
         # copy simple attributes
         self.d_model = decoder.d_model
 
-    def forward(self, tgt, memory,
+    def __call__(self, tgt, memory,
                     tgt_mask: Optional[Tensor] = None,
                     memory_mask: Optional[Tensor] = None,
                     tgt_key_padding_mask: Optional[Tensor] = None,
@@ -965,13 +965,13 @@ def build_backbone(
     model = Joiner(backbone, position_embedding)
     return model
 
-class Joiner_tiny(nn.Module):
-    def __init__(self, joiner: nn.Module):
+class Joiner_tiny():
+    def __init__(self, joiner):
         super().__init__()
         self.backbone = copy.deepcopy(joiner[0])
         self.position_embedding = copy.deepcopy(joiner[1])
 
-    def forward(self, tensor_list):
+    def __call__(self, tensor_list):
         x = self.backbone(tensor_list)
         pos = []
         for x_ in x:
@@ -1130,9 +1130,13 @@ class Model:
         self.model_tiny.transformer.enc_output_norm_tiny, self.model.transformer.enc_output_tiny, self.model.transformer.num_queries,\
         self.model_tiny.transformer.d_model)
         self.model_tiny.backbone = Joiner_tiny(self.model.backbone)
-
-
         self.model_tiny.transformer.decoder = TransformerDecoder_tiny(self.model.transformer.decoder)
+
+        # TransformerDecoder - 
+        # self.layers: ModuleList
+        # self.norm_tiny: tinynn.layernorm
+        # self.ref_point_head: MLP
+        
 
         #print(self.model_tiny)
         with open(f'tiny_{args.pretrain_weights}2.pkl', 'wb') as f: pickle.dump(self.model, f)
