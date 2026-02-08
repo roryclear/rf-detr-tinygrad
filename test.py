@@ -340,7 +340,7 @@ class WindowedDinov2WithRegistersBackbone(PreTrainedModel, BackboneMixin):
 
     def __init__(self, config: WindowedDinov2WithRegistersConfig): pass
 
-    def get_input_embeddings(self) -> Dinov2WithRegistersPatchEmbeddings:
+    def get_input_embeddings(self):
         return self.embeddings.patch_embeddings
 
     def forward(
@@ -840,6 +840,7 @@ class C2f(nn.Module):
         y = to_torch(y)
         return y
 
+
 class LayerNorm(nn.Module):
     def __init__(self): pass
 
@@ -1234,6 +1235,9 @@ class Model:
         self.model.transformer.enc_out_bbox_embed = self.model.transformer.enc_out_bbox_embed[0]
         #for k in self.model.state_dict().keys(): print(k)
 
+        print(self.model)
+        #exit()
+
         self.model_tiny = LWDETR_tiny(self.model)
         self.model_tiny.transformer = Transformer_tiny(self.model.transformer.decoder, self.model.transformer.enc_output, \
         self.model_tiny.transformer.enc_out_bbox_embed, self.model.transformer.enc_out_class_embed, self.model.transformer.bbox_reparam,\
@@ -1253,31 +1257,65 @@ class Model:
         self.model_tiny.transformer.decoder.ref_point_head.layers = to_tiny_seq(self.model.transformer.decoder.ref_point_head.layers)
         self.model_tiny.transformer.enc_out_bbox_embed.layers = to_tiny_seq(self.model.transformer.enc_out_bbox_embed.layers)
         self.model_tiny.transformer.enc_out_class_embed = to_tiny_seq(self.model.transformer.enc_out_class_embed)
-
-        #print("tiny:\n",vars(self.model_tiny))
-        to_del = []
-        def print_obj(obj, s=""):
-            if not hasattr(obj, "__dict__"): return
-            if hasattr(obj, "__len__") and type(obj) not in [Tensor, tinyTensor]:
-                try:
-                    for i in range(len(obj)):
-                        print(s + "." + str(i), type(obj[i]))
-                        print_obj(obj[i], s + "." + str(i))
-                except: a=0
-            for k in list(vars(obj).keys()):
-                print(s + "." + k, type(getattr(obj, k)))
-                if type(getattr(obj, k)) == List and len(getattr(obj, k)) > 0: print(len(getattr(obj, k)))
-                if type(getattr(obj, k)) in [dict, collections.OrderedDict] and len(getattr(obj, k).keys()) > 0: print(len(getattr(obj, k).keys()))
-                print_obj(getattr(obj, k), s + "." + k)
-
-        print(list(vars(self.model_tiny).keys()))
-        print_obj(self.model_tiny, "self.model")
         
-        # TransformerDecoder - 
-        # self.layers: ModuleList
-        # self.norm_tiny: tinynn.layernorm
-        # self.ref_point_head: MLP
         
+        SKIP_KEYS = {
+            "_parameters", "_buffers", "_modules",
+            "_backward_hooks", "_forward_hooks",
+            "_forward_pre_hooks", "_state_dict_hooks",
+            "_load_state_dict_pre_hooks", "_load_state_dict_post_hooks",
+            "_non_persistent_buffers_set",
+        }
+
+
+        def print_obj(obj, path="self.model", seen=None):
+            if seen is None:
+                seen = set()
+            
+            oid = id(obj)
+            if oid in seen:
+                print(f"{path}: <recursion>")
+                return
+            seen.add(oid)
+            
+            # Basic types
+            if isinstance(obj, (int, float, str, bool, type(None))):
+                print(f"{path}: {obj}")
+                return
+            
+            if isinstance(obj, torch.Tensor):
+                print(f"{path}: Tensor{tuple(obj.shape)}")
+                return
+            
+            # Collections
+            if isinstance(obj, (list, tuple)):
+                print(f"{path}: {obj.__class__.__name__}[{len(obj)}]")
+                for i, v in enumerate(obj):
+                    print_obj(v, f"{path}[{i}]", seen)
+                return
+            
+            if isinstance(obj, dict):
+                print(f"{path}: dict[{len(obj)}]")
+                for k, v in obj.items():
+                    print_obj(v, f"{path}.{k}", seen)
+                return
+            
+            # Objects - just print class name and recurse
+            print(f"{path}: {obj.__class__.__name__}")
+            
+            if not hasattr(obj, "__dict__"):
+                return
+            
+            for k, v in obj.__dict__.items():
+                if k.startswith("_"):
+                    continue
+                print_obj(v, f"{path}.{k}", seen)
+                
+                # TransformerDecoder - 
+                # self.layers: ModuleList
+                # self.norm_tiny: tinynn.layernorm
+                # self.ref_point_head: MLP
+        print_obj(self.model_tiny)
 
         #print(self.model_tiny)
         with open(f'tiny_{args.pretrain_weights}2.pkl', 'wb') as f: pickle.dump(self.model, f)
