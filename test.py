@@ -102,6 +102,25 @@ OPEN_SOURCE_MODELS = {
     "rf-detr-seg-xxlarge.pt": "https://storage.googleapis.com/rfdetr/rf-detr-seg-2xl-ft.pth",
 }
 
+
+class tiny_seq():
+    def __init__(self, size=0):
+        self.modules = [None] * size
+
+    def __setitem__(self, idx, value):
+        self.modules[idx] = value
+        
+    def __getitem__(self, idx):
+        return self.modules[idx]
+    
+    def __iter__(self):
+        return iter(self.modules)
+
+    def __forward__(self, x):
+        for i in self.modules: x = i(x)
+        return x
+
+
 class WindowedDinov2WithRegistersConfig(BackboneConfigMixin, PretrainedConfig):
     model_type = "dinov2_with_registers"
     def __init__(): pass
@@ -435,12 +454,17 @@ def ms_deform_attn_core_pytorch(value, value_spatial_shapes, sampling_locations,
     ret = output.transpose(1, 2).contiguous()
     return to_torch(ret)
 
-class TransformerDecoderLayer(nn.Module):
-    def __init__(self): pass
+class TransformerDecoderLayer_tiny():
+    def __init__(self, dec):
+        self.self_attn = dec.self_attn
+        self.norm1_tiny = dec.norm1_tiny
+        self.norm2_tiny = dec.norm2_tiny
+        self.norm3_tiny = dec.norm3_tiny
+        self.cross_attn = dec.cross_attn
+        self.linear1_tiny = dec.linear1_tiny
+        self.linear2_tiny = dec.linear2_tiny
 
-    def with_pos_embed(self, tensor, pos: Optional[Tensor]): return tensor + pos
-
-    def forward(self, tgt, memory,
+    def __call__(self, tgt, memory,
                      tgt_mask: Optional[Tensor] = None,
                      memory_mask: Optional[Tensor] = None,
                      tgt_key_padding_mask: Optional[Tensor] = None,
@@ -499,6 +523,10 @@ class TransformerDecoderLayer(nn.Module):
         tgt += tgt2
         tgt = self.norm3_tiny(tgt)
         return to_torch(tgt)
+
+
+class TransformerDecoderLayer(nn.Module):
+    def __init__(self): pass
     
 def gen_sineembed_for_position(pos_tensor, dim=128):
     pos_tensor = to_tiny(pos_tensor)
@@ -1210,6 +1238,10 @@ class Model:
         self.model_tiny.transformer.decoder.ref_point_head = MLP_tiny(self.model.transformer.decoder.ref_point_head)
         self.model_tiny.transformer.enc_out_bbox_embed = MLP_tiny(self.model.transformer.enc_out_bbox_embed)
         self.model_tiny.backbone[1] = PositionEmbeddingSine_tiny(self.model.backbone[1])
+        
+        self.model_tiny.transformer.decoder.layers = tiny_seq(size=len(self.model.transformer.decoder.layers))
+        for i in range(len(self.model.transformer.decoder.layers)):
+            self.model_tiny.transformer.decoder.layers[i] = TransformerDecoderLayer_tiny(self.model.transformer.decoder.layers[i])
 
         #print("tiny:\n",vars(self.model_tiny))
         to_del = []
