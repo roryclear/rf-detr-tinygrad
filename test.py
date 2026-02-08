@@ -639,11 +639,20 @@ class MSDeformAttn(nn.Module):
         output = self.output_proj_tiny(output)
         return output
 
-class Transformer(nn.Module):
-    def __init__(self): pass
+class Transformer_tiny():
+    def __init__(self, decoder, enc_output, enc_out_bbox_embed, enc_out_class_embed, bbox_reparam, enc_output_norm_tiny, enc_output_tiny,
+        num_queries, d_model):
+        self.decoder = decoder
+        self.enc_output = enc_output
+        self.enc_out_bbox_embed = enc_out_bbox_embed
+        self.enc_out_class_embed = enc_out_class_embed
+        self.bbox_reparam = bbox_reparam
+        self.enc_output_norm_tiny = enc_output_norm_tiny
+        self.enc_output_tiny = enc_output_tiny
+        self.num_queries = num_queries
+        self.d_model = d_model
 
-    # todo, no list inputs
-    def forward(self, srcs, masks, pos_embeds, refpoint_embed, query_feat):
+    def __call__(self, srcs, masks, pos_embeds, refpoint_embed, query_feat):
 
         self.enc_out_class_embed_w = to_tiny(self.enc_out_class_embed[0].weight)
         self.enc_out_class_embed_b = to_tiny(self.enc_out_class_embed[0].bias)
@@ -710,6 +719,9 @@ class Transformer(nn.Module):
                         valid_ratios=Tensor([[[1., 1.]]]))
 
         return hs, references, to_torch(memory_ts), boxes_ts
+
+class Transformer(nn.Module):
+    def __init__(self): pass
 
 def build_transformer(args):
     return Transformer(
@@ -994,11 +1006,19 @@ class MLP(nn.Module):
             x = tinyTensor.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
         return to_torch(x)
 
-class LWDETR(nn.Module):
+class LWDETR_tiny():
     """ This is the Group DETR v3 module that performs object detection """
-    def __init__(self): pass
+    def __init__(self, model):
+        self.model = model  # ← real nn.Module lives here
+        self.backbone = model.backbone
+        self.transformer = model.transformer
+        self.refpoint_embed = model.refpoint_embed
+        self.query_feat = model.query_feat
+        self.bbox_embed = model.bbox_embed
+        self.class_embed = model.class_embed
+        self.num_queries = model.num_queries
 
-    def forward(self, samples: NestedTensor, targets=None):
+    def __call__(self, samples: NestedTensor, targets=None):
         samples = nested_tensor_from_tensor_list(samples)
         features, poss = self.backbone(samples)
         src, mask = features[0].tensors, features[0].mask
@@ -1024,6 +1044,9 @@ class LWDETR(nn.Module):
         cls_enc.append(cls_enc_gidx)
         out['enc_outputs'] = {'pred_logits': cls_enc, 'pred_boxes': ref_enc}
         return out
+
+class LWDETR(nn.Module):
+    def __init__(self): pass
 
 def box_cxcywh_to_xyxy(x):
     x_c, y_c, w, h = [t.squeeze(-1) for t in x.split(1, dim=-1)]
@@ -1081,9 +1104,18 @@ class Model:
         self.resolution = args.resolution
         with open(f'tiny_{args.pretrain_weights}.pkl', 'rb') as f: self.model = pickle.load(f)
 
+        print(self.model)
+        for k in self.model.state_dict().keys(): print(k)
+
+        self.model_tiny = LWDETR_tiny(self.model)
+        self.model_tiny.transformer = Transformer_tiny(self.model.transformer.decoder, self.model.transformer.enc_output, \
+        self.model.transformer.enc_out_bbox_embed, self.model.transformer.enc_out_class_embed, self.model.transformer.bbox_reparam,\
+        self.model.transformer.enc_output_norm_tiny, self.model.transformer.enc_output_tiny, self.model.transformer.num_queries,\
+        self.model.transformer.d_model)
 
 
-        #with open(f'tiny_{args.pretrain_weights}.pkl', 'wb') as f: pickle.dump(self.model, f)
+        print(self.model_tiny)
+        with open(f'tiny_{args.pretrain_weights}2.pkl', 'wb') as f: pickle.dump(self.model, f)
 
         self.postprocess = PostProcess(num_select=args.num_select)
         self.stop_early = False
@@ -1210,7 +1242,7 @@ class RFDETR:
         processed_images = to_tiny(processed_images)
         batch_tensor = tinyTensor.stack(*processed_images)
         batch_tensor = to_torch(batch_tensor)
-        predictions = self.model.model(batch_tensor)
+        predictions = self.model.model_tiny(batch_tensor)
         target_sizes = tinyTensor(orig_sizes)
         results = self.model.postprocess(predictions, target_sizes=target_sizes)
 
@@ -1251,9 +1283,6 @@ class RFDETRSmall(RFDETR):
     def get_model_config(self, **kwargs): return RFDETRSmallConfig(**kwargs)
     
 class RFDETRMediumConfig(RFDETRBaseConfig):
-    """
-    The configuration for an RF-DETR Medium model.
-    """
     out_feature_indexes: List[int] = [3, 6, 9, 12]
     num_windows: int = 2
     dec_layers: int = 4
