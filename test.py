@@ -1272,6 +1272,11 @@ class Model:
         self.model_tiny.transformer.enc_out_bbox_embed.layers = to_tiny_seq(self.model.transformer.enc_out_bbox_embed.layers)
         self.model_tiny.transformer.enc_out_class_embed = to_tiny_seq(self.model.transformer.enc_out_class_embed)
         
+        for i in range(len(self.model_tiny.transformer.decoder.ref_point_head.layers.modules)):
+            linear = tinynn.Linear(self.model_tiny.transformer.decoder.ref_point_head.layers[i].in_features, self.model_tiny.transformer.decoder.ref_point_head.layers[i].out_features)
+            linear.weight = to_tiny(self.model_tiny.transformer.decoder.ref_point_head.layers[i].weight)
+            linear.bias = to_tiny(self.model_tiny.transformer.decoder.ref_point_head.layers[i].bias)
+            self.model_tiny.transformer.decoder.ref_point_head.layers[i] = linear
         
         SKIP_KEYS = {
             "_parameters", "_buffers", "_modules",
