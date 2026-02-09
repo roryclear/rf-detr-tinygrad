@@ -894,7 +894,7 @@ class MultiScaleProjector(nn.Module):
         x = to_tiny(x)
         feat_fuse = tinyTensor.cat(*x, dim=1)
         feat_fuse = to_torch(feat_fuse)
-        stage_output = self.stages[0](feat_fuse)
+        stage_output = self.stages(feat_fuse)
         return [stage_output]
 
 
@@ -1220,6 +1220,9 @@ class Model:
         self.resolution = args.resolution
         with open(f'tiny_{args.pretrain_weights}2.pkl', 'rb') as f: self.model_tiny = pickle.load(f)
 
+        self.model_tiny.backbone.backbone.projector.stages = self.model_tiny.backbone.backbone.projector.stages[0]
+
+        #exit()
         
         SKIP_KEYS = {
             "_parameters", "_buffers", "_modules",
