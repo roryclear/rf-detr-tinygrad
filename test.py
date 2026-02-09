@@ -392,6 +392,18 @@ class WindowedDinov2WithRegistersBackbone(PreTrainedModel, BackboneMixin):
         output = (feature_maps,) + outputs[2:]
         return output
 
+class DinoV2_tiny():
+    def __init__(self,d):
+        self.patch_size = d.patch_size
+        self.num_windows = d.num_windows
+        self.encoder = d.encoder
+
+    def __call__(self, x):
+        block_size = self.patch_size * self.num_windows
+        assert x.shape[2] % block_size == 0 and x.shape[3] % block_size == 0, f"Backbone requires input shape to be divisible by {block_size}, but got {x.shape}"
+        x = self.encoder(x)
+        return list(x[0])
+
 class DinoV2(nn.Module):
     def __init__(self): pass
 
@@ -1278,6 +1290,7 @@ class Model:
         with open(f'tiny_{args.pretrain_weights}2.pkl', 'rb') as f: self.model_tiny = pickle.load(f)
 
         self.model_tiny.backbone.backbone = Backbone_tiny(self.model_tiny.backbone.backbone)
+        self.model_tiny.backbone.backbone.encoder = DinoV2_tiny(self.model_tiny.backbone.backbone.encoder)
         self.model_tiny.backbone.backbone.projector = MultiScaleProjector_tiny(self.model_tiny.backbone.backbone.projector)
         self.model_tiny.backbone.backbone.projector.stages = self.model_tiny.backbone.backbone.projector.stages[0]
         seq = tiny_seq(2)
@@ -1335,6 +1348,8 @@ class Model:
                 return
             
             for k, v in obj.__dict__.items():
+                path = path.replace("_modules","")
+                path = path.replace("..",".")
                 print_obj(v, f"{path}.{k}", seen)
                 
                 # TransformerDecoder - 
