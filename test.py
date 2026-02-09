@@ -762,6 +762,46 @@ def gen_encoder_output_proposals(memory, memory_padding_mask, spatial_shape, uns
     return output_memory, output_proposals
     #return to_torch(output_memory), to_torch(output_proposals)
 
+class MSDeformAttn_tiny():
+    """Multi-Scale Deformable Attention Module
+    """
+    def __init__(self, m):
+        self.value_proj_tiny = m.value_proj_tiny
+        self.sampling_offsets_tiny = m.sampling_offsets_tiny
+        self.attention_weights_tiny = m.attention_weights_tiny
+        self.n_heads = m.n_heads
+        self.n_levels = m.n_levels
+        self.n_points = m.n_points
+        self.d_model = m.d_model
+        self.output_proj_tiny = m.output_proj_tiny
+
+    def __call__(self, query, reference_points, input_flatten, input_spatial_shapes,
+                input_level_start_index, input_padding_mask=None):
+        query = to_tiny(query)
+        reference_points = to_tiny(reference_points)
+        input_flatten = to_tiny(input_flatten)
+        input_spatial_shapes = to_tiny(input_spatial_shapes)
+        input_padding_mask = to_tiny(input_padding_mask)
+
+        N, Len_q, _ = query.shape
+        N, Len_in, _ = input_flatten.shape
+
+        input_spatial_shapes = to_torch(input_spatial_shapes)
+
+        value = self.value_proj_tiny(input_flatten)
+        value = value.masked_fill(input_padding_mask[..., None], float(0))
+        sampling_offsets = self.sampling_offsets_tiny(query).view(N, Len_q, self.n_heads, self.n_levels, self.n_points, 2)
+        attention_weights = self.attention_weights_tiny(query).view(N, Len_q, self.n_heads, self.n_levels * self.n_points)
+        sampling_locations = reference_points[:, :, None, :, None, :2] \
+                                + sampling_offsets / self.n_points * reference_points[:, :, None, :, None, 2:] * 0.5
+        attention_weights = attention_weights.softmax(-1)
+        value = value.transpose(1, 2).contiguous().view(N, self.n_heads, self.d_model // self.n_heads, Len_in)
+        output = ms_deform_attn_core_pytorch(
+            value, input_spatial_shapes, sampling_locations, attention_weights)
+        output = to_tiny(output)
+        output = self.output_proj_tiny(output)
+        return output
+
 class MSDeformAttn(nn.Module):
     """Multi-Scale Deformable Attention Module
     """
@@ -1248,6 +1288,9 @@ class Model:
             self.model_tiny.backbone.backbone.projector.stages[0].m[i] = Bottleneck_tiny(self.model_tiny.backbone.backbone.projector.stages[0].m[i])
             self.model_tiny.backbone.backbone.projector.stages[0].m[i].cv1 = ConvX_tiny(self.model_tiny.backbone.backbone.projector.stages[0].m[i].cv1)
             self.model_tiny.backbone.backbone.projector.stages[0].m[i].cv2 = ConvX_tiny(self.model_tiny.backbone.backbone.projector.stages[0].m[i].cv2)
+
+        for i in range(len(self.model_tiny.transformer.decoder.layers.modules)):
+            self.model_tiny.transformer.decoder.layers.modules[i].cross_attn = MSDeformAttn_tiny(self.model_tiny.transformer.decoder.layers.modules[i].cross_attn)
 
         SKIP_KEYS = {
             "_parameters", "_buffers", "_modules",
