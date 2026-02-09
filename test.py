@@ -613,7 +613,7 @@ class TransformerDecoder_tiny():
             output = self.norm_tiny(output)
             intermediate.pop()
             intermediate.append(output)
-            return [to_torch(tinyTensor.stack(intermediate)), to_torch(refpoints_unsigmoid.unsqueeze(0))]
+            return [tinyTensor.stack(intermediate), refpoints_unsigmoid.unsqueeze(0)]
 
 class TransformerDecoder(nn.Module):
     def __init__(self): pass
@@ -634,7 +634,6 @@ def gen_encoder_output_proposals(memory, memory_padding_mask, spatial_shape, uns
     grid = tinyTensor.cat(grid_x.unsqueeze(-1), grid_y.unsqueeze(-1), dim=-1)
     scale = tinyTensor.cat(valid_W, valid_H, dim=1).view(1, 1, 1, 2)
     grid = (grid.unsqueeze(0).expand(1, -1, -1, -1) + 0.5) / scale
-    scale = to_torch(scale)
 
     wh = tinyTensor.ones_like(grid) * 0.05
     output_proposals = tinyTensor.cat(grid, wh, dim=-1).view(1, -1, 4)
@@ -1161,7 +1160,7 @@ class LWDETR_tiny():
         outputs_coord = tinyTensor.cat(outputs_coord_cxcy, outputs_coord_wh, dim=-1)
 
         outputs_coord = to_torch(outputs_coord)
-
+        hs = to_torch(hs)
         outputs_class = self.class_embed(hs)
         out = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
         hs_enc_list = hs_enc.chunk(1, dim=1)
