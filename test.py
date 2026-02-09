@@ -174,6 +174,13 @@ class WindowedDinov2WithRegistersEmbeddings_tiny():
         embeddings = tinyTensor.cat(windowed_cls_token_with_pos_embed, windowed_pixel_tokens, dim=1)
         return embeddings
 
+class Dinov2WithRegistersSelfOutput_tiny():
+    def __init__(self, d):
+        self.dense_tiny = d.dense_tiny
+
+    def __call__(self, x):
+        x = self.dense_tiny(x)
+        return to_torch(x)
 
 class Dinov2WithRegistersSelfOutput(nn.Module):
     """
@@ -1179,6 +1186,7 @@ class Model:
         for i in range(len(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer.modules)):
             self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention = Dinov2WithRegistersSdpaAttention_tiny(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention)
             self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention.attention = Dinov2WithRegistersSdpaSelfAttention_tiny(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention.attention)
+            self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention.output = Dinov2WithRegistersSelfOutput_tiny(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention.output)
         
         SKIP_KEYS = {
             "_parameters", "_buffers", "_modules",
