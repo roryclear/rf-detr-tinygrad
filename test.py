@@ -910,8 +910,7 @@ class PositionEmbeddingSine_tiny():
         self.temperature = pos.temperature
         self.scale = pos.scale
 
-    def __call__(self, tensor_list, align_dim_orders = True):
-        mask = tensor_list[1]
+    def __call__(self, mask, align_dim_orders = True):
         if type(mask) != tinyTensor: mask = to_tiny(mask)
         not_mask = ~mask
         y_embed = not_mask.cumsum(1)
@@ -1068,7 +1067,7 @@ class Joiner_tiny():
         for x_ in x:
             pos.append(
                 self.position_embedding(
-                    x_, align_dim_orders=False
+                    x_[1], align_dim_orders=False
                 ).to(x_[0].dtype)
             )
         return x, pos
