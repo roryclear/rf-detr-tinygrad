@@ -131,7 +131,7 @@ class Dinov2WithRegistersPatchEmbeddings(nn.Module):
     def forward(self, x):
         x = to_tiny(x)
         x = self.projection_tiny(x).flatten(2).transpose(1, 2)
-        return to_torch(x)
+        return x
 
 class WindowedDinov2WithRegistersEmbeddings(nn.Module):
 
@@ -165,7 +165,7 @@ class WindowedDinov2WithRegistersEmbeddings(nn.Module):
         windowed_pixel_tokens = windowed_pixel_tokens.reshape(batch_size * num_windows ** 2, num_h_patches_per_window * num_w_patches_per_window, -1)
         windowed_cls_token_with_pos_embed = cls_token_with_pos_embed.repeat(num_windows ** 2, 1, 1)
         embeddings = tinyTensor.cat(windowed_cls_token_with_pos_embed, windowed_pixel_tokens, dim=1)
-        return to_torch(embeddings)
+        return embeddings
 
 class Dinov2WithRegistersSelfAttention(nn.Module):
     def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
@@ -176,7 +176,7 @@ class Dinov2WithRegistersSelfAttention(nn.Module):
         new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
         x = x.view(new_x_shape)
         x = x.permute(0, 2, 1, 3)
-        return to_torch(x)
+        return x
 
 class Dinov2WithRegistersSelfOutput(nn.Module):
     """
