@@ -137,6 +137,43 @@ class Dinov2WithRegistersPatchEmbeddings(nn.Module):
         x = self.projection_tiny(x).flatten(2).transpose(1, 2)
         return x
 
+
+class WindowedDinov2WithRegistersEmbeddings_tiny():
+    def __init__(self, w):
+        self.patch_embeddings = w.patch_embeddings
+        self.cls_token_tiny = w.cls_token_tiny
+        self.position_embeddings_tiny = w.position_embeddings_tiny
+        self.config = w.config
+
+    def __call__(self, pixel_values, bool_masked_pos: Optional[Any] = None):
+        batch_size, _, height, width = pixel_values.shape
+        target_dtype = self.patch_embeddings.projection.weight.dtype
+        embeddings = self.patch_embeddings(pixel_values.to(dtype=target_dtype))
+
+        # add the [CLS] token to the embedded patch tokens
+        cls_tokens = self.cls_token_tiny.expand(batch_size, -1, -1)
+        embeddings = to_tiny(embeddings)
+        embeddings = tinyTensor.cat(cls_tokens, embeddings, dim=1)
+        # add positional encoding to each token
+        embeddings = embeddings + self.position_embeddings_tiny
+
+        # reshape for windows
+        num_h_patches = height // self.config.patch_size
+        num_w_patches = width // self.config.patch_size
+        cls_token_with_pos_embed = embeddings[:, :1]
+        pixel_tokens_with_pos_embed = embeddings[:, 1:]
+        
+        pixel_tokens_with_pos_embed = pixel_tokens_with_pos_embed.view(batch_size, num_h_patches, num_w_patches, -1)
+        num_w_patches_per_window = num_w_patches // self.config.num_windows
+        num_h_patches_per_window = num_h_patches // self.config.num_windows
+        num_windows = self.config.num_windows
+        windowed_pixel_tokens = pixel_tokens_with_pos_embed.reshape(batch_size * num_windows, num_h_patches_per_window, num_windows, num_h_patches_per_window, -1)
+        windowed_pixel_tokens = windowed_pixel_tokens.permute(0, 2, 1, 3, 4)
+        windowed_pixel_tokens = windowed_pixel_tokens.reshape(batch_size * num_windows ** 2, num_h_patches_per_window * num_w_patches_per_window, -1)
+        windowed_cls_token_with_pos_embed = cls_token_with_pos_embed.repeat(num_windows ** 2, 1, 1)
+        embeddings = tinyTensor.cat(windowed_cls_token_with_pos_embed, windowed_pixel_tokens, dim=1)
+        return embeddings
+
 class WindowedDinov2WithRegistersEmbeddings(nn.Module):
 
     def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
@@ -1353,6 +1390,7 @@ class Model:
         self.model_tiny.backbone.backbone = Backbone_tiny(self.model_tiny.backbone.backbone)
         self.model_tiny.backbone.backbone.encoder = DinoV2_tiny(self.model_tiny.backbone.backbone.encoder)
         self.model_tiny.backbone.backbone.encoder.encoder = WindowedDinov2WithRegistersBackbone_tiny(self.model_tiny.backbone.backbone.encoder.encoder)
+        self.model_tiny.backbone.backbone.encoder.encoder.embeddings = WindowedDinov2WithRegistersEmbeddings_tiny(self.model_tiny.backbone.backbone.encoder.encoder.embeddings)
         self.model_tiny.backbone.backbone.projector = MultiScaleProjector_tiny(self.model_tiny.backbone.backbone.projector)
         self.model_tiny.backbone.backbone.projector.stages = self.model_tiny.backbone.backbone.projector.stages[0]
         seq = tiny_seq(2)
