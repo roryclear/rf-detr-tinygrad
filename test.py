@@ -1292,6 +1292,10 @@ class Model:
         for i in range(len(self.model_tiny.transformer.decoder.layers.modules)):
             self.model_tiny.transformer.decoder.layers.modules[i].cross_attn = MSDeformAttn_tiny(self.model_tiny.transformer.decoder.layers.modules[i].cross_attn)
 
+        for i in range(len(self.model_tiny.backbone.backbone.projector.stages[0].m.modules)):
+            self.model_tiny.backbone.backbone.projector.stages[0].m[i].cv1.bn = LayerNorm_tiny(self.model_tiny.backbone.backbone.projector.stages[0].m[i].cv1.bn)
+            self.model_tiny.backbone.backbone.projector.stages[0].m[i].cv2.bn = LayerNorm_tiny(self.model_tiny.backbone.backbone.projector.stages[0].m[i].cv2.bn)
+
         SKIP_KEYS = {
             "_parameters", "_buffers", "_modules",
             "_backward_hooks", "_forward_hooks",
