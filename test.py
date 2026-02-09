@@ -116,6 +116,10 @@ class tiny_seq():
     def __iter__(self):
         return iter(self.modules)
 
+    def __call__(self, x):
+        for i in self.modules: x = i(x)
+        return x
+
     def __forward__(self, x):
         for i in self.modules: x = i(x)
         return x
@@ -881,6 +885,21 @@ def get_norm(norm, out_channels):
         }[norm]
     return norm(out_channels)
 
+class MultiScaleProjector_tiny():
+    """
+    This module implements MultiScaleProjector in :paper:`lwdetr`.
+    It creates pyramid features built on top of the input feature map.
+    """
+
+    def __init__(self, m):
+        self.stages = m.stages
+
+    def __call__(self, x):
+        x = to_tiny(x)
+        feat_fuse = tinyTensor.cat(*x, dim=1)
+        feat_fuse = to_torch(feat_fuse)
+        stage_output = self.stages(feat_fuse)
+        return [stage_output]
 
 class MultiScaleProjector(nn.Module):
     """
@@ -1220,9 +1239,13 @@ class Model:
         self.resolution = args.resolution
         with open(f'tiny_{args.pretrain_weights}2.pkl', 'rb') as f: self.model_tiny = pickle.load(f)
 
+        self.model_tiny.backbone.backbone = Backbone_tiny(self.model_tiny.backbone.backbone)
+        self.model_tiny.backbone.backbone.projector = MultiScaleProjector_tiny(self.model_tiny.backbone.backbone.projector)
         self.model_tiny.backbone.backbone.projector.stages = self.model_tiny.backbone.backbone.projector.stages[0]
-
-        #exit()
+        seq = tiny_seq(2)
+        seq[0] = self.model_tiny.backbone.backbone.projector.stages[0]
+        seq[1] = self.model_tiny.backbone.backbone.projector.stages[1]
+        self.model_tiny.backbone.backbone.projector.stages = seq
         
         SKIP_KEYS = {
             "_parameters", "_buffers", "_modules",
