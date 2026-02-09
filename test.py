@@ -138,16 +138,6 @@ class Dinov2WithRegistersPatchEmbeddings_tiny():
         x = self.projection_tiny(x).flatten(2).transpose(1, 2)
         return x
 
-
-class Dinov2WithRegistersPatchEmbeddings(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-    def forward(self, x):
-        x = to_tiny(x)
-        x = self.projection_tiny(x).flatten(2).transpose(1, 2)
-        return x
-
-
 class WindowedDinov2WithRegistersEmbeddings_tiny():
     def __init__(self, w):
         self.patch_embeddings = w.patch_embeddings
@@ -156,40 +146,6 @@ class WindowedDinov2WithRegistersEmbeddings_tiny():
         self.config = w.config
 
     def __call__(self, pixel_values, bool_masked_pos: Optional[Any] = None):
-        batch_size, _, height, width = pixel_values.shape
-        target_dtype = self.patch_embeddings.projection.weight.dtype
-        embeddings = self.patch_embeddings(pixel_values.to(dtype=target_dtype))
-
-        # add the [CLS] token to the embedded patch tokens
-        cls_tokens = self.cls_token_tiny.expand(batch_size, -1, -1)
-        embeddings = to_tiny(embeddings)
-        embeddings = tinyTensor.cat(cls_tokens, embeddings, dim=1)
-        # add positional encoding to each token
-        embeddings = embeddings + self.position_embeddings_tiny
-
-        # reshape for windows
-        num_h_patches = height // self.config.patch_size
-        num_w_patches = width // self.config.patch_size
-        cls_token_with_pos_embed = embeddings[:, :1]
-        pixel_tokens_with_pos_embed = embeddings[:, 1:]
-        
-        pixel_tokens_with_pos_embed = pixel_tokens_with_pos_embed.view(batch_size, num_h_patches, num_w_patches, -1)
-        num_w_patches_per_window = num_w_patches // self.config.num_windows
-        num_h_patches_per_window = num_h_patches // self.config.num_windows
-        num_windows = self.config.num_windows
-        windowed_pixel_tokens = pixel_tokens_with_pos_embed.reshape(batch_size * num_windows, num_h_patches_per_window, num_windows, num_h_patches_per_window, -1)
-        windowed_pixel_tokens = windowed_pixel_tokens.permute(0, 2, 1, 3, 4)
-        windowed_pixel_tokens = windowed_pixel_tokens.reshape(batch_size * num_windows ** 2, num_h_patches_per_window * num_w_patches_per_window, -1)
-        windowed_cls_token_with_pos_embed = cls_token_with_pos_embed.repeat(num_windows ** 2, 1, 1)
-        embeddings = tinyTensor.cat(windowed_cls_token_with_pos_embed, windowed_pixel_tokens, dim=1)
-        return embeddings
-
-class WindowedDinov2WithRegistersEmbeddings(nn.Module):
-
-    def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
-        super().__init__()
-
-    def forward(self, pixel_values, bool_masked_pos: Optional[Any] = None):
         batch_size, _, height, width = pixel_values.shape
         target_dtype = self.patch_embeddings.projection.weight.dtype
         embeddings = self.patch_embeddings(pixel_values.to(dtype=target_dtype))
@@ -370,52 +326,6 @@ class WindowedDinov2WithRegistersLayer_tiny():
         outputs = (layer_output,) + outputs
         return outputs
 
-class WindowedDinov2WithRegistersLayer(nn.Module):
-    """This corresponds to the Block class in the original implementation."""
-
-    def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None: pass
-    def forward(
-        self,
-        hidden_states: Any,
-        head_mask: Optional[Any] = None,
-        output_attentions: bool = False,
-        run_full_attention: bool = False,
-    ):
-        hidden_states = to_tiny(hidden_states)
-        shortcut = hidden_states
-        if run_full_attention:
-            # reshape x to remove windows
-            B, HW, C = hidden_states.shape
-            num_windows_squared = self.num_windows ** 2
-            hidden_states = hidden_states.view(B // num_windows_squared, num_windows_squared * HW, C)
-        x = self.norm1_tiny(hidden_states)
-
-        # todo
-        self_attention_outputs = self.attention(
-            x,
-            head_mask,
-            output_attentions=output_attentions,
-        )
-        attention_output = self_attention_outputs[0]
-
-        if run_full_attention:
-            B, HW, C = hidden_states.shape
-            num_windows_squared = self.num_windows ** 2
-            attention_output = attention_output.view(B * num_windows_squared, HW // num_windows_squared, C)
-        attention_output = self.layer_scale1(attention_output)
-        outputs = self_attention_outputs[1:]
-        hidden_states = attention_output + shortcut
-
-        # in Dinov2WithRegisters, layernorm is also applied after self-attention
-        layer_output = self.norm2_tiny(hidden_states)
-        layer_output = self.mlp(layer_output)
-        layer_output = self.layer_scale2(layer_output)
-        layer_output = layer_output + hidden_states
-
-        layer_output = to_torch(layer_output)
-        outputs = (layer_output,) + outputs
-        return outputs
-
 class WindowedDinov2WithRegistersEncoder_tiny():
     def __init__(self, w):
         self.layer = w.layer
@@ -440,31 +350,7 @@ class WindowedDinov2WithRegistersEncoder_tiny():
 
         all_hidden_states = all_hidden_states + (hidden_states,)
         return tuple(v for v in [hidden_states, all_hidden_states, all_self_attentions] if v is not None)
- 
-
-class WindowedDinov2WithRegistersEncoder(nn.Module):
-    def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None: pass
-    def forward(
-        self,
-        hidden_states: Any,
-        head_mask: Optional[Any] = None,
-        output_attentions: bool = False,
-        output_hidden_states: bool = False,
-        return_dict: bool = True,
-    ) -> Union[tuple, BaseModelOutput]:
-        all_hidden_states = () if output_hidden_states else None
-        all_self_attentions = () if output_attentions else None
-
-        for i, layer_module in enumerate(self.layer):
-            all_hidden_states = all_hidden_states + (hidden_states,)
-            run_full_attention = i not in self.config.window_block_indexes
-            layer_head_mask = None
-            layer_outputs = layer_module(hidden_states, layer_head_mask, output_attentions, run_full_attention)
-            hidden_states = layer_outputs[0]
-
-        all_hidden_states = all_hidden_states + (hidden_states,)
-        return tuple(v for v in [hidden_states, all_hidden_states, all_self_attentions] if v is not None)
- 
+  
 class WindowedDinov2WithRegistersBackbone_tiny():
     _supports_sdpa = True #todo, why need?
 
@@ -526,59 +412,6 @@ class WindowedDinov2WithRegistersBackbone_tiny():
         output = (feature_maps,) + outputs[2:]
         return output
 
-class WindowedDinov2WithRegistersBackbone(PreTrainedModel, BackboneMixin):
-    _supports_sdpa = True #todo, why need?
-
-    def __init__(self, config: WindowedDinov2WithRegistersConfig): pass
-
-    def get_input_embeddings(self):
-        return self.embeddings.patch_embeddings
-
-    def forward(
-        self,
-        pixel_values,
-        output_hidden_states: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-    ) -> BackboneOutput:
-        embedding_output = self.embeddings(pixel_values)
-
-        outputs = self.encoder(
-            embedding_output, output_hidden_states=True, output_attentions=output_attentions, return_dict=return_dict
-        )
-
-        hidden_states = outputs[1]
-
-        feature_maps = ()
-        for stage, hidden_state in zip(self.stage_names, hidden_states):
-            if stage in self.out_features:
-                hidden_state = to_tiny(hidden_state)
-                hidden_state = self.layernorm_tiny(hidden_state)
-                hidden_state = hidden_state[:, self.num_register_tokens + 1 :]
-                # this was actually a bug in the original implementation that we copied here,
-                # cause normally the order is height, width
-                batch_size, _, height, width = pixel_values.shape
-                patch_size = self.config.patch_size
-
-                num_h_patches = height // patch_size
-                num_w_patches = width // patch_size
-
-                # undo windowing
-                num_windows_squared = self.config.num_windows ** 2
-                B, HW, C = hidden_state.shape
-                num_h_patches_per_window = num_h_patches // self.config.num_windows
-                num_w_patches_per_window = num_w_patches // self.config.num_windows
-                hidden_state = hidden_state.reshape(B // num_windows_squared, num_windows_squared * HW, C)
-                hidden_state = hidden_state.reshape((B // num_windows_squared) * self.config.num_windows, self.config.num_windows, num_h_patches_per_window, num_w_patches_per_window, C)
-                hidden_state = hidden_state.permute(0, 2, 1, 3, 4)
-
-                hidden_state = hidden_state.reshape(batch_size, num_h_patches, num_w_patches, -1)
-                hidden_state = hidden_state.permute(0, 3, 1, 2).contiguous()
-                hidden_state = to_torch(hidden_state)
-                feature_maps += (hidden_state,)
-
-        output = (feature_maps,) + outputs[2:]
-        return output
 
 class DinoV2_tiny():
     def __init__(self,d):
@@ -587,15 +420,6 @@ class DinoV2_tiny():
         self.encoder = d.encoder
 
     def __call__(self, x):
-        block_size = self.patch_size * self.num_windows
-        assert x.shape[2] % block_size == 0 and x.shape[3] % block_size == 0, f"Backbone requires input shape to be divisible by {block_size}, but got {x.shape}"
-        x = self.encoder(x)
-        return list(x[0])
-
-class DinoV2(nn.Module):
-    def __init__(self): pass
-
-    def forward(self, x):
         block_size = self.patch_size * self.num_windows
         assert x.shape[2] % block_size == 0 and x.shape[3] % block_size == 0, f"Backbone requires input shape to be divisible by {block_size}, but got {x.shape}"
         x = self.encoder(x)
@@ -732,10 +556,6 @@ class TransformerDecoderLayer_tiny():
         tgt += tgt2
         tgt = self.norm3_tiny(tgt)
         return tgt
-
-
-class TransformerDecoderLayer(nn.Module):
-    def __init__(self): pass
     
 def gen_sineembed_for_position(pos_tensor, dim=128):
     pos_tensor = to_tiny(pos_tensor)
@@ -818,10 +638,7 @@ class TransformerDecoder_tiny():
             intermediate.pop()
             intermediate.append(output)
             return [tinyTensor.stack(intermediate), refpoints_unsigmoid.unsqueeze(0)]
-
-class TransformerDecoder(nn.Module):
-    def __init__(self): pass
-
+    
 def gen_encoder_output_proposals(memory, memory_padding_mask, spatial_shape, unsigmoid=True):
     memory = to_tiny(memory)
     memory_padding_mask = to_tiny(memory_padding_mask).cast(dtype=dtypes.bool)
@@ -964,34 +781,6 @@ class Transformer_tiny():
 
         return hs, references, to_torch(memory_ts), boxes_ts
 
-class Transformer(nn.Module):
-    def __init__(self): pass
-
-    def forward(self): exit()
-
-def build_transformer(args):
-    return Transformer(
-        d_model=args.hidden_dim,
-        sa_nhead=args.sa_nheads,
-        ca_nhead=args.ca_nheads,
-        num_queries=args.num_queries,
-        dropout=args.dropout,
-        dim_feedforward=args.dim_feedforward,
-        num_decoder_layers=args.dec_layers,
-        return_intermediate_dec=True,
-        group_detr=args.group_detr,
-        two_stage=True,
-        num_feature_levels=args.num_feature_levels,
-        dec_n_points=args.dec_n_points,
-        lite_refpoint_refine=args.lite_refpoint_refine,
-        decoder_norm_type=args.decoder_norm,
-        bbox_reparam=args.bbox_reparam,
-    )
-
-class BackboneBase(nn.Module):
-    def __init__(self):
-        super().__init__()
-
 class ConvX(nn.Module):
     def __init__(self, in_planes, out_planes, kernel=3, stride=1, groups=1, dilation=1, act='relu', layer_norm=False, rms_norm=False):
         super(ConvX, self).__init__()
@@ -1046,28 +835,6 @@ class C2f_tiny():
         y = to_torch(y)
         return y
 
-class C2f(nn.Module):
-    """Faster Implementation of CSP Bottleneck with 2 convolutions."""
-
-    def __init__(self, c1, c2, n=1, shortcut=False, g=1, e=0.5, act='silu', layer_norm=False, rms_norm=False):
-        """ ch_in, ch_out, number, shortcut, groups, expansion """
-        super().__init__()
-        self.c = int(c2 * e)  # hidden channels
-        self.cv1 = ConvX(c1, 2 * self.c, 1, 1, act=act, layer_norm=layer_norm, rms_norm=rms_norm)
-        self.cv2 = ConvX((2 + n) * self.c, c2, 1, act=act, layer_norm=layer_norm, rms_norm=rms_norm)  # optional act=FReLU(c2)
-        self.m = Bottleneck(self.c, self.c, shortcut, g, k=(3, 3), e=1.0, act=act, layer_norm=layer_norm, rms_norm=rms_norm)
-
-    def forward(self, x):
-        """Forward pass using split() instead of chunk()."""
-        y = list(self.cv1(x).split((self.c, self.c), 1))
-        y = to_tiny(y)
-        y.extend(to_tiny(m(y[-1])) for m in self.m)
-        y = tinyTensor.cat(*y, dim=1)
-        y = self.cv2(y)
-        y = to_torch(y)
-        return y
-
-
 class LayerNorm_tiny():
     def __init__(self, l):
         self.eps = l.eps
@@ -1103,26 +870,6 @@ class LayerNorm(nn.Module):
         x = x.permute(0, 3, 1, 2)
         return to_torch(x)
 
-
-def get_norm(norm, out_channels):
-    """
-    Args:
-        norm (str or callable): either one of BN, SyncBN, FrozenBN, GN;
-            or a callable that takes a channel number and returns
-            the normalization layer as a nn.Module.
-    Returns:
-        nn.Module or None: the normalization layer
-    """
-    if norm is None:
-        return None
-    if isinstance(norm, str):
-        if len(norm) == 0:
-            return None
-        norm = {
-            "LN": lambda channels: LayerNorm(channels),
-        }[norm]
-    return norm(out_channels)
-
 class MultiScaleProjector_tiny():
     """
     This module implements MultiScaleProjector in :paper:`lwdetr`.
@@ -1139,27 +886,6 @@ class MultiScaleProjector_tiny():
         stage_output = self.stages(feat_fuse)
         return [stage_output]
 
-class MultiScaleProjector(nn.Module):
-    """
-    This module implements MultiScaleProjector in :paper:`lwdetr`.
-    It creates pyramid features built on top of the input feature map.
-    """
-
-    def __init__(self): pass
-
-    def forward(self, x):
-        x = to_tiny(x)
-        feat_fuse = tinyTensor.cat(*x, dim=1)
-        feat_fuse = to_torch(feat_fuse)
-        stage_output = self.stages(feat_fuse)
-        return [stage_output]
-
-
-def build_position_encoding(hidden_dim, position_embedding):
-    N_steps = hidden_dim // 2
-    if position_embedding in ('v2', 'sine'):
-        position_embedding = PositionEmbeddingSine(N_steps, normalize=True)
-    return position_embedding
 
 class PositionEmbeddingSine_tiny():
     def __init__(self, pos):
@@ -1168,27 +894,6 @@ class PositionEmbeddingSine_tiny():
         self.scale = pos.scale
 
     def __call__(self, mask, align_dim_orders = True):
-        if type(mask) != tinyTensor: mask = to_tiny(mask)
-        not_mask = ~mask
-        y_embed = not_mask.cumsum(1)
-        x_embed = not_mask.cumsum(2)
-        eps = 1e-6
-        y_embed = y_embed / (y_embed[:, -1:, :] + eps) * self.scale
-        x_embed = x_embed / (x_embed[:, :, -1:] + eps) * self.scale
-        dim_t = tinyTensor.arange(self.num_pos_feats)
-        dim_t = self.temperature ** (2 * (dim_t // 2) / self.num_pos_feats)
-        pos_x = x_embed[:, :, :, None] / dim_t
-        pos_y = y_embed[:, :, :, None] / dim_t
-        pos_x = tinyTensor.stack((pos_x[:, :, :, 0::2].sin(), pos_x[:, :, :, 1::2].cos()), dim=4).flatten(3)
-        pos_y = tinyTensor.stack((pos_y[:, :, :, 0::2].sin(), pos_y[:, :, :, 1::2].cos()), dim=4).flatten(3)
-        pos = tinyTensor.cat(pos_y, pos_x, dim=3).permute(0, 3, 1, 2)
-        return to_torch(pos)
-
-class PositionEmbeddingSine(nn.Module):
-    def __init__(self, num_pos_feats=64, temperature=10000, normalize=False, scale=None): pass
-
-    def forward(self, tensor_list, align_dim_orders = True):
-        mask = tensor_list.mask
         if type(mask) != tinyTensor: mask = to_tiny(mask)
         not_mask = ~mask
         y_embed = not_mask.cumsum(1)
@@ -1221,77 +926,6 @@ class Backbone_tiny():
         mask = to_torch(mask).bool()
         out.append([feats[0], mask])
         return out
-
-class Backbone(BackboneBase):
-    """backbone."""
-    def __init__(self): pass
-
-    def forward(self, tensor_list):
-        feats = self.encoder(tensor_list[0])
-        feats = self.projector(feats)
-        out = []
-        m = tensor_list[1]
-        m = to_tiny(m)
-        mask = ~tinyTensor.interpolate(m.unsqueeze(0), size=feats[0].shape[-2:])[0]
-        mask = to_torch(mask).bool()
-        out.append([feats[0], mask])
-        return out
-
-def build_backbone(
-    encoder,
-    pretrained_encoder,
-    window_block_indexes,
-    drop_path,
-    out_channels,
-    out_feature_indexes,
-    projector_scale,
-    use_cls_token,
-    hidden_dim,
-    position_embedding,
-    freeze_encoder,
-    layer_norm,
-    target_shape,
-    rms_norm,
-    backbone_lora,
-    gradient_checkpointing,
-    load_dinov2_weights,
-    patch_size,
-    num_windows,
-    positional_encoding_size,
-):
-    """
-    Useful args:
-        - encoder: encoder name
-        - lr_encoder:
-        - dilation
-        - use_checkpoint: for swin only for now
-
-    """
-    position_embedding = build_position_encoding(hidden_dim, position_embedding)
-
-    backbone = Backbone(
-        encoder,
-        pretrained_encoder,
-        window_block_indexes=window_block_indexes,
-        drop_path=drop_path,
-        out_channels=out_channels,
-        out_feature_indexes=out_feature_indexes,
-        projector_scale=projector_scale,
-        use_cls_token=use_cls_token,
-        layer_norm=layer_norm,
-        freeze_encoder=freeze_encoder,
-        target_shape=target_shape,
-        rms_norm=rms_norm,
-        backbone_lora=backbone_lora,
-        gradient_checkpointing=gradient_checkpointing,
-        load_dinov2_weights=load_dinov2_weights,
-        patch_size=patch_size,
-        num_windows=num_windows,
-        positional_encoding_size=positional_encoding_size,
-    )
-
-    model = Joiner(backbone, position_embedding)
-    return model
 
 class Joiner_tiny():
     def __init__(self, joiner):
@@ -1475,25 +1109,7 @@ class Model:
         )
         self.args = args
         self.resolution = args.resolution
-        with open(f'tiny_{args.pretrain_weights}2.pkl', 'rb') as f: self.model_tiny = pickle.load(f)
-
-        self.model_tiny.backbone.backbone = Backbone_tiny(self.model_tiny.backbone.backbone)
-        self.model_tiny.backbone.backbone.encoder = DinoV2_tiny(self.model_tiny.backbone.backbone.encoder)
-        self.model_tiny.backbone.backbone.encoder.encoder = WindowedDinov2WithRegistersBackbone_tiny(self.model_tiny.backbone.backbone.encoder.encoder)
-        self.model_tiny.backbone.backbone.encoder.encoder.embeddings = WindowedDinov2WithRegistersEmbeddings_tiny(self.model_tiny.backbone.backbone.encoder.encoder.embeddings)
-        self.model_tiny.backbone.backbone.encoder.encoder.embeddings.patch_embeddings = Dinov2WithRegistersPatchEmbeddings_tiny(self.model_tiny.backbone.backbone.encoder.encoder.embeddings.patch_embeddings)
-        self.model_tiny.backbone.backbone.encoder.encoder.encoder = WindowedDinov2WithRegistersEncoder_tiny(self.model_tiny.backbone.backbone.encoder.encoder.encoder)
-        self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer = to_tiny_seq(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer)
-        for i in range(len(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer.modules)):
-            self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer.modules[i] = WindowedDinov2WithRegistersLayer_tiny(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer.modules[i])
-        self.model_tiny.backbone.backbone.projector = MultiScaleProjector_tiny(self.model_tiny.backbone.backbone.projector)
-        self.model_tiny.backbone.backbone.projector.stages = self.model_tiny.backbone.backbone.projector.stages[0]
-        seq = tiny_seq(2)
-        seq[0] = C2f_tiny(self.model_tiny.backbone.backbone.projector.stages[0])
-        seq[1] = LayerNorm_tiny(self.model_tiny.backbone.backbone.projector.stages[1])
-        self.model_tiny.backbone.backbone.projector.stages = seq
-
-        
+        with open(f'tiny_{args.pretrain_weights}3.pkl', 'rb') as f: self.model_tiny = pickle.load(f)
         
         SKIP_KEYS = {
             "_parameters", "_buffers", "_modules",
@@ -1552,7 +1168,7 @@ class Model:
                 # self.norm_tiny: tinynn.layernorm
                 # self.ref_point_head: MLP
         print_obj(self.model_tiny)
-        #with open(f'tiny_{args.pretrain_weights}2.pkl', 'wb') as f: pickle.dump(self.model_tiny, f)
+        #with open(f'tiny_{args.pretrain_weights}4.pkl', 'wb') as f: pickle.dump(self.model_tiny, f)
 
         self.postprocess = PostProcess(num_select=args.num_select)
         self.stop_early = False
