@@ -326,6 +326,19 @@ DINOV2_WITH_REGISTERS_ATTENTION_CLASSES = {
 
 HOSTED_MODELS = {**OPEN_SOURCE_MODELS, **PLATFORM_MODELS}
 
+class Dinov2WithRegistersMLP_tiny():
+    def __init__(self, d):
+        self.fc1_tiny = d.fc1_tiny
+        self.fc2_tiny = d.fc2_tiny
+
+    def __call__(self, hidden_state):
+        hidden_state = to_tiny(hidden_state)
+        hidden_state = self.fc1_tiny(hidden_state)
+        hidden_state = hidden_state * 0.5 * (1.0 + tinyTensor.erf(hidden_state / math.sqrt(2.0)))
+        hidden_state = self.fc2_tiny(hidden_state)
+        return to_torch(hidden_state)
+
+
 class Dinov2WithRegistersMLP(nn.Module):
     def __init__(self, config) -> None: pass
 
@@ -1184,6 +1197,7 @@ class Model:
         with open(f'tiny_{args.pretrain_weights}3.pkl', 'rb') as f: self.model_tiny = pickle.load(f)
         
         for i in range(len(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer.modules)):
+            self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].mlp = Dinov2WithRegistersMLP_tiny(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].mlp)
             self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention = Dinov2WithRegistersSdpaAttention_tiny(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention)
             self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention.attention = Dinov2WithRegistersSdpaSelfAttention_tiny(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention.attention)
             self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention.output = Dinov2WithRegistersSelfOutput_tiny(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention.output)
