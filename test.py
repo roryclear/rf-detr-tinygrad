@@ -1087,8 +1087,8 @@ def _max_by_axis(the_list: List[List[int]]) -> List[int]:
             maxes[index] = max(maxes[index], item)
     return maxes
 
-def nested_tensor_from_tensor_list(tensor_list: List[Tensor]) -> NestedTensor:
-    # TODO make it support different-sized images
+def nested_tensor_from_tensor_list(tensor_list) -> NestedTensor:
+    tensor_list = to_torch(tensor_list)
     max_size = _max_by_axis([list(img.shape) for img in tensor_list])
     # min_size = tuple(min(s) for s in zip(*[img.shape for img in tensor_list]))
     batch_shape = [len(tensor_list)] + max_size
@@ -1417,7 +1417,6 @@ class RFDETR:
 
         processed_images = to_tiny(processed_images)
         batch_tensor = tinyTensor.stack(*processed_images)
-        batch_tensor = to_torch(batch_tensor)
         predictions = self.model.model_tiny(batch_tensor)
         target_sizes = tinyTensor(orig_sizes)
         results = self.model.postprocess(predictions, target_sizes=target_sizes)
