@@ -909,6 +909,17 @@ class ConvX(nn.Module):
         out = tinyTensor.silu(x)
         return to_torch(out)
     
+class Bottleneck_tiny():
+    """Standard bottleneck."""
+
+    def __init__(self, b):
+        self.cv1 = b.cv1
+        self.cv2 = b.cv2
+        self.add = b.add
+
+    def __call__(self, x):
+        """'forward()' applies the YOLOv5 FPN to input data."""
+        return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
 
 class Bottleneck(nn.Module):
     """Standard bottleneck."""
@@ -1229,6 +1240,12 @@ class Model:
         
         self.model_tiny.backbone.backbone.projector.stages.modules[0].cv1 = ConvX_tiny(self.model_tiny.backbone.backbone.projector.stages.modules[0].cv1)
         self.model_tiny.backbone.backbone.projector.stages.modules[0].cv1.bn = LayerNorm_tiny(self.model_tiny.backbone.backbone.projector.stages.modules[0].cv1.bn)
+        self.model_tiny.backbone.backbone.projector.stages.modules[0].cv2 = ConvX_tiny(self.model_tiny.backbone.backbone.projector.stages.modules[0].cv2)
+        self.model_tiny.backbone.backbone.projector.stages.modules[0].cv2.bn = LayerNorm_tiny(self.model_tiny.backbone.backbone.projector.stages.modules[0].cv2.bn)
+
+        self.model_tiny.backbone.backbone.projector.stages[0].m = to_tiny_seq(self.model_tiny.backbone.backbone.projector.stages[0].m)
+        for i in range(len(self.model_tiny.backbone.backbone.projector.stages[0].m.modules)):
+            self.model_tiny.backbone.backbone.projector.stages[0].m[i] = Bottleneck_tiny(self.model_tiny.backbone.backbone.projector.stages[0].m[i])
 
         SKIP_KEYS = {
             "_parameters", "_buffers", "_modules",
