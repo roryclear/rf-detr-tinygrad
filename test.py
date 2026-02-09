@@ -527,7 +527,7 @@ class TransformerDecoderLayer_tiny():
         tgt2 = self.linear2_tiny(x)
         tgt += tgt2
         tgt = self.norm3_tiny(tgt)
-        return to_torch(tgt)
+        return tgt
 
 
 class TransformerDecoderLayer(nn.Module):
