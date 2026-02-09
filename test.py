@@ -875,6 +875,21 @@ class Transformer_tiny():
 
         return hs, references, to_torch(memory_ts), boxes_ts
 
+
+class ConvX_tiny():
+    def __init__(self, c):
+        self.conv_tiny = c.conv_tiny
+        self.bn = c.bn
+
+    def __call__(self, x):
+        x = to_tiny(x)
+        x = self.conv_tiny(x)
+        x = self.bn(x)
+        x = to_tiny(x)
+        out = tinyTensor.silu(x)
+        return to_torch(out)
+    
+
 class ConvX(nn.Module):
     def __init__(self, in_planes, out_planes, kernel=3, stride=1, groups=1, dilation=1, act='relu', layer_norm=False, rms_norm=False):
         super(ConvX, self).__init__()
@@ -1212,6 +1227,8 @@ class Model:
             self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention.attention = Dinov2WithRegistersSdpaSelfAttention_tiny(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention.attention)
             self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention.output = Dinov2WithRegistersSelfOutput_tiny(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention.output)
         
+        self.model_tiny.backbone.backbone.projector.stages.modules[0].cv1 = ConvX_tiny(self.model_tiny.backbone.backbone.projector.stages.modules[0].cv1)
+
         SKIP_KEYS = {
             "_parameters", "_buffers", "_modules",
             "_backward_hooks", "_forward_hooks",
