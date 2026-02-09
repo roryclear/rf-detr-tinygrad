@@ -1246,6 +1246,8 @@ class Model:
         self.model_tiny.backbone.backbone.projector.stages[0].m = to_tiny_seq(self.model_tiny.backbone.backbone.projector.stages[0].m)
         for i in range(len(self.model_tiny.backbone.backbone.projector.stages[0].m.modules)):
             self.model_tiny.backbone.backbone.projector.stages[0].m[i] = Bottleneck_tiny(self.model_tiny.backbone.backbone.projector.stages[0].m[i])
+            self.model_tiny.backbone.backbone.projector.stages[0].m[i].cv1 = ConvX_tiny(self.model_tiny.backbone.backbone.projector.stages[0].m[i].cv1)
+            self.model_tiny.backbone.backbone.projector.stages[0].m[i].cv2 = ConvX_tiny(self.model_tiny.backbone.backbone.projector.stages[0].m[i].cv2)
 
         SKIP_KEYS = {
             "_parameters", "_buffers", "_modules",
