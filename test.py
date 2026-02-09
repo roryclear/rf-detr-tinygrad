@@ -337,7 +337,68 @@ class WindowedDinov2WithRegistersEncoder(nn.Module):
 
         all_hidden_states = all_hidden_states + (hidden_states,)
         return tuple(v for v in [hidden_states, all_hidden_states, all_self_attentions] if v is not None)
-    
+ 
+class WindowedDinov2WithRegistersBackbone_tiny():
+    _supports_sdpa = True #todo, why need?
+
+    def __init__(self, w):
+        self.embeddings = w.embeddings
+        self.encoder = w.encoder
+        self.stage_names = w.stage_names
+        self.out_features = w.out_features
+        self.layernorm_tiny = w.layernorm_tiny
+        self.num_register_tokens = w.num_register_tokens
+        self.config = w.config
+
+    def get_input_embeddings(self):
+        return self.embeddings.patch_embeddings
+
+    def __call__(
+        self,
+        pixel_values,
+        output_hidden_states: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+    ) -> BackboneOutput:
+        embedding_output = self.embeddings(pixel_values)
+
+        outputs = self.encoder(
+            embedding_output, output_hidden_states=True, output_attentions=output_attentions, return_dict=return_dict
+        )
+
+        hidden_states = outputs[1]
+
+        feature_maps = ()
+        for stage, hidden_state in zip(self.stage_names, hidden_states):
+            if stage in self.out_features:
+                hidden_state = to_tiny(hidden_state)
+                hidden_state = self.layernorm_tiny(hidden_state)
+                hidden_state = hidden_state[:, self.num_register_tokens + 1 :]
+                # this was actually a bug in the original implementation that we copied here,
+                # cause normally the order is height, width
+                batch_size, _, height, width = pixel_values.shape
+                patch_size = self.config.patch_size
+
+                num_h_patches = height // patch_size
+                num_w_patches = width // patch_size
+
+                # undo windowing
+                num_windows_squared = self.config.num_windows ** 2
+                B, HW, C = hidden_state.shape
+                num_h_patches_per_window = num_h_patches // self.config.num_windows
+                num_w_patches_per_window = num_w_patches // self.config.num_windows
+                hidden_state = hidden_state.reshape(B // num_windows_squared, num_windows_squared * HW, C)
+                hidden_state = hidden_state.reshape((B // num_windows_squared) * self.config.num_windows, self.config.num_windows, num_h_patches_per_window, num_w_patches_per_window, C)
+                hidden_state = hidden_state.permute(0, 2, 1, 3, 4)
+
+                hidden_state = hidden_state.reshape(batch_size, num_h_patches, num_w_patches, -1)
+                hidden_state = hidden_state.permute(0, 3, 1, 2).contiguous()
+                hidden_state = to_torch(hidden_state)
+                feature_maps += (hidden_state,)
+
+        output = (feature_maps,) + outputs[2:]
+        return output
+
 class WindowedDinov2WithRegistersBackbone(PreTrainedModel, BackboneMixin):
     _supports_sdpa = True #todo, why need?
 
@@ -1291,6 +1352,7 @@ class Model:
 
         self.model_tiny.backbone.backbone = Backbone_tiny(self.model_tiny.backbone.backbone)
         self.model_tiny.backbone.backbone.encoder = DinoV2_tiny(self.model_tiny.backbone.backbone.encoder)
+        self.model_tiny.backbone.backbone.encoder.encoder = WindowedDinov2WithRegistersBackbone_tiny(self.model_tiny.backbone.backbone.encoder.encoder)
         self.model_tiny.backbone.backbone.projector = MultiScaleProjector_tiny(self.model_tiny.backbone.backbone.projector)
         self.model_tiny.backbone.backbone.projector.stages = self.model_tiny.backbone.backbone.projector.stages[0]
         seq = tiny_seq(2)
