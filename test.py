@@ -897,10 +897,6 @@ class MultiScaleProjector(nn.Module):
         stage_output = self.stages[0](feat_fuse)
         return [stage_output]
 
-class NestedTensor(object):
-    def __init__(self, tensors: Tensor, mask: Optional[Tensor]) -> None:
-        self.tensors = tensors
-        self.mask = mask
 
 def build_position_encoding(hidden_dim, position_embedding):
     N_steps = hidden_dim // 2
@@ -914,8 +910,8 @@ class PositionEmbeddingSine_tiny():
         self.temperature = pos.temperature
         self.scale = pos.scale
 
-    def __call__(self, tensor_list: NestedTensor, align_dim_orders = True):
-        mask = tensor_list.mask
+    def __call__(self, tensor_list, align_dim_orders = True):
+        mask = tensor_list[1]
         if type(mask) != tinyTensor: mask = to_tiny(mask)
         not_mask = ~mask
         y_embed = not_mask.cumsum(1)
@@ -935,7 +931,7 @@ class PositionEmbeddingSine_tiny():
 class PositionEmbeddingSine(nn.Module):
     def __init__(self, num_pos_feats=64, temperature=10000, normalize=False, scale=None): pass
 
-    def forward(self, tensor_list: NestedTensor, align_dim_orders = True):
+    def forward(self, tensor_list, align_dim_orders = True):
         mask = tensor_list.mask
         if type(mask) != tinyTensor: mask = to_tiny(mask)
         not_mask = ~mask
@@ -959,30 +955,30 @@ class Backbone_tiny():
         self.encoder = backbone.encoder
         self.projector = backbone.projector
 
-    def __call__(self, tensor_list: NestedTensor):
-        feats = self.encoder(tensor_list.tensors)
+    def __call__(self, tensor_list):
+        feats = self.encoder(tensor_list[0])
         feats = self.projector(feats)
         out = []
-        m = tensor_list.mask
+        m = tensor_list[1]
         m = to_tiny(m)
         mask = ~tinyTensor.interpolate(m.unsqueeze(0), size=feats[0].shape[-2:])[0]
         mask = to_torch(mask).bool()
-        out.append(NestedTensor(feats[0], mask))
+        out.append([feats[0], mask])
         return out
 
 class Backbone(BackboneBase):
     """backbone."""
     def __init__(self): pass
 
-    def forward(self, tensor_list: NestedTensor):
-        feats = self.encoder(tensor_list.tensors)
+    def forward(self, tensor_list):
+        feats = self.encoder(tensor_list[0])
         feats = self.projector(feats)
         out = []
-        m = tensor_list.mask
+        m = tensor_list[1]
         m = to_tiny(m)
         mask = ~tinyTensor.interpolate(m.unsqueeze(0), size=feats[0].shape[-2:])[0]
         mask = to_torch(mask).bool()
-        out.append(NestedTensor(feats[0], mask))
+        out.append([feats[0], mask])
         return out
 
 def build_backbone(
@@ -1073,7 +1069,7 @@ class Joiner_tiny():
             pos.append(
                 self.position_embedding(
                     x_, align_dim_orders=False
-                ).to(x_.tensors.dtype)
+                ).to(x_[0].dtype)
             )
         return x, pos
 
@@ -1087,10 +1083,10 @@ def _max_by_axis(the_list: List[List[int]]) -> List[int]:
             maxes[index] = max(maxes[index], item)
     return maxes
 
-def nested_tensor_from_tensor_list(tensor_list) -> NestedTensor:
+def nested_tensor_from_tensor_list(tensor_list):
     tensor_list = to_torch(tensor_list)
     mask = torch.ones((tensor_list.shape[1], tensor_list.shape[2]), dtype=torch.bool)
-    return NestedTensor(tensor_list.unsqueeze(0), mask.unsqueeze(0))
+    return [tensor_list.unsqueeze(0), mask.unsqueeze(0)]
 
 class MLP_tiny():
     def __init__(self, mlp):
@@ -1133,10 +1129,10 @@ class LWDETR_tiny():
         self.class_embed = model.class_embed
         self.num_queries = model.num_queries
 
-    def __call__(self, samples: NestedTensor, targets=None):
+    def __call__(self, samples, targets=None):
         samples = nested_tensor_from_tensor_list(samples)
         features, poss = self.backbone(samples)
-        src, mask = features[0].tensors, features[0].mask
+        src, mask = features[0][0], features[0][1]
         refpoint_embed_weight = self.refpoint_embed.weight[:self.num_queries]
         query_feat_weight = self.query_feat.weight[:self.num_queries]
         hs, ref_unsigmoid, hs_enc, ref_enc = self.transformer(src, mask, poss, refpoint_embed_weight, query_feat_weight)
