@@ -827,6 +827,25 @@ class Bottleneck(nn.Module):
         """'forward()' applies the YOLOv5 FPN to input data."""
         return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
 
+class C2f_tiny():
+    """Faster Implementation of CSP Bottleneck with 2 convolutions."""
+
+    def __init__(self, c):
+        self.cv1 = c.cv1
+        self.c = c.c
+        self.cv2 = c.cv2
+        self.m = c.m
+
+    def __call__(self, x):
+        """Forward pass using split() instead of chunk()."""
+        y = list(self.cv1(x).split((self.c, self.c), 1))
+        y = to_tiny(y)
+        y.extend(to_tiny(m(y[-1])) for m in self.m)
+        y = tinyTensor.cat(*y, dim=1)
+        y = self.cv2(y)
+        y = to_torch(y)
+        return y
+
 class C2f(nn.Module):
     """Faster Implementation of CSP Bottleneck with 2 convolutions."""
 
@@ -848,6 +867,25 @@ class C2f(nn.Module):
         y = to_torch(y)
         return y
 
+
+class LayerNorm_tiny():
+    def __init__(self, l):
+        self.eps = l.eps
+        self.weight_tiny = l.weight_tiny
+        self.bias_tiny = l.bias_tiny
+
+    def __call__(self, x):
+        if type(x) != tinyTensor: x = to_tiny(x)
+        x = x.permute(0, 2, 3, 1)
+        x -= x.mean(axis=-1, keepdim=True)
+        var = (x ** 2).mean(axis=-1, keepdim=True) + self.eps
+        var = tinyTensor.sqrt(var)
+        x_norm = x / var
+        x_norm = x_norm * self.weight_tiny
+        x_norm = x_norm + self.bias_tiny
+        x = x_norm
+        x = x.permute(0, 3, 1, 2)
+        return to_torch(x)
 
 class LayerNorm(nn.Module):
     def __init__(self): pass
@@ -1243,9 +1281,11 @@ class Model:
         self.model_tiny.backbone.backbone.projector = MultiScaleProjector_tiny(self.model_tiny.backbone.backbone.projector)
         self.model_tiny.backbone.backbone.projector.stages = self.model_tiny.backbone.backbone.projector.stages[0]
         seq = tiny_seq(2)
-        seq[0] = self.model_tiny.backbone.backbone.projector.stages[0]
-        seq[1] = self.model_tiny.backbone.backbone.projector.stages[1]
+        seq[0] = C2f_tiny(self.model_tiny.backbone.backbone.projector.stages[0])
+        seq[1] = LayerNorm_tiny(self.model_tiny.backbone.backbone.projector.stages[1])
         self.model_tiny.backbone.backbone.projector.stages = seq
+
+        
         
         SKIP_KEYS = {
             "_parameters", "_buffers", "_modules",
