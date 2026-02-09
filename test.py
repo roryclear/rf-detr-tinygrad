@@ -1286,15 +1286,13 @@ class Model:
                 return
             
             for k, v in obj.__dict__.items():
-                if k.startswith("_"):
-                    continue
                 print_obj(v, f"{path}.{k}", seen)
                 
                 # TransformerDecoder - 
                 # self.layers: ModuleList
                 # self.norm_tiny: tinynn.layernorm
                 # self.ref_point_head: MLP
-        #print_obj(self.model_tiny)
+        print_obj(self.model_tiny)
         #with open(f'tiny_{args.pretrain_weights}2.pkl', 'wb') as f: pickle.dump(self.model_tiny, f)
 
         self.postprocess = PostProcess(num_select=args.num_select)
