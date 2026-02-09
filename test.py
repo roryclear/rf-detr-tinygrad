@@ -1261,7 +1261,13 @@ class Model:
             self.model_tiny.transformer.decoder.layers[i] = TransformerDecoderLayer_tiny(self.model.transformer.decoder.layers[i])
             self.model_tiny.transformer.decoder.layers[i].self_attn = MultiheadAttention_tiny(self.model.transformer.decoder.layers[i].self_attn)
 
-        self.model_tiny.transformer.enc_output = to_tiny_seq(self.model.transformer.enc_output)
+    
+        self.model_tiny.transformer.enc_output = tiny_seq(len(self.model.transformer.enc_output))
+        for i in range(len(self.model_tiny.transformer.enc_output.modules)):
+            self.model_tiny.transformer.enc_output[i] = tinynn.Linear(self.model.transformer.enc_output[i].in_features, self.model.transformer.enc_output[i].out_features)
+            self.model_tiny.transformer.enc_output[i].weight = to_tiny(self.model.transformer.enc_output[i].weight)
+            self.model_tiny.transformer.enc_output[i].bias = to_tiny(self.model.transformer.enc_output[i].bias)
+
         self.model_tiny.transformer.decoder.ref_point_head.layers = to_tiny_seq(self.model.transformer.decoder.ref_point_head.layers)
         self.model_tiny.transformer.enc_out_bbox_embed.layers = to_tiny_seq(self.model.transformer.enc_out_bbox_embed.layers)
         self.model_tiny.transformer.enc_out_class_embed = to_tiny_seq(self.model.transformer.enc_out_class_embed)
