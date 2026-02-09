@@ -316,6 +316,60 @@ class Dinov2WithRegistersLayerScale(nn.Module):
         x = hidden_state * self.lambda1_tiny
         return x
 
+
+class WindowedDinov2WithRegistersLayer_tiny():
+    """This corresponds to the Block class in the original implementation."""
+
+    def __init__(self, w):
+        self.norm1_tiny = w.norm1_tiny
+        self.norm2_tiny = w.norm2_tiny
+        self.attention = w.attention
+        self.mlp = w.mlp
+        self.layer_scale1 = w.layer_scale1
+        self.layer_scale2 = w.layer_scale2
+        self.num_windows = w.num_windows
+    def __call__(
+        self,
+        hidden_states: Any,
+        head_mask: Optional[Any] = None,
+        output_attentions: bool = False,
+        run_full_attention: bool = False,
+    ):
+        hidden_states = to_tiny(hidden_states)
+        shortcut = hidden_states
+        if run_full_attention:
+            # reshape x to remove windows
+            B, HW, C = hidden_states.shape
+            num_windows_squared = self.num_windows ** 2
+            hidden_states = hidden_states.view(B // num_windows_squared, num_windows_squared * HW, C)
+        x = self.norm1_tiny(hidden_states)
+
+        # todo
+        self_attention_outputs = self.attention(
+            x,
+            head_mask,
+            output_attentions=output_attentions,
+        )
+        attention_output = self_attention_outputs[0]
+
+        if run_full_attention:
+            B, HW, C = hidden_states.shape
+            num_windows_squared = self.num_windows ** 2
+            attention_output = attention_output.view(B * num_windows_squared, HW // num_windows_squared, C)
+        attention_output = self.layer_scale1(attention_output)
+        outputs = self_attention_outputs[1:]
+        hidden_states = attention_output + shortcut
+
+        # in Dinov2WithRegisters, layernorm is also applied after self-attention
+        layer_output = self.norm2_tiny(hidden_states)
+        layer_output = self.mlp(layer_output)
+        layer_output = self.layer_scale2(layer_output)
+        layer_output = layer_output + hidden_states
+
+        layer_output = to_torch(layer_output)
+        outputs = (layer_output,) + outputs
+        return outputs
+
 class WindowedDinov2WithRegistersLayer(nn.Module):
     """This corresponds to the Block class in the original implementation."""
 
@@ -1429,6 +1483,9 @@ class Model:
         self.model_tiny.backbone.backbone.encoder.encoder.embeddings = WindowedDinov2WithRegistersEmbeddings_tiny(self.model_tiny.backbone.backbone.encoder.encoder.embeddings)
         self.model_tiny.backbone.backbone.encoder.encoder.embeddings.patch_embeddings = Dinov2WithRegistersPatchEmbeddings_tiny(self.model_tiny.backbone.backbone.encoder.encoder.embeddings.patch_embeddings)
         self.model_tiny.backbone.backbone.encoder.encoder.encoder = WindowedDinov2WithRegistersEncoder_tiny(self.model_tiny.backbone.backbone.encoder.encoder.encoder)
+        self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer = to_tiny_seq(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer)
+        for i in range(len(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer.modules)):
+            self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer.modules[i] = WindowedDinov2WithRegistersLayer_tiny(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer.modules[i])
         self.model_tiny.backbone.backbone.projector = MultiScaleProjector_tiny(self.model_tiny.backbone.backbone.projector)
         self.model_tiny.backbone.backbone.projector.stages = self.model_tiny.backbone.backbone.projector.stages[0]
         seq = tiny_seq(2)
