@@ -1168,7 +1168,7 @@ class LWDETR_tiny():
         out = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
         hs_enc_list = hs_enc.chunk(1, dim=1)
         cls_enc = []
-        cls_enc_gidx = self.transformer.enc_out_class_embed[0](hs_enc_list[0])
+        cls_enc_gidx = self.transformer.enc_out_class_embed[0](to_tiny(hs_enc_list[0]))
         cls_enc.append(cls_enc_gidx)
         out['enc_outputs'] = {'pred_logits': cls_enc, 'pred_boxes': ref_enc}
         return out
@@ -1284,12 +1284,16 @@ class Model:
             linear.bias = to_tiny(self.model_tiny.transformer.enc_out_bbox_embed.layers[i].bias)
             self.model_tiny.transformer.enc_out_bbox_embed.layers[i] = linear
 
-        if hasattr(self.model_tiny.transformer, "self.model.transformer.enc_out_class_embed.modules"):
-            for i in range(len(self.model_tiny.transformer.enc_out_class_embed.modules)):
-                linear = tinynn.Linear(self.model_tiny.transformer.enc_out_class_embed[i].in_features, self.model_tiny.transformer.enc_out_class_embed[i].out_features)
-                linear.weight = to_tiny(self.model_tiny.transformer.enc_out_class_embed[i].weight)
-                linear.bias = to_tiny(self.model_tiny.transformer.enc_out_class_embed[i].bias)
-                self.model_tiny.transformer.enc_out_class_embed[i] = linear
+        for i in range(len(self.model_tiny.transformer.enc_out_class_embed.modules)):
+            linear = tinynn.Linear(self.model_tiny.transformer.enc_out_class_embed[i].in_features, self.model_tiny.transformer.enc_out_class_embed[i].out_features)
+            linear.weight = to_tiny(self.model_tiny.transformer.enc_out_class_embed[i].weight)
+            linear.bias = to_tiny(self.model_tiny.transformer.enc_out_class_embed[i].bias)
+            self.model_tiny.transformer.enc_out_class_embed[i] = linear
+        
+        #linear = tinynn.Linear(self.model_tiny.class_embed.in_features, self.model_tiny.class_embed.out_features)
+        #linear.weight = to_tiny(self.model_tiny.class_embed.weight)
+        #linear.bias = to_tiny(self.model_tiny.class_embed.bias)
+        #self.model_tiny.class_embed = linear
         
         SKIP_KEYS = {
             "_parameters", "_buffers", "_modules",
