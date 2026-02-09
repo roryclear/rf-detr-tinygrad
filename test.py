@@ -129,6 +129,16 @@ class WindowedDinov2WithRegistersConfig(BackboneConfigMixin, PretrainedConfig):
     model_type = "dinov2_with_registers"
     def __init__(): pass
 
+class Dinov2WithRegistersPatchEmbeddings_tiny():
+    def __init__(self, d):
+        self.projection_tiny = d.projection_tiny
+        self.projection = d.projection # todo
+    def __call__(self, x):
+        x = to_tiny(x)
+        x = self.projection_tiny(x).flatten(2).transpose(1, 2)
+        return x
+
+
 class Dinov2WithRegistersPatchEmbeddings(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -1391,6 +1401,7 @@ class Model:
         self.model_tiny.backbone.backbone.encoder = DinoV2_tiny(self.model_tiny.backbone.backbone.encoder)
         self.model_tiny.backbone.backbone.encoder.encoder = WindowedDinov2WithRegistersBackbone_tiny(self.model_tiny.backbone.backbone.encoder.encoder)
         self.model_tiny.backbone.backbone.encoder.encoder.embeddings = WindowedDinov2WithRegistersEmbeddings_tiny(self.model_tiny.backbone.backbone.encoder.encoder.embeddings)
+        self.model_tiny.backbone.backbone.encoder.encoder.embeddings.patch_embeddings = Dinov2WithRegistersPatchEmbeddings_tiny(self.model_tiny.backbone.backbone.encoder.encoder.embeddings.patch_embeddings)
         self.model_tiny.backbone.backbone.projector = MultiScaleProjector_tiny(self.model_tiny.backbone.backbone.projector)
         self.model_tiny.backbone.backbone.projector.stages = self.model_tiny.backbone.backbone.projector.stages[0]
         seq = tiny_seq(2)
