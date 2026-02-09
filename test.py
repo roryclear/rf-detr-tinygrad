@@ -239,9 +239,20 @@ class Dinov2WithRegistersSdpaSelfAttention(nn.Module):
         return context_layer, None
 
 
-class Dinov2WithRegistersSdpaAttention(Dinov2WithRegistersAttention):
+class Dinov2WithRegistersSdpaAttention(nn.Module):
     def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
         super().__init__(config)
+
+    def forward(
+        self,
+        hidden_states: Any,
+        head_mask: Optional[Any] = None,
+        output_attentions: bool = False,
+    ) -> Union[Tuple[Any, Any], Tuple[Any]]:
+        self_outputs = self.attention(hidden_states, head_mask, output_attentions)
+        attention_output = self.output(self_outputs[0])
+        outputs = (attention_output,) + self_outputs[1:]  # add attentions if we output them
+        return outputs
 
 DINOV2_WITH_REGISTERS_ATTENTION_CLASSES = {
     "eager": Dinov2WithRegistersAttention,
