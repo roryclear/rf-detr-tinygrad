@@ -362,6 +362,32 @@ class WindowedDinov2WithRegistersLayer(nn.Module):
         outputs = (layer_output,) + outputs
         return outputs
 
+class WindowedDinov2WithRegistersEncoder_tiny():
+    def __init__(self, w):
+        self.layer = w.layer
+        self.config = w.config
+    def __call__(
+        self,
+        hidden_states: Any,
+        head_mask: Optional[Any] = None,
+        output_attentions: bool = False,
+        output_hidden_states: bool = False,
+        return_dict: bool = True,
+    ) -> Union[tuple, BaseModelOutput]:
+        all_hidden_states = () if output_hidden_states else None
+        all_self_attentions = () if output_attentions else None
+
+        for i, layer_module in enumerate(self.layer):
+            all_hidden_states = all_hidden_states + (hidden_states,)
+            run_full_attention = i not in self.config.window_block_indexes
+            layer_head_mask = None
+            layer_outputs = layer_module(hidden_states, layer_head_mask, output_attentions, run_full_attention)
+            hidden_states = layer_outputs[0]
+
+        all_hidden_states = all_hidden_states + (hidden_states,)
+        return tuple(v for v in [hidden_states, all_hidden_states, all_self_attentions] if v is not None)
+ 
+
 class WindowedDinov2WithRegistersEncoder(nn.Module):
     def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None: pass
     def forward(
@@ -1402,6 +1428,7 @@ class Model:
         self.model_tiny.backbone.backbone.encoder.encoder = WindowedDinov2WithRegistersBackbone_tiny(self.model_tiny.backbone.backbone.encoder.encoder)
         self.model_tiny.backbone.backbone.encoder.encoder.embeddings = WindowedDinov2WithRegistersEmbeddings_tiny(self.model_tiny.backbone.backbone.encoder.encoder.embeddings)
         self.model_tiny.backbone.backbone.encoder.encoder.embeddings.patch_embeddings = Dinov2WithRegistersPatchEmbeddings_tiny(self.model_tiny.backbone.backbone.encoder.encoder.embeddings.patch_embeddings)
+        self.model_tiny.backbone.backbone.encoder.encoder.encoder = WindowedDinov2WithRegistersEncoder_tiny(self.model_tiny.backbone.backbone.encoder.encoder.encoder)
         self.model_tiny.backbone.backbone.projector = MultiScaleProjector_tiny(self.model_tiny.backbone.backbone.projector)
         self.model_tiny.backbone.backbone.projector.stages = self.model_tiny.backbone.backbone.projector.stages[0]
         seq = tiny_seq(2)
