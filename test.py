@@ -174,16 +174,6 @@ class WindowedDinov2WithRegistersEmbeddings_tiny():
         embeddings = tinyTensor.cat(windowed_cls_token_with_pos_embed, windowed_pixel_tokens, dim=1)
         return embeddings
 
-class Dinov2WithRegistersSelfAttention(nn.Module):
-    def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
-        super().__init__()
-
-    def transpose_for_scores(self, x):
-        x = to_tiny(x)
-        new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
-        x = x.view(new_x_shape)
-        x = x.permute(0, 2, 1, 3)
-        return x
 
 class Dinov2WithRegistersSelfOutput(nn.Module):
     """
@@ -211,14 +201,21 @@ class Dinov2WithRegistersAttention(nn.Module):
         outputs = (attention_output,) + self_outputs[1:]  # add attentions if we output them
         return outputs
 
-class Dinov2WithRegistersSdpaSelfAttention(Dinov2WithRegistersSelfAttention):
-    def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
-        super().__init__(config)
+class Dinov2WithRegistersSdpaSelfAttention(nn.Module):
+    def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None: pass
+
+    def transpose_for_scores(self, x):
+        x = to_tiny(x)
+        new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
+        x = x.view(new_x_shape)
+        x = x.permute(0, 2, 1, 3)
+        return x
+
 
     def forward(
         self, hidden_states, head_mask: Optional[Any] = None, output_attentions: bool = False
     ) -> Union[Tuple[Any, Any], Tuple[Any]]:
-
+        
         hidden_states = to_tiny(hidden_states)
         mixed_query_layer = self.query_tiny(hidden_states)
 
