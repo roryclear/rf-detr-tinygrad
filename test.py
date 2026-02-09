@@ -9,13 +9,11 @@ from transformers.modeling_utils import PreTrainedModel
 from transformers.configuration_utils import PretrainedConfig
 
 import torch
-from torch import nn
 from torch import Tensor
 from typing import List, Literal, Optional, Union, Tuple, Callable, Set, Any
 from pydantic import BaseModel, field_validator
 import os
 import torchvision.transforms.functional as vF
-import torch.nn.functional as F
 from tqdm import tqdm
 import math
 import copy
@@ -182,19 +180,6 @@ class Dinov2WithRegistersSelfOutput_tiny():
         x = self.dense_tiny(x)
         return to_torch(x)
 
-class Dinov2WithRegistersAttention(nn.Module): #need
-    def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None: pass
-
-    def forward(
-        self,
-        hidden_states: Any,
-        head_mask: Optional[Any] = None,
-        output_attentions: bool = False,
-    ) -> Union[Tuple[Any, Any], Tuple[Any]]:
-        self_outputs = self.attention(hidden_states, head_mask, output_attentions)
-        attention_output = self.output(self_outputs[0])
-        outputs = (attention_output,) + self_outputs[1:]  # add attentions if we output them
-        return outputs
 
 class Dinov2WithRegistersSdpaSelfAttention_tiny():
     def __init__(self, d):
@@ -270,7 +255,7 @@ class Dinov2WithRegistersMLP_tiny():
         hidden_state = self.fc2_tiny(hidden_state)
         return to_torch(hidden_state)
 
-class Dinov2WithRegistersLayerScale_tiny(nn.Module): #need
+class Dinov2WithRegistersLayerScale_tiny():
     def __init__(self, d):
         self.lambda1_tiny = d.lambda1_tiny
 
@@ -278,6 +263,7 @@ class Dinov2WithRegistersLayerScale_tiny(nn.Module): #need
         hidden_state = to_tiny(hidden_state)
         x = hidden_state * self.lambda1_tiny
         return x
+
 
 class WindowedDinov2WithRegistersLayer_tiny():
     """This corresponds to the Block class in the original implementation."""
@@ -960,32 +946,18 @@ def nested_tensor_from_tensor_list(tensor_list):
 class MLP_tiny():
     def __init__(self, mlp):
         super().__init__()
-        self.num_layers = mlp.num_layers
         self.layers = copy.deepcopy(mlp.layers)
         self.layers_tiny = copy.deepcopy(mlp.layers_tiny)
 
     def __call__(self, x):
-        for i in range(self.num_layers):
+        for i in range(len(self.layers_tiny)):
             self.layers_tiny[i].weight = to_tiny(self.layers[i].weight)
             self.layers_tiny[i].bias = to_tiny(self.layers[i].bias)
 
         x = to_tiny(x)
         for i, layer in enumerate(self.layers_tiny):
-            x = tinyTensor.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
+            x = tinyTensor.relu(layer(x)) if i < len(self.layers_tiny) - 1 else layer(x)
         return to_torch(x)
-
-class MLP(nn.Module): #need
-    def __init__(self): pass
-    def __call__(self, x):
-        for i in range(self.num_layers):
-            self.layers_tiny[i].weight = to_tiny(self.layers[i].weight)
-            self.layers_tiny[i].bias = to_tiny(self.layers[i].bias)
-
-        x = to_tiny(x)
-        for i, layer in enumerate(self.layers_tiny):
-            x = tinyTensor.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
-        return to_torch(x)
-
 
 class LWDETR_tiny():
     """ This is the Group DETR v3 module that performs object detection """
@@ -1086,6 +1058,8 @@ class Model:
         self.args = args
         self.resolution = args.resolution
         with open(f'tiny_{args.pretrain_weights}4.pkl', 'rb') as f: self.model_tiny = pickle.load(f)
+
+        self.model_tiny.bbox_embed = MLP_tiny(self.model_tiny.bbox_embed)
 
         SKIP_KEYS = {
             "_parameters", "_buffers", "_modules",
