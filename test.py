@@ -349,6 +349,15 @@ class Dinov2WithRegistersMLP(nn.Module):
         hidden_state = self.fc2_tiny(hidden_state)
         return to_torch(hidden_state)
 
+class Dinov2WithRegistersLayerScale_tiny(nn.Module):
+    def __init__(self, d):
+        self.lambda1_tiny = d.lambda1_tiny
+
+    def __call__(self, hidden_state):
+        hidden_state = to_tiny(hidden_state)
+        x = hidden_state * self.lambda1_tiny
+        return x
+
 class Dinov2WithRegistersLayerScale(nn.Module):
     def __init__(self, config) -> None: pass
 
@@ -1195,9 +1204,10 @@ class Model:
         self.args = args
         self.resolution = args.resolution
         with open(f'tiny_{args.pretrain_weights}3.pkl', 'rb') as f: self.model_tiny = pickle.load(f)
-        
         for i in range(len(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer.modules)):
             self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].mlp = Dinov2WithRegistersMLP_tiny(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].mlp)
+            self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].layer_scale1 = Dinov2WithRegistersLayerScale_tiny(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].layer_scale1)
+            self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].layer_scale2 = Dinov2WithRegistersLayerScale_tiny(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].layer_scale2)
             self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention = Dinov2WithRegistersSdpaAttention_tiny(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention)
             self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention.attention = Dinov2WithRegistersSdpaSelfAttention_tiny(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention.attention)
             self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention.output = Dinov2WithRegistersSelfOutput_tiny(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention.output)
