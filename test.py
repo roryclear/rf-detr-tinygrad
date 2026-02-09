@@ -1228,6 +1228,7 @@ class Model:
             self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention.output = Dinov2WithRegistersSelfOutput_tiny(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention.output)
         
         self.model_tiny.backbone.backbone.projector.stages.modules[0].cv1 = ConvX_tiny(self.model_tiny.backbone.backbone.projector.stages.modules[0].cv1)
+        self.model_tiny.backbone.backbone.projector.stages.modules[0].cv1.bn = LayerNorm_tiny(self.model_tiny.backbone.backbone.projector.stages.modules[0].cv1.bn)
 
         SKIP_KEYS = {
             "_parameters", "_buffers", "_modules",
