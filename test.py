@@ -238,6 +238,21 @@ class Dinov2WithRegistersSdpaSelfAttention(nn.Module):
 
         return context_layer, None
 
+class Dinov2WithRegistersSdpaAttention_tiny():
+    def __init__(self, d):
+        self.attention = d.attention
+        self.output = d.output
+
+    def __call__(
+        self,
+        hidden_states: Any,
+        head_mask: Optional[Any] = None,
+        output_attentions: bool = False,
+    ) -> Union[Tuple[Any, Any], Tuple[Any]]:
+        self_outputs = self.attention(hidden_states, head_mask, output_attentions)
+        attention_output = self.output(self_outputs[0])
+        outputs = (attention_output,) + self_outputs[1:]  # add attentions if we output them
+        return outputs
 
 class Dinov2WithRegistersSdpaAttention(nn.Module):
     def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
@@ -1117,6 +1132,9 @@ class Model:
         self.args = args
         self.resolution = args.resolution
         with open(f'tiny_{args.pretrain_weights}3.pkl', 'rb') as f: self.model_tiny = pickle.load(f)
+        
+        for i in range(len(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer.modules)):
+            self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention = Dinov2WithRegistersSdpaAttention_tiny(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention)
         
         SKIP_KEYS = {
             "_parameters", "_buffers", "_modules",
