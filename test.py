@@ -182,19 +182,7 @@ class Dinov2WithRegistersSelfOutput_tiny():
         x = self.dense_tiny(x)
         return to_torch(x)
 
-class Dinov2WithRegistersSelfOutput(nn.Module):
-    """
-    The residual connection is defined in Dinov2WithRegistersLayer instead of here (as is the case with other models), due to the
-    layernorm applied before each block.
-    """
-
-    def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None: pass
-
-    def forward(self, x):
-        x = self.dense_tiny(x)
-        return to_torch(x)
-
-class Dinov2WithRegistersAttention(nn.Module):
+class Dinov2WithRegistersAttention(nn.Module): #need
     def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None: pass
 
     def forward(
@@ -251,42 +239,6 @@ class Dinov2WithRegistersSdpaSelfAttention_tiny():
 
         return context_layer, None
 
-class Dinov2WithRegistersSdpaSelfAttention(nn.Module):
-    def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None: pass
-
-    def transpose_for_scores(self, x):
-        x = to_tiny(x)
-        new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
-        x = x.view(new_x_shape)
-        x = x.permute(0, 2, 1, 3)
-        return x
-
-
-    def forward(
-        self, hidden_states, head_mask: Optional[Any] = None, output_attentions: bool = False
-    ) -> Union[Tuple[Any, Any], Tuple[Any]]:
-        
-        hidden_states = to_tiny(hidden_states)
-        mixed_query_layer = self.query_tiny(hidden_states)
-
-
-        key_layer = self.transpose_for_scores(self.key_tiny(hidden_states))
-        value_layer = self.transpose_for_scores(self.value_tiny(hidden_states))
-        query_layer = self.transpose_for_scores(mixed_query_layer)
-
-        query_layer = to_tiny(query_layer)
-        key_layer = to_tiny(key_layer)
-        value_layer = to_tiny(value_layer)
-
-        d_k = query_layer.size(-1)
-        attn_scores = tinyTensor.matmul(query_layer, key_layer.transpose(-2, -1)) / math.sqrt(d_k)
-        attn_probs = tinyTensor.softmax(attn_scores, axis=-1)
-        context_layer = tinyTensor.matmul(attn_probs, value_layer)
-        context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
-        new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
-        context_layer = context_layer.view(new_context_layer_shape)
-
-        return context_layer, None
 
 class Dinov2WithRegistersSdpaAttention_tiny():
     def __init__(self, d):
@@ -304,26 +256,6 @@ class Dinov2WithRegistersSdpaAttention_tiny():
         outputs = (attention_output,) + self_outputs[1:]  # add attentions if we output them
         return outputs
 
-class Dinov2WithRegistersSdpaAttention(nn.Module):
-    def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
-        super().__init__(config)
-
-    def forward(
-        self,
-        hidden_states: Any,
-        head_mask: Optional[Any] = None,
-        output_attentions: bool = False,
-    ) -> Union[Tuple[Any, Any], Tuple[Any]]:
-        self_outputs = self.attention(hidden_states, head_mask, output_attentions)
-        attention_output = self.output(self_outputs[0])
-        outputs = (attention_output,) + self_outputs[1:]  # add attentions if we output them
-        return outputs
-
-DINOV2_WITH_REGISTERS_ATTENTION_CLASSES = {
-    "eager": Dinov2WithRegistersAttention,
-    "sdpa": Dinov2WithRegistersSdpaAttention,
-}
-
 HOSTED_MODELS = {**OPEN_SOURCE_MODELS, **PLATFORM_MODELS}
 
 class Dinov2WithRegistersMLP_tiny():
@@ -338,18 +270,7 @@ class Dinov2WithRegistersMLP_tiny():
         hidden_state = self.fc2_tiny(hidden_state)
         return to_torch(hidden_state)
 
-
-class Dinov2WithRegistersMLP(nn.Module):
-    def __init__(self, config) -> None: pass
-
-    def forward(self, hidden_state):
-        hidden_state = to_tiny(hidden_state)
-        hidden_state = self.fc1_tiny(hidden_state)
-        hidden_state = hidden_state * 0.5 * (1.0 + tinyTensor.erf(hidden_state / math.sqrt(2.0)))
-        hidden_state = self.fc2_tiny(hidden_state)
-        return to_torch(hidden_state)
-
-class Dinov2WithRegistersLayerScale_tiny(nn.Module):
+class Dinov2WithRegistersLayerScale_tiny(nn.Module): #need
     def __init__(self, d):
         self.lambda1_tiny = d.lambda1_tiny
 
@@ -357,15 +278,6 @@ class Dinov2WithRegistersLayerScale_tiny(nn.Module):
         hidden_state = to_tiny(hidden_state)
         x = hidden_state * self.lambda1_tiny
         return x
-
-class Dinov2WithRegistersLayerScale(nn.Module):
-    def __init__(self, config) -> None: pass
-
-    def forward(self, hidden_state):
-        hidden_state = to_tiny(hidden_state)
-        x = hidden_state * self.lambda1_tiny
-        return x
-
 
 class WindowedDinov2WithRegistersLayer_tiny():
     """This corresponds to the Block class in the original implementation."""
@@ -802,38 +714,6 @@ class MSDeformAttn_tiny():
         output = self.output_proj_tiny(output)
         return output
 
-class MSDeformAttn(nn.Module):
-    """Multi-Scale Deformable Attention Module
-    """
-    def __init__(self): pass
-
-    def forward(self, query, reference_points, input_flatten, input_spatial_shapes,
-                input_level_start_index, input_padding_mask=None):
-        query = to_tiny(query)
-        reference_points = to_tiny(reference_points)
-        input_flatten = to_tiny(input_flatten)
-        input_spatial_shapes = to_tiny(input_spatial_shapes)
-        input_padding_mask = to_tiny(input_padding_mask)
-
-        N, Len_q, _ = query.shape
-        N, Len_in, _ = input_flatten.shape
-
-        input_spatial_shapes = to_torch(input_spatial_shapes)
-
-        value = self.value_proj_tiny(input_flatten)
-        value = value.masked_fill(input_padding_mask[..., None], float(0))
-        sampling_offsets = self.sampling_offsets_tiny(query).view(N, Len_q, self.n_heads, self.n_levels, self.n_points, 2)
-        attention_weights = self.attention_weights_tiny(query).view(N, Len_q, self.n_heads, self.n_levels * self.n_points)
-        sampling_locations = reference_points[:, :, None, :, None, :2] \
-                                + sampling_offsets / self.n_points * reference_points[:, :, None, :, None, 2:] * 0.5
-        attention_weights = attention_weights.softmax(-1)
-        value = value.transpose(1, 2).contiguous().view(N, self.n_heads, self.d_model // self.n_heads, Len_in)
-        output = ms_deform_attn_core_pytorch(
-            value, input_spatial_shapes, sampling_locations, attention_weights)
-        output = to_tiny(output)
-        output = self.output_proj_tiny(output)
-        return output
-
 class Transformer_tiny():
     def __init__(self, decoder, enc_output, enc_out_bbox_embed, enc_out_class_embed, bbox_reparam, enc_output_norm_tiny, enc_output_tiny,
         num_queries, d_model):
@@ -929,26 +809,6 @@ class ConvX_tiny():
         out = tinyTensor.silu(x)
         return to_torch(out)
     
-
-class ConvX(nn.Module):
-    def __init__(self, in_planes, out_planes, kernel=3, stride=1, groups=1, dilation=1, act='relu', layer_norm=False, rms_norm=False):
-        super(ConvX, self).__init__()
-        padding = (kernel // 2, kernel // 2)
-        self.conv = nn.Conv2d(in_planes, out_planes, kernel_size=(kernel, kernel),
-                              stride=stride, padding=padding, groups=groups,
-                              dilation=dilation, bias=False)
-        
-        self.conv_tiny = tinynn.Conv2d(in_planes, out_planes, (kernel, kernel), stride, padding, dilation, groups, False)
-        self.bn = LayerNorm(out_planes)
-
-    def forward(self, x):
-        x = to_tiny(x)
-        x = self.conv_tiny(x)
-        x = self.bn(x)
-        x = to_tiny(x)
-        out = tinyTensor.silu(x)
-        return to_torch(out)
-    
 class Bottleneck_tiny():
     """Standard bottleneck."""
 
@@ -958,21 +818,6 @@ class Bottleneck_tiny():
         self.add = b.add
 
     def __call__(self, x):
-        """'forward()' applies the YOLOv5 FPN to input data."""
-        return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
-
-class Bottleneck(nn.Module):
-    """Standard bottleneck."""
-
-    def __init__(self, c1, c2, shortcut=True, g=1, k=(3, 3), e=0.5, act='silu', layer_norm=False, rms_norm=False):
-        """ ch_in, ch_out, shortcut, groups, kernels, expand """
-        super().__init__()
-        c_ = int(c2 * e)  # hidden channels
-        self.cv1 = ConvX(c1, c_, k[0], 1, act=act, layer_norm=layer_norm, rms_norm=rms_norm)
-        self.cv2 = ConvX(c_, c2, k[1], 1, groups=g, act=act, layer_norm=layer_norm, rms_norm=rms_norm)
-        self.add = shortcut and c1 == c2
-
-    def forward(self, x):
         """'forward()' applies the YOLOv5 FPN to input data."""
         return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
 
@@ -1002,22 +847,6 @@ class LayerNorm_tiny():
         self.bias_tiny = l.bias_tiny
 
     def __call__(self, x):
-        if type(x) != tinyTensor: x = to_tiny(x)
-        x = x.permute(0, 2, 3, 1)
-        x -= x.mean(axis=-1, keepdim=True)
-        var = (x ** 2).mean(axis=-1, keepdim=True) + self.eps
-        var = tinyTensor.sqrt(var)
-        x_norm = x / var
-        x_norm = x_norm * self.weight_tiny
-        x_norm = x_norm + self.bias_tiny
-        x = x_norm
-        x = x.permute(0, 3, 1, 2)
-        return to_torch(x)
-
-class LayerNorm(nn.Module):
-    def __init__(self): pass
-
-    def forward(self, x):
         if type(x) != tinyTensor: x = to_tiny(x)
         x = x.permute(0, 2, 3, 1)
         x -= x.mean(axis=-1, keepdim=True)
@@ -1123,16 +952,6 @@ class Joiner_tiny():
             )
         return x, pos
 
-class Joiner(nn.Sequential):
-    def __init__(self): pass
-    
-def _max_by_axis(the_list: List[List[int]]) -> List[int]:
-    maxes = the_list[0]
-    for sublist in the_list[1:]:
-        for index, item in enumerate(sublist):
-            maxes[index] = max(maxes[index], item)
-    return maxes
-
 def nested_tensor_from_tensor_list(tensor_list):
     tensor_list = to_torch(tensor_list)
     mask = torch.ones((tensor_list.shape[1], tensor_list.shape[2]), dtype=torch.bool)
@@ -1155,7 +974,7 @@ class MLP_tiny():
             x = tinyTensor.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
         return to_torch(x)
 
-class MLP(nn.Module):
+class MLP(nn.Module): #need
     def __init__(self): pass
     def __call__(self, x):
         for i in range(self.num_layers):
@@ -1205,9 +1024,6 @@ class LWDETR_tiny():
         cls_enc.append(cls_enc_gidx)
         out['enc_outputs'] = {'pred_logits': cls_enc, 'pred_boxes': ref_enc}
         return out
-
-class LWDETR(nn.Module):
-    def __init__(self): pass
 
 def box_cxcywh_to_xyxy(x):
     x_c, y_c, w, h = [t.squeeze(-1) for t in x.split(1, dim=-1)]
@@ -1269,32 +1085,7 @@ class Model:
         )
         self.args = args
         self.resolution = args.resolution
-        with open(f'tiny_{args.pretrain_weights}3.pkl', 'rb') as f: self.model_tiny = pickle.load(f)
-        for i in range(len(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer.modules)):
-            self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].mlp = Dinov2WithRegistersMLP_tiny(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].mlp)
-            self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].layer_scale1 = Dinov2WithRegistersLayerScale_tiny(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].layer_scale1)
-            self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].layer_scale2 = Dinov2WithRegistersLayerScale_tiny(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].layer_scale2)
-            self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention = Dinov2WithRegistersSdpaAttention_tiny(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention)
-            self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention.attention = Dinov2WithRegistersSdpaSelfAttention_tiny(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention.attention)
-            self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention.output = Dinov2WithRegistersSelfOutput_tiny(self.model_tiny.backbone.backbone.encoder.encoder.encoder.layer[i].attention.output)
-        
-        self.model_tiny.backbone.backbone.projector.stages.modules[0].cv1 = ConvX_tiny(self.model_tiny.backbone.backbone.projector.stages.modules[0].cv1)
-        self.model_tiny.backbone.backbone.projector.stages.modules[0].cv1.bn = LayerNorm_tiny(self.model_tiny.backbone.backbone.projector.stages.modules[0].cv1.bn)
-        self.model_tiny.backbone.backbone.projector.stages.modules[0].cv2 = ConvX_tiny(self.model_tiny.backbone.backbone.projector.stages.modules[0].cv2)
-        self.model_tiny.backbone.backbone.projector.stages.modules[0].cv2.bn = LayerNorm_tiny(self.model_tiny.backbone.backbone.projector.stages.modules[0].cv2.bn)
-
-        self.model_tiny.backbone.backbone.projector.stages[0].m = to_tiny_seq(self.model_tiny.backbone.backbone.projector.stages[0].m)
-        for i in range(len(self.model_tiny.backbone.backbone.projector.stages[0].m.modules)):
-            self.model_tiny.backbone.backbone.projector.stages[0].m[i] = Bottleneck_tiny(self.model_tiny.backbone.backbone.projector.stages[0].m[i])
-            self.model_tiny.backbone.backbone.projector.stages[0].m[i].cv1 = ConvX_tiny(self.model_tiny.backbone.backbone.projector.stages[0].m[i].cv1)
-            self.model_tiny.backbone.backbone.projector.stages[0].m[i].cv2 = ConvX_tiny(self.model_tiny.backbone.backbone.projector.stages[0].m[i].cv2)
-
-        for i in range(len(self.model_tiny.transformer.decoder.layers.modules)):
-            self.model_tiny.transformer.decoder.layers.modules[i].cross_attn = MSDeformAttn_tiny(self.model_tiny.transformer.decoder.layers.modules[i].cross_attn)
-
-        for i in range(len(self.model_tiny.backbone.backbone.projector.stages[0].m.modules)):
-            self.model_tiny.backbone.backbone.projector.stages[0].m[i].cv1.bn = LayerNorm_tiny(self.model_tiny.backbone.backbone.projector.stages[0].m[i].cv1.bn)
-            self.model_tiny.backbone.backbone.projector.stages[0].m[i].cv2.bn = LayerNorm_tiny(self.model_tiny.backbone.backbone.projector.stages[0].m[i].cv2.bn)
+        with open(f'tiny_{args.pretrain_weights}4.pkl', 'rb') as f: self.model_tiny = pickle.load(f)
 
         SKIP_KEYS = {
             "_parameters", "_buffers", "_modules",
@@ -1353,7 +1144,7 @@ class Model:
                 # self.norm_tiny: tinynn.layernorm
                 # self.ref_point_head: MLP
         print_obj(self.model_tiny)
-        #with open(f'tiny_{args.pretrain_weights}4.pkl', 'wb') as f: pickle.dump(self.model_tiny, f)
+        #with open(f'tiny_{args.pretrain_weights}5.pkl', 'wb') as f: pickle.dump(self.model_tiny, f)
 
         self.postprocess = PostProcess(num_select=args.num_select)
         self.stop_early = False
