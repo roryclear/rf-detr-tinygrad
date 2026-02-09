@@ -187,7 +187,6 @@ class Dinov2WithRegistersSelfOutput(nn.Module):
     def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None: pass
 
     def forward(self, x):
-        x = to_tiny(x)
         x = self.dense_tiny(x)
         return to_torch(x)
 
@@ -233,7 +232,7 @@ class Dinov2WithRegistersSdpaSelfAttention(Dinov2WithRegistersSelfAttention):
         new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
         context_layer = context_layer.view(new_context_layer_shape)
 
-        return to_torch(context_layer), None
+        return context_layer, None
 
 
 class Dinov2WithRegistersSdpaAttention(Dinov2WithRegistersAttention):
