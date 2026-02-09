@@ -806,7 +806,7 @@ class ConvX(nn.Module):
         x = to_tiny(x)
         x = self.conv_tiny(x)
         x = self.bn(x)
-        if type(x) != tinyTensor: x = to_tiny(x)
+        x = to_tiny(x)
         out = tinyTensor.silu(x)
         return to_torch(out)
     
