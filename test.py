@@ -496,7 +496,6 @@ class TransformerDecoderLayer_tiny():
         D = C // H
         w = to_tiny(self.self_attn.in_proj_weight)
         b = to_tiny(self.self_attn.in_proj_bias)
-        wo = to_tiny(self.self_attn.out_proj_weight)
         bo = to_tiny(self.self_attn.out_proj_bias)
         wq, wk, wv = w.chunk(3, dim=0)
         bq, bk, bv = b.chunk(3, dim=0)
@@ -511,7 +510,7 @@ class TransformerDecoderLayer_tiny():
 
         attn = tinyTensor.scaled_dot_product_attention(q,k,v)
         attn = attn.transpose(1, 2).contiguous().view(B, T, C)
-        tgt2 = attn @ wo.T + bo
+        tgt2 = attn @ to_tiny(self.self_attn.out_proj_weight).T + bo
         tgt = tgt + tgt2
         tgt = self.norm1_tiny(tgt)
         tgt2 = self.cross_attn(
@@ -1236,64 +1235,8 @@ class Model:
         )
         self.args = args
         self.resolution = args.resolution
-        with open(f'tiny_{args.pretrain_weights}.pkl', 'rb') as f: self.model = pickle.load(f)
+        with open(f'tiny_{args.pretrain_weights}2.pkl', 'rb') as f: self.model_tiny = pickle.load(f)
 
-        #print(self.model)
-        self.model.transformer.enc_out_bbox_embed = self.model.transformer.enc_out_bbox_embed[0]
-        #for k in self.model.state_dict().keys(): print(k)
-
-        print(self.model)
-        #exit()
-
-        self.model_tiny = LWDETR_tiny(self.model)
-        self.model_tiny.transformer = Transformer_tiny(self.model.transformer.decoder, self.model.transformer.enc_output, \
-        self.model_tiny.transformer.enc_out_bbox_embed, self.model.transformer.enc_out_class_embed, self.model.transformer.bbox_reparam,\
-        self.model_tiny.transformer.enc_output_norm_tiny, self.model.transformer.enc_output_tiny, self.model.transformer.num_queries,\
-        self.model_tiny.transformer.d_model)
-        self.model_tiny.backbone = Joiner_tiny(self.model.backbone)
-        self.model_tiny.transformer.decoder = TransformerDecoder_tiny(self.model.transformer.decoder)
-        self.model_tiny.transformer.decoder.ref_point_head = MLP_tiny(self.model.transformer.decoder.ref_point_head)
-        self.model_tiny.transformer.enc_out_bbox_embed = MLP_tiny(self.model.transformer.enc_out_bbox_embed)
-        self.model_tiny.backbone[1] = PositionEmbeddingSine_tiny(self.model.backbone[1])
-        
-        self.model_tiny.transformer.decoder.layers = tiny_seq(size=len(self.model.transformer.decoder.layers))
-        for i in range(len(self.model.transformer.decoder.layers)):
-            self.model_tiny.transformer.decoder.layers[i] = TransformerDecoderLayer_tiny(self.model.transformer.decoder.layers[i])
-            self.model_tiny.transformer.decoder.layers[i].self_attn = MultiheadAttention_tiny(self.model.transformer.decoder.layers[i].self_attn)
-
-    
-        self.model_tiny.transformer.enc_output = tiny_seq(len(self.model.transformer.enc_output))
-        for i in range(len(self.model_tiny.transformer.enc_output.modules)):
-            self.model_tiny.transformer.enc_output[i] = tinynn.Linear(self.model.transformer.enc_output[i].in_features, self.model.transformer.enc_output[i].out_features)
-            self.model_tiny.transformer.enc_output[i].weight = to_tiny(self.model.transformer.enc_output[i].weight)
-            self.model_tiny.transformer.enc_output[i].bias = to_tiny(self.model.transformer.enc_output[i].bias)
-
-        self.model_tiny.transformer.decoder.ref_point_head.layers = to_tiny_seq(self.model.transformer.decoder.ref_point_head.layers)
-        self.model_tiny.transformer.enc_out_bbox_embed.layers = to_tiny_seq(self.model.transformer.enc_out_bbox_embed.layers)
-        self.model_tiny.transformer.enc_out_class_embed = to_tiny_seq(self.model.transformer.enc_out_class_embed)
-        
-        for i in range(len(self.model_tiny.transformer.decoder.ref_point_head.layers.modules)):
-            linear = tinynn.Linear(self.model_tiny.transformer.decoder.ref_point_head.layers[i].in_features, self.model_tiny.transformer.decoder.ref_point_head.layers[i].out_features)
-            linear.weight = to_tiny(self.model_tiny.transformer.decoder.ref_point_head.layers[i].weight)
-            linear.bias = to_tiny(self.model_tiny.transformer.decoder.ref_point_head.layers[i].bias)
-            self.model_tiny.transformer.decoder.ref_point_head.layers[i] = linear
-
-        for i in range(len(self.model_tiny.transformer.enc_out_bbox_embed.layers.modules)):
-            linear = tinynn.Linear(self.model_tiny.transformer.enc_out_bbox_embed.layers[i].in_features, self.model_tiny.transformer.enc_out_bbox_embed.layers[i].out_features)
-            linear.weight = to_tiny(self.model_tiny.transformer.enc_out_bbox_embed.layers[i].weight)
-            linear.bias = to_tiny(self.model_tiny.transformer.enc_out_bbox_embed.layers[i].bias)
-            self.model_tiny.transformer.enc_out_bbox_embed.layers[i] = linear
-
-        for i in range(len(self.model_tiny.transformer.enc_out_class_embed.modules)):
-            linear = tinynn.Linear(self.model_tiny.transformer.enc_out_class_embed[i].in_features, self.model_tiny.transformer.enc_out_class_embed[i].out_features)
-            linear.weight = to_tiny(self.model_tiny.transformer.enc_out_class_embed[i].weight)
-            linear.bias = to_tiny(self.model_tiny.transformer.enc_out_class_embed[i].bias)
-            self.model_tiny.transformer.enc_out_class_embed[i] = linear
-        
-        #linear = tinynn.Linear(self.model_tiny.class_embed.in_features, self.model_tiny.class_embed.out_features)
-        #linear.weight = to_tiny(self.model_tiny.class_embed.weight)
-        #linear.bias = to_tiny(self.model_tiny.class_embed.bias)
-        #self.model_tiny.class_embed = linear
         
         SKIP_KEYS = {
             "_parameters", "_buffers", "_modules",
@@ -1351,10 +1294,8 @@ class Model:
                 # self.layers: ModuleList
                 # self.norm_tiny: tinynn.layernorm
                 # self.ref_point_head: MLP
-        print_obj(self.model_tiny)
-
-        #print(self.model_tiny)
-        with open(f'tiny_{args.pretrain_weights}2.pkl', 'wb') as f: pickle.dump(self.model, f)
+        #print_obj(self.model_tiny)
+        #with open(f'tiny_{args.pretrain_weights}2.pkl', 'wb') as f: pickle.dump(self.model_tiny, f)
 
         self.postprocess = PostProcess(num_select=args.num_select)
         self.stop_early = False
