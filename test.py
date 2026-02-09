@@ -245,7 +245,6 @@ class Dinov2WithRegistersSdpaSelfAttention(Dinov2WithRegistersSelfAttention):
 class Dinov2WithRegistersSdpaAttention(Dinov2WithRegistersAttention):
     def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
         super().__init__(config)
-        self.attention = Dinov2WithRegistersSdpaSelfAttention(config)
 
 DINOV2_WITH_REGISTERS_ATTENTION_CLASSES = {
     "eager": Dinov2WithRegistersAttention,
