@@ -1284,11 +1284,12 @@ class Model:
             linear.bias = to_tiny(self.model_tiny.transformer.enc_out_bbox_embed.layers[i].bias)
             self.model_tiny.transformer.enc_out_bbox_embed.layers[i] = linear
 
-        #for i in range(len(self.model_tiny.transformer.enc_out_class_embed.modules)):
-        #    linear = tinynn.Linear(self.model_tiny.transformer.enc_out_class_embed[i].in_features, self.model_tiny.transformer.enc_out_class_embed[i].out_features)
-        #    linear.weight = to_tiny(self.model_tiny.transformer.enc_out_class_embed[i].weight)
-        #    linear.bias = to_tiny(self.model_tiny.transformer.enc_out_class_embed[i].bias)
-        #    self.model_tiny.transformer.enc_out_class_embed[i] = linear
+        if hasattr(self.model_tiny.transformer, "self.model.transformer.enc_out_class_embed.modules"):
+            for i in range(len(self.model_tiny.transformer.enc_out_class_embed.modules)):
+                linear = tinynn.Linear(self.model_tiny.transformer.enc_out_class_embed[i].in_features, self.model_tiny.transformer.enc_out_class_embed[i].out_features)
+                linear.weight = to_tiny(self.model_tiny.transformer.enc_out_class_embed[i].weight)
+                linear.bias = to_tiny(self.model_tiny.transformer.enc_out_class_embed[i].bias)
+                self.model_tiny.transformer.enc_out_class_embed[i] = linear
         
         SKIP_KEYS = {
             "_parameters", "_buffers", "_modules",
