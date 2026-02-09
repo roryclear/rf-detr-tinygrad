@@ -32,13 +32,13 @@ def to_tiny(x):
         ret = []
         for i in range(len(x)): ret.append(to_tiny(x[i]))
         return tuple(ret) if type(x) is tuple else ret
-    return tinyTensor(x.detach().numpy()) if type(x) != tinyTensor else x
+    return tinyTensor(x.detach().numpy().copy()) if type(x) != tinyTensor else x
 def to_torch(x):
     if type(x) in [tuple, list]:
         ret = []
         for i in range(len(x)): ret.append(to_torch(x[i]))
         return tuple(ret) if type(x) == tuple else ret
-    return Tensor(x.numpy()) if type(x) != Tensor else x
+    return Tensor(x.numpy().copy()) if type(x) != Tensor else x
 
 COCO_CLASSES = {1: "person", 2: "bicycle", 3: "car", 4: "motorcycle", 5: "airplane", 6: "bus", 7: "train", 8: "truck", 9: "boat",
 10: "traffic light", 11: "fire hydrant", 13: "stop sign", 14: "parking meter", 15: "bench", 16: "bird", 17: "cat", 18: "dog",
@@ -1089,9 +1089,8 @@ def _max_by_axis(the_list: List[List[int]]) -> List[int]:
 
 def nested_tensor_from_tensor_list(tensor_list) -> NestedTensor:
     tensor_list = to_torch(tensor_list)
-    b, c, h, w =  tensor_list.shape
-    mask = torch.ones((b, h, w), dtype=torch.bool)
-    return NestedTensor(tensor_list, mask)
+    mask = torch.ones((tensor_list.shape[1], tensor_list.shape[2]), dtype=torch.bool)
+    return NestedTensor(tensor_list.unsqueeze(0), mask.unsqueeze(0))
 
 class MLP_tiny():
     def __init__(self, mlp):
@@ -1408,6 +1407,7 @@ class RFDETR:
 
         processed_images = to_tiny(processed_images)
         batch_tensor = tinyTensor.stack(*processed_images)
+        batch_tensor = batch_tensor.squeeze() # todo
         predictions = self.model.model_tiny(batch_tensor)
         target_sizes = tinyTensor(orig_sizes)
         results = self.model.postprocess(predictions, target_sizes=target_sizes)
