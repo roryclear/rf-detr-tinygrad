@@ -1704,6 +1704,44 @@ class MLP(nn.Module):
             x = tinyTensor.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
         return to_torch(x)
 
+class LWDETR_tiny():
+    """ This is the Group DETR v3 module that performs object detection """
+    def __init__(self, l):
+        self.backbone = l.backbone
+        self.refpoint_embed = l.refpoint_embed
+        self.num_queries = l.num_queries
+        self.query_feat = l.query_feat
+        self.transformer = l.transformer
+        self.bbox_embed = l.bbox_embed
+        self.class_embed = l.class_embed
+
+    def __call__(self, samples: NestedTensor, targets=None):
+        samples = nested_tensor_from_tensor_list(samples)
+        features, poss = self.backbone(samples)
+        src, mask = features[0].tensors, features[0].mask
+        refpoint_embed_weight = self.refpoint_embed.weight[:self.num_queries]
+        query_feat_weight = self.query_feat.weight[:self.num_queries]
+        hs, ref_unsigmoid, hs_enc, ref_enc = self.transformer(src, mask, poss, refpoint_embed_weight, query_feat_weight)
+        outputs_coord_delta = self.bbox_embed(hs)
+
+        outputs_coord_delta = to_tiny(outputs_coord_delta)
+        ref_unsigmoid = to_tiny(ref_unsigmoid)
+
+        outputs_coord_cxcy = outputs_coord_delta[..., :2] * ref_unsigmoid[..., 2:] + ref_unsigmoid[..., :2]
+        outputs_coord_wh = outputs_coord_delta[..., 2:].exp() * ref_unsigmoid[..., 2:]
+        outputs_coord = tinyTensor.cat(outputs_coord_cxcy, outputs_coord_wh, dim=-1)
+
+        outputs_coord = to_torch(outputs_coord)
+
+        outputs_class = self.class_embed(hs)
+        out = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
+        hs_enc_list = hs_enc.chunk(1, dim=1)
+        cls_enc = []
+        cls_enc_gidx = self.transformer.enc_out_class_embed[0](hs_enc_list[0])
+        cls_enc.append(cls_enc_gidx)
+        out['enc_outputs'] = {'pred_logits': cls_enc, 'pred_boxes': ref_enc}
+        return out
+
 class LWDETR(nn.Module):
     """ This is the Group DETR v3 module that performs object detection """
     def __init__(self,
@@ -2011,10 +2049,16 @@ class Model:
                 self.model.transformer.decoder.layers[i].cross_attn.attention_weights_tiny.weight.assign(to_tiny(self.model.transformer.decoder.layers[i].cross_attn.attention_weights.weight))
                 self.model.transformer.decoder.layers[i].cross_attn.attention_weights_tiny.bias.assign(to_tiny(self.model.transformer.decoder.layers[i].cross_attn.attention_weights.bias))
 
-            for k in checkpoint['model'].keys(): print(k)
+        self.model = LWDETR_tiny(self.model)
+        print_obj(self.model, "self.model.")
 
         self.postprocess = PostProcess(num_select=args.num_select)
         self.stop_early = False
+
+
+def print_obj(obj, s):
+    for v in vars(obj):
+        print(v)
 
 class ModelConfig(BaseModel):
     encoder: Literal["dinov2_windowed_small", "dinov2_windowed_base"]
