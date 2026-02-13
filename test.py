@@ -2066,36 +2066,30 @@ def print_obj(obj, s, seen=None):
     if obj_id in seen: return
     seen.add(obj_id)
     
-    try:
-        if isinstance(obj, dict):
-            for k in obj.keys():
-                print(f"{s}.{k}", type(obj[k]))
-                print_obj(obj[k], f"{s}.{k}", seen)
-        elif isinstance(obj, (list, tuple, set)):
-            for i, item in enumerate(obj):
-                print(f"{s}[{i}]", type(s[i]))
-                print_obj(item, f"{s}[{i}]", seen)
-        else:
+    if isinstance(obj, dict):
+        for k in obj.keys():
+            print(f"{s}.{k}", type(obj[k]))
+            print_obj(obj[k], f"{s}.{k}", seen)
+    elif isinstance(obj, (list, tuple, set)):
+        for i, item in enumerate(obj):
+            print(f"{s}[{i}]", type(item))
+            print_obj(item, f"{s}[{i}]", seen)
+    else:
+        attr_names = []
+        if hasattr(obj, "__dict__"):
+            attr_names.extend(vars(obj).keys())
+        if hasattr(obj, "__slots__"):
+            attr_names.extend(obj.__slots__)
+        
+        for v in attr_names:
+            if v == "uop": continue
+            v = v.replace("._modules","")
+            print(f"{s}.{v}", type(getattr(obj, v)))
             try:
-                attr_names = []
-                if hasattr(obj, "__dict__"):
-                    attr_names.extend(vars(obj).keys())
-                if hasattr(obj, "__slots__"):
-                    attr_names.extend(obj.__slots__)
-                
-                for v in attr_names:
-                    if v == "uop": continue
-                    v = v.replace("._modules","")
-                    print(f"{s}.{v}", type(getattr(s, v)))
-                    try:
-                        attr = getattr(obj, v)
-                        print_obj(attr, f"{s}.{v}", seen)
-                    except Exception as e:
-                        print(f"  Error accessing {s}.{v}: {e}")
+                attr = getattr(obj, v)
+                print_obj(attr, f"{s}.{v}", seen)
             except Exception as e:
-                pass
-    except Exception as e:
-        print(f"  Error processing {s}: {e}")
+                return
 
 class ModelConfig(BaseModel):
     encoder: Literal["dinov2_windowed_small", "dinov2_windowed_base"]
