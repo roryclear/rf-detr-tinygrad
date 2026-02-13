@@ -2050,15 +2050,52 @@ class Model:
                 self.model.transformer.decoder.layers[i].cross_attn.attention_weights_tiny.bias.assign(to_tiny(self.model.transformer.decoder.layers[i].cross_attn.attention_weights.bias))
 
         self.model = LWDETR_tiny(self.model)
-        print_obj(self.model, "self.model.")
+        print_obj(self.model, "self.model")
 
         self.postprocess = PostProcess(num_select=args.num_select)
         self.stop_early = False
 
 
-def print_obj(obj, s):
-    for v in vars(obj):
-        print(v)
+def print_obj(obj, s, seen=None):
+    s = s.replace("._modules","")
+    if seen is None: seen = set()
+
+    if obj is None: return
+    
+    obj_id = id(obj)
+    if obj_id in seen: return
+    seen.add(obj_id)
+    
+    try:
+        if isinstance(obj, dict):
+            for k in obj.keys():
+                print(f"{s}.{k}", type(obj[k]))
+                print_obj(obj[k], f"{s}.{k}", seen)
+        elif isinstance(obj, (list, tuple, set)):
+            for i, item in enumerate(obj):
+                print(f"{s}[{i}]", type(s[i]))
+                print_obj(item, f"{s}[{i}]", seen)
+        else:
+            try:
+                attr_names = []
+                if hasattr(obj, "__dict__"):
+                    attr_names.extend(vars(obj).keys())
+                if hasattr(obj, "__slots__"):
+                    attr_names.extend(obj.__slots__)
+                
+                for v in attr_names:
+                    if v == "uop": continue
+                    v = v.replace("._modules","")
+                    print(f"{s}.{v}", type(getattr(s, v)))
+                    try:
+                        attr = getattr(obj, v)
+                        print_obj(attr, f"{s}.{v}", seen)
+                    except Exception as e:
+                        print(f"  Error accessing {s}.{v}: {e}")
+            except Exception as e:
+                pass
+    except Exception as e:
+        print(f"  Error processing {s}: {e}")
 
 class ModelConfig(BaseModel):
     encoder: Literal["dinov2_windowed_small", "dinov2_windowed_base"]
