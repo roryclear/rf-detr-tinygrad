@@ -2068,6 +2068,9 @@ class Model:
             del self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.query
             del self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.key
             del self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.value
+            del self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.output.dense
+            del self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc1
+            del self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc2
 
 
         self.model = LWDETR_tiny(self.model)
