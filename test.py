@@ -2036,11 +2036,15 @@ class Model:
             self.model.transformer.enc_output_tiny.bias = to_tiny(self.model.transformer.enc_output[0].bias)
 
             self.model.backbone[0].projector.stages[0][0].cv1.conv_tiny.weight = to_tiny(self.model.backbone[0].projector.stages[0][0].cv1.conv.weight)
+            del self.model.backbone[0].projector.stages[0][0].cv1.conv
             self.model.backbone[0].projector.stages[0][0].cv2.conv_tiny.weight = to_tiny(self.model.backbone[0].projector.stages[0][0].cv2.conv.weight)
+            del self.model.backbone[0].projector.stages[0][0].cv2.conv
 
             for i in range(len(self.model.backbone[0].projector.stages[0][0].m)):
                 self.model.backbone[0].projector.stages[0][0].m[i].cv1.conv_tiny.weight =  to_tiny(self.model.backbone[0].projector.stages[0][0].m[i].cv1.conv.weight)
+                del self.model.backbone[0].projector.stages[0][0].m[i].cv1.conv
                 self.model.backbone[0].projector.stages[0][0].m[i].cv2.conv_tiny.weight =  to_tiny(self.model.backbone[0].projector.stages[0][0].m[i].cv2.conv.weight)
+                del self.model.backbone[0].projector.stages[0][0].m[i].cv2.conv
 
             for i in range(len(self.model.transformer.decoder.layers)):
                 self.model.transformer.decoder.layers[i].cross_attn.sampling_offsets_tiny.weight.assign(to_tiny(self.model.transformer.decoder.layers[i].cross_attn.sampling_offsets.weight))
