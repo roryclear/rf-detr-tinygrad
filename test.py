@@ -205,8 +205,7 @@ class WindowedDinov2WithRegistersEmbeddings(nn.Module):
 
     def forward(self, pixel_values, bool_masked_pos: Optional[Any] = None):
         batch_size, _, height, width = pixel_values.shape
-        target_dtype = self.patch_embeddings.projection.weight.dtype
-        embeddings = self.patch_embeddings(pixel_values.to(dtype=target_dtype))
+        embeddings = self.patch_embeddings(pixel_values)
 
         # add the [CLS] token to the embedded patch tokens
         cls_tokens = self.cls_token_tiny.expand(batch_size, -1, -1)
@@ -2048,10 +2047,11 @@ class Model:
                 self.model.transformer.decoder.layers[i].cross_attn.sampling_offsets_tiny.bias.assign(to_tiny(self.model.transformer.decoder.layers[i].cross_attn.sampling_offsets.bias))
                 self.model.transformer.decoder.layers[i].cross_attn.attention_weights_tiny.weight.assign(to_tiny(self.model.transformer.decoder.layers[i].cross_attn.attention_weights.weight))
                 self.model.transformer.decoder.layers[i].cross_attn.attention_weights_tiny.bias.assign(to_tiny(self.model.transformer.decoder.layers[i].cross_attn.attention_weights.bias))
-        
+
         del self.model.backbone[0].encoder.encoder.embeddings.cls_token
         del self.model.backbone[0].encoder.encoder.embeddings.position_embeddings
         del self.model.backbone[0].encoder.encoder.layernorm
+        del  self.model.backbone[0].encoder.encoder.embeddings.patch_embeddings.projection
 
         for i in range(len(self.model.transformer.decoder.layers)):
             del self.model.transformer.decoder.layers[i].norm1
@@ -2063,6 +2063,11 @@ class Model:
             del self.model.backbone[0].encoder.encoder.encoder.layer[i].drop_path
             del self.model.backbone[0].encoder.encoder.encoder.layer[i].norm1
             del self.model.backbone[0].encoder.encoder.encoder.layer[i].norm2
+
+        for i in range(len(self.model.backbone[0].encoder.encoder.encoder.layer)):
+            del self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.query
+            del self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.key
+            del self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.value
 
 
         self.model = LWDETR_tiny(self.model)
