@@ -2051,8 +2051,18 @@ class Model:
         
         del self.model.backbone[0].encoder.encoder.embeddings.cls_token
         del self.model.backbone[0].encoder.encoder.embeddings.position_embeddings
+        del self.model.backbone[0].encoder.encoder.layernorm
+
+        for i in range(len(self.model.transformer.decoder.layers)):
+            del self.model.transformer.decoder.layers[i].norm1
+            del self.model.transformer.decoder.layers[i].norm2
+            del self.model.transformer.decoder.layers[i].norm3
+        del self.model.transformer.decoder.norm
+        del self.model.transformer.enc_output_norm
         for i in range(len(self.model.backbone[0].encoder.encoder.encoder.layer)):
             del self.model.backbone[0].encoder.encoder.encoder.layer[i].drop_path
+            del self.model.backbone[0].encoder.encoder.encoder.layer[i].norm1
+            del self.model.backbone[0].encoder.encoder.encoder.layer[i].norm2
 
 
         self.model = LWDETR_tiny(self.model)
