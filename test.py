@@ -2051,7 +2051,9 @@ class Model:
         
         del self.model.backbone[0].encoder.encoder.embeddings.cls_token
         del self.model.backbone[0].encoder.encoder.embeddings.position_embeddings
-        del self.model.backbone[0].encoder.encoder.encoder.layer.layer_scale1.training
+        for i in range(len(self.model.backbone[0].encoder.encoder.encoder.layer)):
+            del self.model.backbone[0].encoder.encoder.encoder.layer[i].drop_path
+
 
         self.model = LWDETR_tiny(self.model)
         print_obj(self.model, "self.model")
