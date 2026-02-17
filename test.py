@@ -2048,6 +2048,10 @@ class Model:
                 self.model.transformer.decoder.layers[i].cross_attn.sampling_offsets_tiny.bias.assign(to_tiny(self.model.transformer.decoder.layers[i].cross_attn.sampling_offsets.bias))
                 self.model.transformer.decoder.layers[i].cross_attn.attention_weights_tiny.weight.assign(to_tiny(self.model.transformer.decoder.layers[i].cross_attn.attention_weights.weight))
                 self.model.transformer.decoder.layers[i].cross_attn.attention_weights_tiny.bias.assign(to_tiny(self.model.transformer.decoder.layers[i].cross_attn.attention_weights.bias))
+        
+        del self.model.backbone[0].encoder.encoder.embeddings.cls_token
+        del self.model.backbone[0].encoder.encoder.embeddings.position_embeddings
+        del self.model.backbone[0].encoder.encoder.encoder.layer.layer_scale1.training
 
         self.model = LWDETR_tiny(self.model)
         print_obj(self.model, "self.model")
