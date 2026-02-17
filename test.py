@@ -2107,7 +2107,7 @@ def print_obj(obj, s, seen=None):
             print_obj(obj[k], f"{s}.{k}", seen)
     elif isinstance(obj, (list, tuple, set)):
         for i, item in enumerate(obj):
-            print(f"{s}[{i}]", type(item))
+            print(f"{s}[{i}]", type(item), "TORCH" if isinstance(item, nn.Module) else "")
             print_obj(item, f"{s}[{i}]", seen)
     else:
         attr_names = []
@@ -2119,7 +2119,7 @@ def print_obj(obj, s, seen=None):
         for v in attr_names:
             if v == "uop": continue
             v = v.replace("._modules","")
-            print(f"{s}.{v}", type(getattr(obj, v)))
+            print(f"{s}.{v}", type(getattr(obj, v)), "TORCH" if isinstance(getattr(obj, v), nn.Module) else "")
             try:
                 attr = getattr(obj, v)
                 print_obj(attr, f"{s}.{v}", seen)
