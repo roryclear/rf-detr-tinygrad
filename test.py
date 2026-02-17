@@ -1718,8 +1718,8 @@ class LWDETR_tiny():
         samples = nested_tensor_from_tensor_list(samples)
         features, poss = self.backbone(samples)
         src, mask = features[0].tensors, features[0].mask
-        refpoint_embed_weight = self.refpoint_embed.weight[:self.num_queries]
-        query_feat_weight = self.query_feat.weight[:self.num_queries]
+        refpoint_embed_weight = self.refpoint_embed_tiny[:self.num_queries]
+        query_feat_weight = self.query_feat_tiny[:self.num_queries]
         hs, ref_unsigmoid, hs_enc, ref_enc = self.transformer(src, mask, poss, refpoint_embed_weight, query_feat_weight)
         outputs_coord_delta = self.bbox_embed(hs)
 
@@ -2077,9 +2077,14 @@ class Model:
         for i in range(len(self.model.backbone[0].encoder.encoder.encoder.layer)):
             del self.model.backbone[0].encoder.encoder.encoder.layer[i].drop_path
 
-
-
         self.model = LWDETR_tiny(self.model)
+
+        self.model.refpoint_embed_tiny = self.model.refpoint_embed.weight
+        del self.model.refpoint_embed
+
+        self.model.query_feat_tiny = self.model.query_feat.weight
+        del self.model.query_feat
+
         print_obj(self.model, "self.model")
 
         self.postprocess = PostProcess(num_select=args.num_select)
