@@ -477,10 +477,17 @@ class WindowedDinov2WithRegistersBackbone(PreTrainedModel, BackboneMixin):
         # Initialize weights and apply final processing
         self.post_init()
 
-    def get_input_embeddings(self) -> Dinov2WithRegistersPatchEmbeddings:
-        return self.embeddings.patch_embeddings
+class WindowedDinov2WithRegistersBackbone_tiny():
+    def __init__(self, w):
+        self.embeddings = w.embeddings
+        self.encoder = w.encoder
+        self.stage_names = w.stage_names
+        self.layernorm_tiny = w.layernorm_tiny
+        self.num_register_tokens = w.num_register_tokens
+        self.config = w.config
+        self.out_features = w.out_features
 
-    def forward(
+    def __call__(
         self,
         pixel_values,
         output_hidden_states: Optional[bool] = None,
@@ -2113,6 +2120,7 @@ class Model:
 
         self.model.backbone = Backbone_tiny(self.model.backbone)
         self.model.backbone.encoder = DinoV2_tiny(self.model.backbone.encoder)
+        self.model.backbone.encoder.encoder = WindowedDinov2WithRegistersBackbone_tiny(self.model.backbone.encoder.encoder)
 
         print_obj(self.model, "self.model")
         
