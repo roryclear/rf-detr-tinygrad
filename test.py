@@ -2294,10 +2294,15 @@ class Model:
 
         self.model.backbone.projector.stages.list[0].list[0].cv1.bn = LayerNorm_tiny(self.model.backbone.projector.stages.list[0].list[0].cv1.bn)
         self.model.backbone.projector.stages.list[0].list[0].cv2.bn = LayerNorm_tiny(self.model.backbone.projector.stages.list[0].list[0].cv2.bn)
+        self.model.backbone.projector.stages.list[0].list[1] = LayerNorm_tiny(self.model.backbone.projector.stages.list[0].list[1])
         self.model.position_embedding = PositionEmbeddingSine_tiny(self.model.position_embedding)
         self.model.backbone.projector.stages.list[0].list[0].m = to_tiny_seq(self.model.backbone.projector.stages.list[0].list[0].m)
         for i in range(len(self.model.backbone.projector.stages.list[0].list[0].m.list)):
             self.model.backbone.projector.stages.list[0].list[0].m.list[i] = Bottleneck_tiny(self.model.backbone.projector.stages.list[0].list[0].m.list[i])
+            self.model.backbone.projector.stages.list[0].list[0].m.list[i].cv1 = ConvX_tiny(self.model.backbone.projector.stages.list[0].list[0].m.list[i].cv1)
+            self.model.backbone.projector.stages.list[0].list[0].m.list[i].cv1.bn = LayerNorm_tiny(self.model.backbone.projector.stages.list[0].list[0].m.list[i].cv1.bn)
+            self.model.backbone.projector.stages.list[0].list[0].m.list[i].cv2 = ConvX_tiny(self.model.backbone.projector.stages.list[0].list[0].m.list[i].cv2)
+            self.model.backbone.projector.stages.list[0].list[0].m.list[i].cv2.bn = LayerNorm_tiny(self.model.backbone.projector.stages.list[0].list[0].m.list[i].cv2.bn)
         
         print_obj(self.model, "self.model")
         
