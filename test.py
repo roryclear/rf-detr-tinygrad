@@ -1889,7 +1889,8 @@ class LWDETR_tiny():
         out = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
         hs_enc_list = hs_enc.chunk(1, dim=1)
         cls_enc = []
-        cls_enc_gidx = self.transformer.enc_out_class_embed[0](hs_enc_list[0])
+        cls_enc_gidx = self.transformer.enc_out_class_embed[0](to_tiny(hs_enc_list[0]))
+        cls_enc_gidx = to_tiny(cls_enc_gidx)
         cls_enc.append(cls_enc_gidx)
         out['enc_outputs'] = {'pred_logits': cls_enc, 'pred_boxes': ref_enc}
         return out
@@ -2304,6 +2305,12 @@ class Model:
             self.model.backbone.projector.stages.list[0].list[0].m.list[i].cv2 = ConvX_tiny(self.model.backbone.projector.stages.list[0].list[0].m.list[i].cv2)
             self.model.backbone.projector.stages.list[0].list[0].m.list[i].cv2.bn = LayerNorm_tiny(self.model.backbone.projector.stages.list[0].list[0].m.list[i].cv2.bn)
         
+        for i in range(len(self.model.transformer.enc_out_class_embed.list)):
+            lin = tinynn.Linear(self.model.transformer.enc_out_class_embed.list[i].in_features, self.model.transformer.enc_out_class_embed.list[i].out_features)
+            lin.weight = to_tiny(self.model.transformer.enc_out_class_embed.list[i].weight)
+            lin.bias = to_tiny(self.model.transformer.enc_out_class_embed.list[i].bias)
+            self.model.transformer.enc_out_class_embed.list[i] = lin
+
         print_obj(self.model, "self.model")
         
         self.postprocess = PostProcess(num_select=args.num_select)
