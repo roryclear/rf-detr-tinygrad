@@ -597,6 +597,18 @@ class DinoV2(nn.Module):
         x = self.encoder(x)
         return list(x[0])
 
+class DinoV2_tiny():
+    def __init__(self, d):
+        self.patch_size = d.patch_size
+        self.num_windows = d.num_windows
+        self.encoder = d.encoder
+
+    def __call__(self, x):
+        block_size = self.patch_size * self.num_windows
+        assert x.shape[2] % block_size == 0 and x.shape[3] % block_size == 0, f"Backbone requires input shape to be divisible by {block_size}, but got {x.shape}"
+        x = self.encoder(x)
+        return list(x[0])
+
 def ms_deform_attn_core_pytorch(value, value_spatial_shapes, sampling_locations, attention_weights):
     attention_weights = to_tiny(attention_weights)
     sampling_locations = to_tiny(sampling_locations)
@@ -2100,10 +2112,10 @@ class Model:
         self.model.backbone = self.model.backbone.backbone
 
         self.model.backbone = Backbone_tiny(self.model.backbone)
+        self.model.backbone.encoder = DinoV2_tiny(self.model.backbone.encoder)
 
         print_obj(self.model, "self.model")
         
-
         self.postprocess = PostProcess(num_select=args.num_select)
         self.stop_early = False
 
