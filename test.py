@@ -318,6 +318,49 @@ class Dinov2WithRegistersSdpaSelfAttention(Dinov2WithRegistersSelfAttention):
 
         return to_torch(context_layer), None
 
+class Dinov2WithRegistersSdpaSelfAttention_tiny():
+    def __init__(self, d):
+        self.query_tiny = d.query_tiny
+        self.key_tiny = d.key_tiny
+        self.value_tiny = d.value_tiny
+        self.num_attention_heads = d.num_attention_heads
+        self.attention_head_size = d.attention_head_size
+        self.all_head_size = d.all_head_size
+
+    def transpose_for_scores(self, x):
+        x = to_tiny(x)
+        new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
+        x = x.view(new_x_shape)
+        x = x.permute(0, 2, 1, 3)
+        return to_torch(x)
+
+    def __call__(
+        self, hidden_states, head_mask: Optional[Any] = None, output_attentions: bool = False
+    ) -> Union[Tuple[Any, Any], Tuple[Any]]:
+
+        hidden_states = to_tiny(hidden_states)
+        mixed_query_layer = self.query_tiny(hidden_states)
+
+
+        key_layer = self.transpose_for_scores(self.key_tiny(hidden_states))
+        value_layer = self.transpose_for_scores(self.value_tiny(hidden_states))
+        query_layer = self.transpose_for_scores(mixed_query_layer)
+
+        query_layer = to_tiny(query_layer)
+        key_layer = to_tiny(key_layer)
+        value_layer = to_tiny(value_layer)
+
+        d_k = query_layer.size(-1)
+        attn_scores = tinyTensor.matmul(query_layer, key_layer.transpose(-2, -1)) / math.sqrt(d_k)
+        attn_probs = tinyTensor.softmax(attn_scores, axis=-1)
+        context_layer = tinyTensor.matmul(attn_probs, value_layer)
+        context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
+        new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
+        context_layer = context_layer.view(new_context_layer_shape)
+
+        return to_torch(context_layer), None
+
+
 class Dinov2WithRegistersSdpaAttention(nn.Module):
     def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
         super().__init__()
@@ -2200,6 +2243,7 @@ class Model:
         for i in range(len(self.model.backbone.encoder.encoder.encoder.layer.list)):
             self.model.backbone.encoder.encoder.encoder.layer.list[i] = WindowedDinov2WithRegistersLayer_tiny(self.model.backbone.encoder.encoder.encoder.layer.list[i])
             self.model.backbone.encoder.encoder.encoder.layer.list[i].attention = Dinov2WithRegistersSdpaAttention_tiny(self.model.backbone.encoder.encoder.encoder.layer.list[i].attention)
+            self.model.backbone.encoder.encoder.encoder.layer.list[i].attention.attention = Dinov2WithRegistersSdpaSelfAttention_tiny(self.model.backbone.encoder.encoder.encoder.layer.list[i].attention.attention)
 
         print_obj(self.model, "self.model")
         
