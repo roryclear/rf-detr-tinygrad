@@ -1643,14 +1643,13 @@ def populate_args(
 class Joiner(nn.Sequential):
     def __init__(self, backbone, position_embedding):
         super().__init__(backbone, position_embedding)
+        self.position_embedding = position_embedding
+        self.backbone = backbone
         self._export = False
 
     def forward(self, tensor_list: NestedTensor):
-        """ """
-        x = self[0](tensor_list)
-        pos = []
-        for x_ in x:
-            pos.append(self[1](x_, align_dim_orders=False).to(x_.tensors.dtype))
+        x = self.backbone(tensor_list)[0]
+        pos = self.position_embedding(x)[0]
         return x, pos
     
 def _max_by_axis(the_list: List[List[int]]) -> List[int]:
@@ -1716,11 +1715,11 @@ class LWDETR_tiny():
 
     def __call__(self, samples: NestedTensor, targets=None):
         samples = nested_tensor_from_tensor_list(samples)
-        features, poss = self.backbone(samples)
-        src, mask = features[0].tensors, features[0].mask
+        feature, poss = self.backbone(samples)
+        src, mask = feature.tensors, feature.mask
         refpoint_embed_weight = self.refpoint_embed_tiny[:self.num_queries]
         query_feat_weight = self.query_feat_tiny[:self.num_queries]
-        hs, ref_unsigmoid, hs_enc, ref_enc = self.transformer(src, mask, poss, refpoint_embed_weight, query_feat_weight)
+        hs, ref_unsigmoid, hs_enc, ref_enc = self.transformer(src, mask, [poss], refpoint_embed_weight, query_feat_weight)
         outputs_coord_delta = self.bbox_embed(hs)
 
         outputs_coord_delta = to_tiny(outputs_coord_delta)
@@ -2086,6 +2085,7 @@ class Model:
         del self.model.query_feat
 
         print_obj(self.model, "self.model")
+        
 
         self.postprocess = PostProcess(num_select=args.num_select)
         self.stop_early = False
