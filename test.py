@@ -2378,6 +2378,7 @@ class Model:
 
         del self.model.backbone.encoder.encoder.embeddings.config.dtype
         self.model.refpoint_embed_tiny = to_tiny(self.model.refpoint_embed_tiny)
+        self.model.query_feat_tiny = to_tiny(self.model.query_feat_tiny)
 
         print_obj(self.model, "self.model")
         
