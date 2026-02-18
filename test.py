@@ -180,7 +180,12 @@ class Dinov2WithRegistersPatchEmbeddings(nn.Module):
 
         self.projection = nn.Conv2d(num_channels, hidden_size, kernel_size=patch_size, stride=patch_size)
         self.projection_tiny = tinynn.Conv2d(num_channels, hidden_size, patch_size, stride=patch_size)
-    def forward(self, x):
+
+class Dinov2WithRegistersPatchEmbeddings_tiny():
+    def __init__(self, d):
+        self.projection_tiny = d.projection_tiny
+
+    def __call__(self, x):
         x = to_tiny(x)
         x = self.projection_tiny(x).flatten(2).transpose(1, 2)
         return to_torch(x)
@@ -444,7 +449,13 @@ class WindowedDinov2WithRegistersEncoder(nn.Module):
         self.layer = nn.ModuleList([WindowedDinov2WithRegistersLayer(config) for _ in range(config.num_hidden_layers)])
         self.gradient_checkpointing = config.gradient_checkpointing
 
-    def forward(
+
+class WindowedDinov2WithRegistersEncoder_tiny():
+    def __init__(self, w):
+        self.layer = w.layer
+        self.config = w.config
+
+    def __call__(
         self,
         hidden_states: Any,
         head_mask: Optional[Any] = None,
@@ -464,7 +475,8 @@ class WindowedDinov2WithRegistersEncoder(nn.Module):
 
         all_hidden_states = all_hidden_states + (hidden_states,)
         return tuple(v for v in [hidden_states, all_hidden_states, all_self_attentions] if v is not None)
-    
+
+
 class WindowedDinov2WithRegistersBackbone(PreTrainedModel, BackboneMixin):
     _supports_sdpa = True #todo, why need?
 
@@ -2128,6 +2140,8 @@ class Model:
         self.model.backbone.encoder = DinoV2_tiny(self.model.backbone.encoder)
         self.model.backbone.encoder.encoder = WindowedDinov2WithRegistersBackbone_tiny(self.model.backbone.encoder.encoder)
         self.model.backbone.encoder.encoder.embeddings = WindowedDinov2WithRegistersEmbeddings_tiny(self.model.backbone.encoder.encoder.embeddings)
+        self.model.backbone.encoder.encoder.embeddings.patch_embeddings = Dinov2WithRegistersPatchEmbeddings_tiny(self.model.backbone.encoder.encoder.embeddings.patch_embeddings)
+        self.model.backbone.encoder.encoder.encoder = WindowedDinov2WithRegistersEncoder_tiny(self.model.backbone.encoder.encoder.encoder)
 
         print_obj(self.model, "self.model")
         
