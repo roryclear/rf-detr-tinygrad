@@ -1069,9 +1069,6 @@ def build_transformer(args):
         bbox_reparam=args.bbox_reparam,
     )
 
-class BackboneBase(nn.Module):
-    def __init__(self):
-        super().__init__()
 
 class ConvX(nn.Module):
     def __init__(self, in_planes, out_planes, kernel=3, stride=1, groups=1, dilation=1, act='relu', layer_norm=False, rms_norm=False):
@@ -1271,7 +1268,7 @@ class PositionEmbeddingSine(nn.Module):
         pos = tinyTensor.cat(pos_y, pos_x, dim=3).permute(0, 3, 1, 2)
         return to_torch(pos)
 
-class Backbone(BackboneBase):
+class Backbone(nn.Module):
     """backbone."""
     def __init__(self,
                  name: str,
