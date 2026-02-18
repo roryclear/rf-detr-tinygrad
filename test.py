@@ -758,7 +758,17 @@ class TransformerDecoderLayer(nn.Module):
 
     def with_pos_embed(self, tensor, pos: Optional[Tensor]): return tensor + pos
 
-    def forward(self, tgt, memory,
+class TransformerDecoderLayer_tiny():
+    def __init__(self, t):
+        self.self_attn = t.self_attn
+        self.norm1_tiny = t.norm1_tiny
+        self.norm2_tiny = t.norm2_tiny
+        self.norm3_tiny = t.norm3_tiny
+        self.cross_attn = t.cross_attn
+        self.linear1_tiny = t.linear1_tiny
+        self.linear2_tiny = t.linear2_tiny
+
+    def __call__(self, tgt, memory,
                      tgt_mask: Optional[Tensor] = None,
                      memory_mask: Optional[Tensor] = None,
                      tgt_key_padding_mask: Optional[Tensor] = None,
@@ -2350,6 +2360,9 @@ class Model:
             self.model.transformer.decoder.ref_point_head.layers.list[i] = to_tiny_linear(self.model.transformer.decoder.ref_point_head.layers.list[i])
 
         self.model.transformer.decoder.layers = to_tiny_seq(self.model.transformer.decoder.layers)
+
+        for i in range(len(self.model.transformer.decoder.layers.list)):
+            self.model.transformer.decoder.layers.list[i] = TransformerDecoderLayer_tiny(self.model.transformer.decoder.layers.list[i])
 
         print_obj(self.model, "self.model")
         
