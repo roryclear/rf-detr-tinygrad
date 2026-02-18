@@ -272,17 +272,18 @@ class Dinov2WithRegistersSelfAttention(nn.Module):
         return to_torch(x)
 
 class Dinov2WithRegistersSelfOutput(nn.Module):
-    """
-    The residual connection is defined in Dinov2WithRegistersLayer instead of here (as is the case with other models), due to the
-    layernorm applied before each block.
-    """
-
     def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
         self.dense_tiny = tinynn.Linear(config.hidden_size, config.hidden_size)
 
-    def forward(self, x):
+
+class Dinov2WithRegistersSelfOutput_tiny():
+    def __init__(self, d):
+        self.dense_tiny = d.dense_tiny
+
+
+    def __call__(self, x):
         x = to_tiny(x)
         x = self.dense_tiny(x)
         return to_torch(x)
@@ -2218,6 +2219,7 @@ class Model:
             self.model.backbone.encoder.encoder.encoder.layer.list[i] = WindowedDinov2WithRegistersLayer_tiny(self.model.backbone.encoder.encoder.encoder.layer.list[i])
             self.model.backbone.encoder.encoder.encoder.layer.list[i].attention = Dinov2WithRegistersSdpaAttention_tiny(self.model.backbone.encoder.encoder.encoder.layer.list[i].attention)
             self.model.backbone.encoder.encoder.encoder.layer.list[i].attention.attention = Dinov2WithRegistersSdpaSelfAttention_tiny(self.model.backbone.encoder.encoder.encoder.layer.list[i].attention.attention)
+            self.model.backbone.encoder.encoder.encoder.layer.list[i].attention.output = Dinov2WithRegistersSelfOutput_tiny(self.model.backbone.encoder.encoder.encoder.layer.list[i].attention.output)
 
         print_obj(self.model, "self.model")
         
