@@ -287,24 +287,6 @@ class Dinov2WithRegistersSelfOutput(nn.Module):
         x = self.dense_tiny(x)
         return to_torch(x)
 
-class Dinov2WithRegistersAttention(nn.Module):
-    def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
-        super().__init__()
-        self.attention = Dinov2WithRegistersSelfAttention(config)
-        self.output = Dinov2WithRegistersSelfOutput(config)
-        self.pruned_heads = set()
-
-    def forward(
-        self,
-        hidden_states: Any,
-        head_mask: Optional[Any] = None,
-        output_attentions: bool = False,
-    ) -> Union[Tuple[Any, Any], Tuple[Any]]:
-        self_outputs = self.attention(hidden_states, head_mask, output_attentions)
-        attention_output = self.output(self_outputs[0])
-        outputs = (attention_output,) + self_outputs[1:]  # add attentions if we output them
-        return outputs
-
 class Dinov2WithRegistersSdpaSelfAttention(Dinov2WithRegistersSelfAttention):
     def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
         super().__init__(config)
@@ -336,16 +318,24 @@ class Dinov2WithRegistersSdpaSelfAttention(Dinov2WithRegistersSelfAttention):
 
         return to_torch(context_layer), None
 
-
-class Dinov2WithRegistersSdpaAttention(Dinov2WithRegistersAttention):
+class Dinov2WithRegistersSdpaAttention(nn.Module):
     def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
-        super().__init__(config)
+        super().__init__()
         self.attention = Dinov2WithRegistersSdpaSelfAttention(config)
+        self.output = Dinov2WithRegistersSelfOutput(config)
+        self.pruned_heads = set()
 
-DINOV2_WITH_REGISTERS_ATTENTION_CLASSES = {
-    "eager": Dinov2WithRegistersAttention,
-    "sdpa": Dinov2WithRegistersSdpaAttention,
-}
+    def forward(
+        self,
+        hidden_states: Any,
+        head_mask: Optional[Any] = None,
+        output_attentions: bool = False,
+    ) -> Union[Tuple[Any, Any], Tuple[Any]]:
+        self_outputs = self.attention(hidden_states, head_mask, output_attentions)
+        attention_output = self.output(self_outputs[0])
+        outputs = (attention_output,) + self_outputs[1:]
+        return outputs
+
 
 HOSTED_MODELS = {**OPEN_SOURCE_MODELS, **PLATFORM_MODELS}
 
@@ -388,7 +378,7 @@ class WindowedDinov2WithRegistersLayer(nn.Module):
 
         self.norm1 = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.norm1_tiny = tinynn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-        self.attention = DINOV2_WITH_REGISTERS_ATTENTION_CLASSES[config._attn_implementation](config)
+        self.attention = Dinov2WithRegistersSdpaAttention(config)
         self.layer_scale1 = Dinov2WithRegistersLayerScale(config)
         self.drop_path = nn.Identity()
 
