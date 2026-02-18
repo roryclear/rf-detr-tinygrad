@@ -1410,7 +1410,7 @@ def build_backbone(
         num_windows=num_windows,
         positional_encoding_size=positional_encoding_size,
     )
-
+    
     model = Joiner(backbone, position_embedding)
     return model
 
@@ -1645,9 +1645,9 @@ class Joiner(nn.Sequential):
         super().__init__(backbone, position_embedding)
         self.position_embedding = position_embedding
         self.backbone = backbone
-        self._export = False
 
     def forward(self, tensor_list: NestedTensor):
+        exit()
         x = self.backbone(tensor_list)[0]
         pos = self.position_embedding(x)[0]
         return x, pos
@@ -1715,11 +1715,12 @@ class LWDETR_tiny():
 
     def __call__(self, samples: NestedTensor, targets=None):
         samples = nested_tensor_from_tensor_list(samples)
-        feature, poss = self.backbone(samples)
+        feature = self.backbone.backbone(samples)[0]
+        pos = self.backbone.position_embedding(feature)[0]
         src, mask = feature.tensors, feature.mask
         refpoint_embed_weight = self.refpoint_embed_tiny[:self.num_queries]
         query_feat_weight = self.query_feat_tiny[:self.num_queries]
-        hs, ref_unsigmoid, hs_enc, ref_enc = self.transformer(src, mask, [poss], refpoint_embed_weight, query_feat_weight)
+        hs, ref_unsigmoid, hs_enc, ref_enc = self.transformer(src, mask, [pos], refpoint_embed_weight, query_feat_weight)
         outputs_coord_delta = self.bbox_embed(hs)
 
         outputs_coord_delta = to_tiny(outputs_coord_delta)
@@ -1865,7 +1866,7 @@ def build_model(args):
         positional_encoding_size=args.positional_encoding_size,
     )
     if args.encoder_only:
-        return backbone[0].encoder, None, None
+        return backbone.backbone.encoder, None, None
     if args.backbone_only:
         return backbone, None, None
 
@@ -1980,37 +1981,38 @@ class Model:
                 if key in model_dict:
                     model_dict[key].copy_(value)
 
-            for i in range(len(self.model.backbone[0].encoder.encoder.encoder.layer)):
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.query_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.query.weight)
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.query_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.query.bias)
-                del self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.query
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.key_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.key.weight)
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.key_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.key.bias)
-                del self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.key
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.value_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.value.weight)
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.value_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.value.bias)
-                del self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.attention.value
 
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.output.dense_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.output.dense.weight)
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.output.dense_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.output.dense.bias)
-                del self.model.backbone[0].encoder.encoder.encoder.layer[i].attention.output.dense
+            for i in range(len(self.model.backbone.backbone.encoder.encoder.encoder.layer)):
+                self.model.backbone.backbone.encoder.encoder.encoder.layer[i].attention.attention.query_tiny.weight = to_tiny(self.model.backbone.backbone.encoder.encoder.encoder.layer[i].attention.attention.query.weight)
+                self.model.backbone.backbone.encoder.encoder.encoder.layer[i].attention.attention.query_tiny.bias = to_tiny(self.model.backbone.backbone.encoder.encoder.encoder.layer[i].attention.attention.query.bias)
+                del self.model.backbone.backbone.encoder.encoder.encoder.layer[i].attention.attention.query
+                self.model.backbone.backbone.encoder.encoder.encoder.layer[i].attention.attention.key_tiny.weight = to_tiny(self.model.backbone.backbone.encoder.encoder.encoder.layer[i].attention.attention.key.weight)
+                self.model.backbone.backbone.encoder.encoder.encoder.layer[i].attention.attention.key_tiny.bias = to_tiny(self.model.backbone.backbone.encoder.encoder.encoder.layer[i].attention.attention.key.bias)
+                del self.model.backbone.backbone.encoder.encoder.encoder.layer[i].attention.attention.key
+                self.model.backbone.backbone.encoder.encoder.encoder.layer[i].attention.attention.value_tiny.weight = to_tiny(self.model.backbone.backbone.encoder.encoder.encoder.layer[i].attention.attention.value.weight)
+                self.model.backbone.backbone.encoder.encoder.encoder.layer[i].attention.attention.value_tiny.bias = to_tiny(self.model.backbone.backbone.encoder.encoder.encoder.layer[i].attention.attention.value.bias)
+                del self.model.backbone.backbone.encoder.encoder.encoder.layer[i].attention.attention.value
 
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc1_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc1.weight)
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc1_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc1.bias)
-                del self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc1
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc2_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc2.weight)
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc2_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc2.bias)
-                del self.model.backbone[0].encoder.encoder.encoder.layer[i].mlp.fc2
+                self.model.backbone.backbone.encoder.encoder.encoder.layer[i].attention.output.dense_tiny.weight = to_tiny(self.model.backbone.backbone.encoder.encoder.encoder.layer[i].attention.output.dense.weight)
+                self.model.backbone.backbone.encoder.encoder.encoder.layer[i].attention.output.dense_tiny.bias = to_tiny(self.model.backbone.backbone.encoder.encoder.encoder.layer[i].attention.output.dense.bias)
+                del self.model.backbone.backbone.encoder.encoder.encoder.layer[i].attention.output.dense
 
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].norm1_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].norm1.weight)
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].norm1_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].norm1.bias)
-                del self.model.backbone[0].encoder.encoder.encoder.layer[i].norm1
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].norm2_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].norm2.weight)
-                self.model.backbone[0].encoder.encoder.encoder.layer[i].norm2_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.encoder.layer[i].norm2.bias)
-                del self.model.backbone[0].encoder.encoder.encoder.layer[i].norm2
+                self.model.backbone.backbone.encoder.encoder.encoder.layer[i].mlp.fc1_tiny.weight = to_tiny(self.model.backbone.backbone.encoder.encoder.encoder.layer[i].mlp.fc1.weight)
+                self.model.backbone.backbone.encoder.encoder.encoder.layer[i].mlp.fc1_tiny.bias = to_tiny(self.model.backbone.backbone.encoder.encoder.encoder.layer[i].mlp.fc1.bias)
+                del self.model.backbone.backbone.encoder.encoder.encoder.layer[i].mlp.fc1
+                self.model.backbone.backbone.encoder.encoder.encoder.layer[i].mlp.fc2_tiny.weight = to_tiny(self.model.backbone.backbone.encoder.encoder.encoder.layer[i].mlp.fc2.weight)
+                self.model.backbone.backbone.encoder.encoder.encoder.layer[i].mlp.fc2_tiny.bias = to_tiny(self.model.backbone.backbone.encoder.encoder.encoder.layer[i].mlp.fc2.bias)
+                del self.model.backbone.backbone.encoder.encoder.encoder.layer[i].mlp.fc2
 
-                self.model.backbone[0].encoder.encoder.layernorm_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.layernorm.weight)
-                self.model.backbone[0].encoder.encoder.layernorm_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.layernorm.bias)
+                self.model.backbone.backbone.encoder.encoder.encoder.layer[i].norm1_tiny.weight = to_tiny(self.model.backbone.backbone.encoder.encoder.encoder.layer[i].norm1.weight)
+                self.model.backbone.backbone.encoder.encoder.encoder.layer[i].norm1_tiny.bias = to_tiny(self.model.backbone.backbone.encoder.encoder.encoder.layer[i].norm1.bias)
+                del self.model.backbone.backbone.encoder.encoder.encoder.layer[i].norm1
+                self.model.backbone.backbone.encoder.encoder.encoder.layer[i].norm2_tiny.weight = to_tiny(self.model.backbone.backbone.encoder.encoder.encoder.layer[i].norm2.weight)
+                self.model.backbone.backbone.encoder.encoder.encoder.layer[i].norm2_tiny.bias = to_tiny(self.model.backbone.backbone.encoder.encoder.encoder.layer[i].norm2.bias)
+                del self.model.backbone.backbone.encoder.encoder.encoder.layer[i].norm2
+
+                self.model.backbone.backbone.encoder.encoder.layernorm_tiny.weight = to_tiny(self.model.backbone.backbone.encoder.encoder.layernorm.weight)
+                self.model.backbone.backbone.encoder.encoder.layernorm_tiny.bias = to_tiny(self.model.backbone.backbone.encoder.encoder.layernorm.bias)
 
             for i in range(len(self.model.transformer.decoder.layers)):
                 self.model.transformer.decoder.layers[i].norm1_tiny.weight = to_tiny(self.model.transformer.decoder.layers[i].norm1.weight)
@@ -2041,9 +2043,9 @@ class Model:
             self.model.transformer.decoder.norm_tiny.bias = to_tiny(self.model.transformer.decoder.norm.bias)
             del self.model.transformer.decoder.norm
 
-            self.model.backbone[0].encoder.encoder.embeddings.patch_embeddings.projection_tiny.weight = to_tiny(self.model.backbone[0].encoder.encoder.embeddings.patch_embeddings.projection.weight)
-            self.model.backbone[0].encoder.encoder.embeddings.patch_embeddings.projection_tiny.bias = to_tiny(self.model.backbone[0].encoder.encoder.embeddings.patch_embeddings.projection.bias)
-            del self.model.backbone[0].encoder.encoder.embeddings.patch_embeddings.projection
+            self.model.backbone.backbone.encoder.encoder.embeddings.patch_embeddings.projection_tiny.weight = to_tiny(self.model.backbone.backbone.encoder.encoder.embeddings.patch_embeddings.projection.weight)
+            self.model.backbone.backbone.encoder.encoder.embeddings.patch_embeddings.projection_tiny.bias = to_tiny(self.model.backbone.backbone.encoder.encoder.embeddings.patch_embeddings.projection.bias)
+            del self.model.backbone.backbone.encoder.encoder.embeddings.patch_embeddings.projection
             
             self.model.transformer.enc_output_norm_tiny.weight = to_tiny(self.model.transformer.enc_output_norm[0].weight)
             self.model.transformer.enc_output_norm_tiny.bias = to_tiny(self.model.transformer.enc_output_norm[0].bias)
@@ -2052,16 +2054,16 @@ class Model:
             self.model.transformer.enc_output_tiny.weight = to_tiny(self.model.transformer.enc_output[0].weight)
             self.model.transformer.enc_output_tiny.bias = to_tiny(self.model.transformer.enc_output[0].bias)
 
-            self.model.backbone[0].projector.stages[0][0].cv1.conv_tiny.weight = to_tiny(self.model.backbone[0].projector.stages[0][0].cv1.conv.weight)
-            del self.model.backbone[0].projector.stages[0][0].cv1.conv
-            self.model.backbone[0].projector.stages[0][0].cv2.conv_tiny.weight = to_tiny(self.model.backbone[0].projector.stages[0][0].cv2.conv.weight)
-            del self.model.backbone[0].projector.stages[0][0].cv2.conv
+            self.model.backbone.backbone.projector.stages[0][0].cv1.conv_tiny.weight = to_tiny(self.model.backbone.backbone.projector.stages[0][0].cv1.conv.weight)
+            del self.model.backbone.backbone.projector.stages[0][0].cv1.conv
+            self.model.backbone.backbone.projector.stages[0][0].cv2.conv_tiny.weight = to_tiny(self.model.backbone.backbone.projector.stages[0][0].cv2.conv.weight)
+            del self.model.backbone.backbone.projector.stages[0][0].cv2.conv
 
-            for i in range(len(self.model.backbone[0].projector.stages[0][0].m)):
-                self.model.backbone[0].projector.stages[0][0].m[i].cv1.conv_tiny.weight =  to_tiny(self.model.backbone[0].projector.stages[0][0].m[i].cv1.conv.weight)
-                del self.model.backbone[0].projector.stages[0][0].m[i].cv1.conv
-                self.model.backbone[0].projector.stages[0][0].m[i].cv2.conv_tiny.weight =  to_tiny(self.model.backbone[0].projector.stages[0][0].m[i].cv2.conv.weight)
-                del self.model.backbone[0].projector.stages[0][0].m[i].cv2.conv
+            for i in range(len(self.model.backbone.backbone.projector.stages[0][0].m)):
+                self.model.backbone.backbone.projector.stages[0][0].m[i].cv1.conv_tiny.weight =  to_tiny(self.model.backbone.backbone.projector.stages[0][0].m[i].cv1.conv.weight)
+                del self.model.backbone.backbone.projector.stages[0][0].m[i].cv1.conv
+                self.model.backbone.backbone.projector.stages[0][0].m[i].cv2.conv_tiny.weight =  to_tiny(self.model.backbone.backbone.projector.stages[0][0].m[i].cv2.conv.weight)
+                del self.model.backbone.backbone.projector.stages[0][0].m[i].cv2.conv
 
             for i in range(len(self.model.transformer.decoder.layers)):
                 self.model.transformer.decoder.layers[i].cross_attn.sampling_offsets_tiny.weight.assign(to_tiny(self.model.transformer.decoder.layers[i].cross_attn.sampling_offsets.weight))
@@ -2069,12 +2071,14 @@ class Model:
                 self.model.transformer.decoder.layers[i].cross_attn.attention_weights_tiny.weight.assign(to_tiny(self.model.transformer.decoder.layers[i].cross_attn.attention_weights.weight))
                 self.model.transformer.decoder.layers[i].cross_attn.attention_weights_tiny.bias.assign(to_tiny(self.model.transformer.decoder.layers[i].cross_attn.attention_weights.bias))
 
-        del self.model.backbone[0].encoder.encoder.embeddings.cls_token
-        del self.model.backbone[0].encoder.encoder.embeddings.position_embeddings
-        del self.model.backbone[0].encoder.encoder.layernorm
+        del self.model.backbone.backbone.encoder.encoder.embeddings.cls_token
+        del self.model.backbone.backbone.encoder.encoder.embeddings.position_embeddings
+        del self.model.backbone.backbone.encoder.encoder.layernorm
         del self.model.transformer.enc_output_norm
-        for i in range(len(self.model.backbone[0].encoder.encoder.encoder.layer)):
-            del self.model.backbone[0].encoder.encoder.encoder.layer[i].drop_path
+        for i in range(len(self.model.backbone.backbone.encoder.encoder.encoder.layer)):
+            del self.model.backbone.backbone.encoder.encoder.encoder.layer[i].drop_path
+
+        
 
         self.model = LWDETR_tiny(self.model)
 
