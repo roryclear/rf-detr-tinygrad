@@ -400,7 +400,17 @@ class WindowedDinov2WithRegistersLayer(nn.Module):
         self.mlp = Dinov2WithRegistersMLP(config)
         self.layer_scale2 = Dinov2WithRegistersLayerScale(config)
 
-    def forward(
+class WindowedDinov2WithRegistersLayer_tiny():
+    def __init__(self, w):
+        self.norm1_tiny = w.norm1_tiny
+        self.norm2_tiny = w.norm2_tiny
+        self.attention = w.attention
+        self.layer_scale1 = w.layer_scale1
+        self.layer_scale2 = w.layer_scale2
+        self.mlp = w.mlp
+        self.num_windows = w.num_windows
+
+    def __call__(
         self,
         hidden_states: Any,
         head_mask: Optional[Any] = None,
@@ -441,6 +451,8 @@ class WindowedDinov2WithRegistersLayer(nn.Module):
         layer_output = to_torch(layer_output)
         outputs = (layer_output,) + outputs
         return outputs
+
+
 
 class WindowedDinov2WithRegistersEncoder(nn.Module):
     def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
@@ -2191,6 +2203,8 @@ class Model:
         self.model.transformer.enc_out_class_embed = to_tiny_seq(self.model.transformer.enc_out_class_embed)
         self.model.transformer.enc_out_bbox_embed = to_tiny_seq(self.model.transformer.enc_out_bbox_embed)
 
+        for i in range(len(self.model.backbone.encoder.encoder.encoder.layer.list)):
+            self.model.backbone.encoder.encoder.encoder.layer.list[i] = WindowedDinov2WithRegistersLayer_tiny(self.model.backbone.encoder.encoder.encoder.layer.list[i])
         print_obj(self.model, "self.model")
         
         self.postprocess = PostProcess(num_select=args.num_select)
