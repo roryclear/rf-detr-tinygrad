@@ -1488,11 +1488,11 @@ class Backbone_tiny():
         self.encoder = b.encoder
         self.projector = b.projector
 
-    def __call__(self, tensor_list: NestedTensor):
-        feats = self.encoder(tensor_list.tensors)
+    def __call__(self, tensors ,mask):
+        feats = self.encoder(tensors)
         feats = self.projector(feats)
         out = []
-        m = tensor_list.mask
+        m = mask
         m = to_tiny(m)
         mask = ~tinyTensor.interpolate(m.unsqueeze(0), size=feats[0].shape[-2:])[0]
         out.append(NestedTensor(feats[0], mask))
@@ -1785,7 +1785,7 @@ class Joiner(nn.Sequential): # so dumb
         super().__init__(backbone, position_embedding)
         self.position_embedding = position_embedding
         self.backbone = backbone
-        
+
 class MLP(nn.Module):
     """ Very simple multi-layer perceptron (also called FFN)"""
 
@@ -1842,9 +1842,7 @@ class LWDETR_tiny():
     def __call__(self, samples: NestedTensor, targets=None):
         _, _, h, w = samples.shape
         mask = torch.zeros((1, h, w), dtype=torch.bool)
-        samples = NestedTensor(samples, mask)
-
-        feature = self.backbone(samples)[0]
+        feature = self.backbone(samples, mask)[0]
         pos = self.position_embedding(feature)[0]
         src, mask = feature.tensors, feature.mask
         refpoint_embed_weight = self.refpoint_embed_tiny[:self.num_queries]
