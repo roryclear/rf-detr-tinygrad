@@ -1196,7 +1196,15 @@ class C2f(nn.Module):
         self.cv2 = ConvX((2 + n) * self.c, c2, 1, act=act, layer_norm=layer_norm, rms_norm=rms_norm)  # optional act=FReLU(c2)
         self.m = nn.ModuleList(Bottleneck(self.c, self.c, shortcut, g, k=(3, 3), e=1.0, act=act, layer_norm=layer_norm, rms_norm=rms_norm) for _ in range(n))
 
-    def forward(self, x):
+class C2f_tiny():
+    def __init__(self, c):
+        self.cv1 = c.cv1
+        self.cv2 = c.cv2
+        self.c = c.c
+        self.m = c.m
+        pass
+
+    def __call__(self, x):
         """Forward pass using split() instead of chunk()."""
         y = list(self.cv1(x).split((self.c, self.c), 1))
         y = to_tiny(y)
@@ -2234,6 +2242,8 @@ class Model:
             self.model.backbone.encoder.encoder.encoder.layer.list[i].mlp = Dinov2WithRegistersMLP_tiny(self.model.backbone.encoder.encoder.encoder.layer.list[i].mlp)
 
         self.model.backbone.projector.stages.list[0] = to_tiny_seq(self.model.backbone.projector.stages.list[0])
+
+        self.model.backbone.projector.stages.list[0].list[0] = C2f_tiny(self.model.backbone.projector.stages.list[0].list[0])
 
         print_obj(self.model, "self.model")
         
