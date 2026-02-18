@@ -189,7 +189,7 @@ class Dinov2WithRegistersPatchEmbeddings_tiny():
     def __call__(self, x):
         x = to_tiny(x)
         x = self.projection_tiny(x).flatten(2).transpose(1, 2)
-        return to_torch(x)
+        return x
 
 class WindowedDinov2WithRegistersEmbeddings(nn.Module):
     """
@@ -241,7 +241,7 @@ class WindowedDinov2WithRegistersEmbeddings_tiny():
         windowed_pixel_tokens = windowed_pixel_tokens.reshape(batch_size * num_windows ** 2, num_h_patches_per_window * num_w_patches_per_window, -1)
         windowed_cls_token_with_pos_embed = cls_token_with_pos_embed.repeat(num_windows ** 2, 1, 1)
         embeddings = tinyTensor.cat(windowed_cls_token_with_pos_embed, windowed_pixel_tokens, dim=1)
-        return to_torch(embeddings)
+        return embeddings
 
 class Dinov2WithRegistersSelfAttention(nn.Module):
     def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
@@ -265,13 +265,6 @@ class Dinov2WithRegistersSelfAttention(nn.Module):
         self.value = nn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
         self.value_tiny = tinynn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
 
-    def transpose_for_scores(self, x):
-        x = to_tiny(x)
-        new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
-        x = x.view(new_x_shape)
-        x = x.permute(0, 2, 1, 3)
-        return to_torch(x)
-
 class Dinov2WithRegistersSelfOutput(nn.Module):
     def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
         super().__init__()
@@ -282,7 +275,6 @@ class Dinov2WithRegistersSelfOutput(nn.Module):
 class Dinov2WithRegistersSelfOutput_tiny():
     def __init__(self, d):
         self.dense_tiny = d.dense_tiny
-
 
     def __call__(self, x):
         x = to_tiny(x)
@@ -308,7 +300,7 @@ class Dinov2WithRegistersSdpaSelfAttention_tiny():
         new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
         x = x.view(new_x_shape)
         x = x.permute(0, 2, 1, 3)
-        return to_torch(x)
+        return x
 
     def __call__(
         self, hidden_states, head_mask: Optional[Any] = None, output_attentions: bool = False
@@ -334,7 +326,7 @@ class Dinov2WithRegistersSdpaSelfAttention_tiny():
         new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
         context_layer = context_layer.view(new_context_layer_shape)
 
-        return to_torch(context_layer), None
+        return context_layer, None
 
 
 class Dinov2WithRegistersSdpaAttention(nn.Module):
@@ -383,7 +375,7 @@ class Dinov2WithRegistersMLP_tiny():
         hidden_state = self.fc1_tiny(hidden_state)
         hidden_state = hidden_state * 0.5 * (1.0 + tinyTensor.erf(hidden_state / math.sqrt(2.0)))
         hidden_state = self.fc2_tiny(hidden_state)
-        return to_torch(hidden_state)
+        return hidden_state
 
 class Dinov2WithRegistersLayerScale(nn.Module):
     def __init__(self, config) -> None:
@@ -470,7 +462,6 @@ class WindowedDinov2WithRegistersLayer_tiny():
         layer_output = self.layer_scale2(layer_output)
         layer_output = layer_output + hidden_states
 
-        layer_output = to_torch(layer_output)
         outputs = (layer_output,) + outputs
         return outputs
 
@@ -579,7 +570,6 @@ class WindowedDinov2WithRegistersBackbone_tiny():
 
                 hidden_state = hidden_state.reshape(batch_size, num_h_patches, num_w_patches, -1)
                 hidden_state = hidden_state.permute(0, 3, 1, 2).contiguous()
-                hidden_state = to_torch(hidden_state)
                 feature_maps += (hidden_state,)
 
         output = (feature_maps,) + outputs[2:]
@@ -722,7 +712,7 @@ def ms_deform_attn_core_pytorch(value, value_spatial_shapes, sampling_locations,
     attention_weights = attention_weights.transpose(1, 2).reshape(B * n_heads, 1, Len_q, L * P)
     output = (sampling_value_l_ * attention_weights).sum(-1).view(B, n_heads * head_dim, Len_q)
     ret = output.transpose(1, 2).contiguous()
-    return to_torch(ret)
+    return ret
 
 class MultiheadAttention_tiny():
     def __init__(self, m):
@@ -833,7 +823,7 @@ class TransformerDecoderLayer_tiny():
         tgt2 = self.linear2_tiny(x)
         tgt += tgt2
         tgt = self.norm3_tiny(tgt)
-        return to_torch(tgt)
+        return tgt
     
 def gen_sineembed_for_position(pos_tensor, dim=128):
     pos_tensor = to_tiny(pos_tensor)
@@ -854,7 +844,7 @@ def gen_sineembed_for_position(pos_tensor, dim=128):
     pos_h = h_embed[:, :, None] / dim_t
     pos_h = tinyTensor.stack(pos_h[:, :, 0::2].sin(), pos_h[:, :, 1::2].cos(), dim=3).flatten(2)
     pos = tinyTensor.cat(pos_y, pos_x, pos_w, pos_h, dim=2)
-    return to_torch(pos)
+    return pos
 
 def _get_clones(module, N):
     return nn.ModuleList([copy.deepcopy(module) for i in range(N)])
@@ -910,7 +900,6 @@ class TransformerDecoder_tiny():
             valid_ratios = to_tiny(valid_ratios)
             obj_center = refpoints_unsigmoid[..., :4]
             refpoints_input = obj_center[:, :, None] * tinyTensor.cat(valid_ratios, valid_ratios, dim=-1)[:, None]
-            refpoints_input = to_torch(refpoints_input)
             query_sine_embed = gen_sineembed_for_position(
                 refpoints_input[:, :, 0, :], self.d_model / 2) # bs, nq, 256*2
             query_pos = self.ref_point_head(query_sine_embed)
@@ -938,7 +927,7 @@ class TransformerDecoder_tiny():
         output = self.norm_tiny(output)
         intermediate.pop()
         intermediate.append(output)
-        return [to_torch(tinyTensor.stack(intermediate)), to_torch(refpoints_unsigmoid.unsqueeze(0))]
+        return [(tinyTensor.stack(intermediate)), (refpoints_unsigmoid.unsqueeze(0))]
 
 def gen_encoder_output_proposals(memory, memory_padding_mask, spatial_shape, unsigmoid=True):
     memory = to_tiny(memory)
@@ -958,7 +947,6 @@ def gen_encoder_output_proposals(memory, memory_padding_mask, spatial_shape, uns
     grid = tinyTensor.cat(grid_x.unsqueeze(-1), grid_y.unsqueeze(-1), dim=-1)
     scale = tinyTensor.cat(valid_W, valid_H, dim=1).view(1, 1, 1, 2)
     grid = (grid.unsqueeze(0).expand(1, -1, -1, -1) + 0.5) / scale
-    scale = to_torch(scale)
 
     wh = tinyTensor.ones_like(grid) * 0.05
     output_proposals = tinyTensor.cat(grid, wh, dim=-1).view(1, -1, 4)
@@ -970,7 +958,6 @@ def gen_encoder_output_proposals(memory, memory_padding_mask, spatial_shape, uns
     output_memory = output_memory.masked_fill(memory_padding_mask.unsqueeze(-1), float(0))
     output_memory = output_memory.masked_fill(~output_proposals_valid, float(0))
     return output_memory, output_proposals
-    #return to_torch(output_memory), to_torch(output_proposals)
 
 class MSDeformAttn(nn.Module):
     """Multi-Scale Deformable Attention Module
@@ -1166,7 +1153,7 @@ class Transformer_tiny():
                         spatial_shapes=spatial_shapes,
                         valid_ratios=Tensor([[[1., 1.]]]))
 
-        return hs, references, to_torch(memory_ts), boxes_ts
+        return hs, references, memory_ts, boxes_ts
 
 def build_transformer(args):
     return Transformer(
@@ -1199,13 +1186,6 @@ class ConvX(nn.Module):
         self.conv_tiny = tinynn.Conv2d(in_planes, out_planes, (kernel, kernel), stride, padding, dilation, groups, False)
         self.bn = LayerNorm(out_planes)
 
-    def forward(self, x):
-        x = to_tiny(x)
-        x = self.conv_tiny(x)
-        x = self.bn(x)
-        if type(x) != tinyTensor: x = to_tiny(x)
-        out = tinyTensor.silu(x)
-        return to_torch(out)
     
 class ConvX_tiny():
     def __init__(self, c):
@@ -1218,7 +1198,7 @@ class ConvX_tiny():
         x = self.bn(x)
         if type(x) != tinyTensor: x = to_tiny(x)
         out = tinyTensor.silu(x)
-        return to_torch(out)
+        return out
 
 class Bottleneck(nn.Module):
     """Standard bottleneck."""
@@ -1267,7 +1247,6 @@ class C2f_tiny():
         y.extend(to_tiny(m(y[-1])) for m in self.m)
         y = tinyTensor.cat(*y, dim=1)
         y = self.cv2(y)
-        y = to_torch(y)
         return y
 
 class LayerNorm(nn.Module):
@@ -1289,19 +1268,6 @@ class LayerNorm(nn.Module):
         self.eps = eps
         self.normalized_shape = (normalized_shape,)
 
-    def forward(self, x):
-        if type(x) != tinyTensor: x = to_tiny(x)
-        x = x.permute(0, 2, 3, 1)
-        x -= x.mean(axis=-1, keepdim=True)
-        var = (x ** 2).mean(axis=-1, keepdim=True) + self.eps
-        var = tinyTensor.sqrt(var)
-        x_norm = x / var
-        x_norm = x_norm * self.weight_tiny
-        x_norm = x_norm + self.bias_tiny
-        x = x_norm
-        x = x.permute(0, 3, 1, 2)
-        return to_torch(x)
-
 
 class LayerNorm_tiny():
     def __init__(self, l):
@@ -1320,7 +1286,7 @@ class LayerNorm_tiny():
         x_norm = x_norm + self.bias_tiny
         x = x_norm
         x = x.permute(0, 3, 1, 2)
-        return to_torch(x)
+        return x
 
 def get_norm(norm, out_channels):
     """
@@ -1383,13 +1349,6 @@ class MultiScaleProjector(nn.Module):
         self.stages_sampling = nn.ModuleList(stages_sampling)
         self.stages = nn.ModuleList(stages)
 
-    def forward(self, x):
-        x = to_tiny(x)
-        feat_fuse = tinyTensor.cat(*x, dim=1)
-        feat_fuse = to_torch(feat_fuse)
-        stage_output = self.stages[0](feat_fuse)
-        return [stage_output]
-
 class MultiScaleProjector_tiny():
     def __init__(self, m):
         self.stages = m.stages
@@ -1397,11 +1356,8 @@ class MultiScaleProjector_tiny():
     def __call__(self, x):
         x = to_tiny(x)
         feat_fuse = tinyTensor.cat(*x, dim=1)
-        feat_fuse = to_torch(feat_fuse)
         stage_output = self.stages[0](feat_fuse)
         return [stage_output]
-
-
 
 class NestedTensor(object):
     def __init__(self, tensors: Tensor, mask: Optional[Tensor]) -> None:
@@ -1449,7 +1405,7 @@ class PositionEmbeddingSine_tiny():
         pos_x = tinyTensor.stack((pos_x[:, :, :, 0::2].sin(), pos_x[:, :, :, 1::2].cos()), dim=4).flatten(3)
         pos_y = tinyTensor.stack((pos_y[:, :, :, 0::2].sin(), pos_y[:, :, :, 1::2].cos()), dim=4).flatten(3)
         pos = tinyTensor.cat(pos_y, pos_x, dim=3).permute(0, 3, 1, 2)
-        return to_torch(pos)
+        return pos
     
 class Backbone(nn.Module):
     """backbone."""
@@ -1527,17 +1483,6 @@ class Backbone(nn.Module):
 
         self._export = False
 
-    def forward(self, tensor_list: NestedTensor):
-        feats = self.encoder(tensor_list.tensors)
-        feats = self.projector(feats)
-        out = []
-        m = tensor_list.mask
-        m = to_tiny(m)
-        mask = ~tinyTensor.interpolate(m.unsqueeze(0), size=feats[0].shape[-2:])[0]
-        mask = to_torch(mask).bool()
-        out.append(NestedTensor(feats[0], mask))
-        return out
-
 class Backbone_tiny():
     def __init__(self, b):
         self.encoder = b.encoder
@@ -1550,7 +1495,6 @@ class Backbone_tiny():
         m = tensor_list.mask
         m = to_tiny(m)
         mask = ~tinyTensor.interpolate(m.unsqueeze(0), size=feats[0].shape[-2:])[0]
-        mask = to_torch(mask).bool()
         out.append(NestedTensor(feats[0], mask))
         return out
 
@@ -1904,7 +1848,7 @@ class MLP_tiny():
         x = to_tiny(x)
         for i, layer in enumerate(self.layers_tiny):
             x = tinyTensor.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
-        return to_torch(x)
+        return x
     
 class LWDETR_tiny():
     """ This is the Group DETR v3 module that performs object detection """
@@ -1934,7 +1878,6 @@ class LWDETR_tiny():
         outputs_coord_wh = outputs_coord_delta[..., 2:].exp() * ref_unsigmoid[..., 2:]
         outputs_coord = tinyTensor.cat(outputs_coord_cxcy, outputs_coord_wh, dim=-1)
 
-        outputs_coord = to_torch(outputs_coord)
 
         hs = to_tiny(hs)
         outputs_class = self.class_embed(hs)
@@ -2386,8 +2329,8 @@ class Model:
         self.postprocess = PostProcess(num_select=args.num_select)
         self.stop_early = False
 
-        state_dict = get_state_dict(self.model)
-        load_state_dict(self.model, state_dict)
+        #state_dict = get_state_dict(self.model)
+        #load_state_dict(self.model, state_dict)
 
         print(type(self.model))
 
