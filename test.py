@@ -23,6 +23,7 @@ import argparse
 import json
 import collections.abc
 from tinygrad.dtype import dtypes
+from tinygrad.nn.state import get_state_dict, load_state_dict
 
 from tinygrad import Tensor as tinyTensor, nn as tinynn
 
@@ -2384,6 +2385,11 @@ class Model:
         
         self.postprocess = PostProcess(num_select=args.num_select)
         self.stop_early = False
+
+        state_dict = get_state_dict(self.model)
+        load_state_dict(self.model, state_dict)
+
+        print(type(self.model))
 
 
 def to_tiny_seq(x):
