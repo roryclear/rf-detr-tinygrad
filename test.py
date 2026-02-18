@@ -384,8 +384,12 @@ class Dinov2WithRegistersLayerScale(nn.Module):
         super().__init__()
         self.lambda1 = nn.Parameter(config.layerscale_value * torch.ones(config.hidden_size))
         self.lambda1_tiny = to_tiny(self.lambda1)
+    
+class Dinov2WithRegistersLayerScale_tiny():
+    def __init__(self, d):
+        self.lambda1_tiny = d.lambda1_tiny
 
-    def forward(self, hidden_state):
+    def __call__(self, hidden_state):
         hidden_state = to_tiny(hidden_state)
         x = hidden_state * self.lambda1_tiny
         return x
@@ -2220,6 +2224,8 @@ class Model:
             self.model.backbone.encoder.encoder.encoder.layer.list[i].attention = Dinov2WithRegistersSdpaAttention_tiny(self.model.backbone.encoder.encoder.encoder.layer.list[i].attention)
             self.model.backbone.encoder.encoder.encoder.layer.list[i].attention.attention = Dinov2WithRegistersSdpaSelfAttention_tiny(self.model.backbone.encoder.encoder.encoder.layer.list[i].attention.attention)
             self.model.backbone.encoder.encoder.encoder.layer.list[i].attention.output = Dinov2WithRegistersSelfOutput_tiny(self.model.backbone.encoder.encoder.encoder.layer.list[i].attention.output)
+            self.model.backbone.encoder.encoder.encoder.layer.list[i].layer_scale1 = Dinov2WithRegistersLayerScale_tiny(self.model.backbone.encoder.encoder.encoder.layer.list[i].layer_scale1)
+            self.model.backbone.encoder.encoder.encoder.layer.list[i].layer_scale2 = Dinov2WithRegistersLayerScale_tiny(self.model.backbone.encoder.encoder.encoder.layer.list[i].layer_scale2)
 
         print_obj(self.model, "self.model")
         
