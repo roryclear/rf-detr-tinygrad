@@ -1355,6 +1355,22 @@ class Backbone(nn.Module):
         out.append(NestedTensor(feats[0], mask))
         return out
 
+class Backbone_tiny():
+    def __init__(self, b):
+        self.encoder = b.encoder
+        self.projector = b.projector
+
+    def __call__(self, tensor_list: NestedTensor):
+        feats = self.encoder(tensor_list.tensors)
+        feats = self.projector(feats)
+        out = []
+        m = tensor_list.mask
+        m = to_tiny(m)
+        mask = ~tinyTensor.interpolate(m.unsqueeze(0), size=feats[0].shape[-2:])[0]
+        mask = to_torch(mask).bool()
+        out.append(NestedTensor(feats[0], mask))
+        return out
+
 def build_backbone(
     encoder,
     pretrained_encoder,
@@ -2082,6 +2098,8 @@ class Model:
         # removing joiner
         self.model.position_embedding = self.model.backbone.position_embedding
         self.model.backbone = self.model.backbone.backbone
+
+        self.model.backbone = Backbone_tiny(self.model.backbone)
 
         print_obj(self.model, "self.model")
         
