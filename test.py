@@ -292,32 +292,6 @@ class Dinov2WithRegistersSdpaSelfAttention(Dinov2WithRegistersSelfAttention):
         super().__init__(config)
         self.attention_probs_dropout_prob = config.attention_probs_dropout_prob
 
-    def forward(
-        self, hidden_states, head_mask: Optional[Any] = None, output_attentions: bool = False
-    ) -> Union[Tuple[Any, Any], Tuple[Any]]:
-
-        hidden_states = to_tiny(hidden_states)
-        mixed_query_layer = self.query_tiny(hidden_states)
-
-
-        key_layer = self.transpose_for_scores(self.key_tiny(hidden_states))
-        value_layer = self.transpose_for_scores(self.value_tiny(hidden_states))
-        query_layer = self.transpose_for_scores(mixed_query_layer)
-
-        query_layer = to_tiny(query_layer)
-        key_layer = to_tiny(key_layer)
-        value_layer = to_tiny(value_layer)
-
-        d_k = query_layer.size(-1)
-        attn_scores = tinyTensor.matmul(query_layer, key_layer.transpose(-2, -1)) / math.sqrt(d_k)
-        attn_probs = tinyTensor.softmax(attn_scores, axis=-1)
-        context_layer = tinyTensor.matmul(attn_probs, value_layer)
-        context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
-        new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
-        context_layer = context_layer.view(new_context_layer_shape)
-
-        return to_torch(context_layer), None
-
 class Dinov2WithRegistersSdpaSelfAttention_tiny():
     def __init__(self, d):
         self.query_tiny = d.query_tiny
