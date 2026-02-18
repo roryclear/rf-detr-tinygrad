@@ -2233,6 +2233,8 @@ class Model:
             self.model.backbone.encoder.encoder.encoder.layer.list[i].layer_scale2 = Dinov2WithRegistersLayerScale_tiny(self.model.backbone.encoder.encoder.encoder.layer.list[i].layer_scale2)
             self.model.backbone.encoder.encoder.encoder.layer.list[i].mlp = Dinov2WithRegistersMLP_tiny(self.model.backbone.encoder.encoder.encoder.layer.list[i].mlp)
 
+        self.model.backbone.projector.stages.list[0] = to_tiny_seq(self.model.backbone.projector.stages.list[0])
+
         print_obj(self.model, "self.model")
         
         self.postprocess = PostProcess(num_select=args.num_select)
