@@ -723,6 +723,12 @@ def ms_deform_attn_core_pytorch(value, value_spatial_shapes, sampling_locations,
     ret = output.transpose(1, 2).contiguous()
     return to_torch(ret)
 
+class MultiheadAttention_tiny():
+    def __init__(self, m):
+        self.out_proj = m.out_proj
+        self.in_proj_weight = m.in_proj_weight
+        self.in_proj_bias = m.in_proj_bias
+
 class TransformerDecoderLayer(nn.Module):
     def __init__(self, d_model, sa_nhead, ca_nhead, dim_feedforward=2048, dropout=0.1,
                  activation="relu", normalize_before=False, group_detr=1,
@@ -793,8 +799,8 @@ class TransformerDecoderLayer_tiny():
         D = C // H
         w = to_tiny(self.self_attn.in_proj_weight)
         b = to_tiny(self.self_attn.in_proj_bias)
-        wo = to_tiny(self.self_attn.out_proj.weight)
-        bo = to_tiny(self.self_attn.out_proj.bias)
+        wo = to_tiny(self.self_attn.out_proj_weight)
+        bo = to_tiny(self.self_attn.out_proj_bias)
         wq, wk, wv = w.chunk(3, dim=0)
         bq, bk, bv = b.chunk(3, dim=0)
 
@@ -2363,6 +2369,10 @@ class Model:
 
         for i in range(len(self.model.transformer.decoder.layers.list)):
             self.model.transformer.decoder.layers.list[i] = TransformerDecoderLayer_tiny(self.model.transformer.decoder.layers.list[i])
+            self.model.transformer.decoder.layers.list[i].self_attn = MultiheadAttention_tiny(self.model.transformer.decoder.layers.list[i].self_attn)
+            self.model.transformer.decoder.layers.list[i].self_attn.out_proj_weight = self.model.transformer.decoder.layers.list[i].self_attn.out_proj.weight
+            self.model.transformer.decoder.layers.list[i].self_attn.out_proj_bias = self.model.transformer.decoder.layers.list[i].self_attn.out_proj.bias
+            del self.model.transformer.decoder.layers.list[i].self_attn.out_proj
 
         print_obj(self.model, "self.model")
         
