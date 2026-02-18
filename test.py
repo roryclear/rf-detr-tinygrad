@@ -1263,6 +1263,19 @@ class MultiScaleProjector(nn.Module):
         stage_output = self.stages[0](feat_fuse)
         return [stage_output]
 
+class MultiScaleProjector_tiny():
+    def __init__(self, m):
+        self.stages = m.stages
+
+    def __call__(self, x):
+        x = to_tiny(x)
+        feat_fuse = tinyTensor.cat(*x, dim=1)
+        feat_fuse = to_torch(feat_fuse)
+        stage_output = self.stages[0](feat_fuse)
+        return [stage_output]
+
+
+
 class NestedTensor(object):
     def __init__(self, tensors: Tensor, mask: Optional[Tensor]) -> None:
         self.tensors = tensors
@@ -2142,6 +2155,7 @@ class Model:
         self.model.backbone.encoder.encoder.embeddings = WindowedDinov2WithRegistersEmbeddings_tiny(self.model.backbone.encoder.encoder.embeddings)
         self.model.backbone.encoder.encoder.embeddings.patch_embeddings = Dinov2WithRegistersPatchEmbeddings_tiny(self.model.backbone.encoder.encoder.embeddings.patch_embeddings)
         self.model.backbone.encoder.encoder.encoder = WindowedDinov2WithRegistersEncoder_tiny(self.model.backbone.encoder.encoder.encoder)
+        self.model.backbone.projector = MultiScaleProjector_tiny(self.model.backbone.projector)
 
         print_obj(self.model, "self.model")
         
