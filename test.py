@@ -2187,7 +2187,7 @@ def print_obj(obj, s, seen=None):
     
     if isinstance(obj, dict):
         for k in obj.keys():
-            print(f"{s}.{k}", type(obj[k]))
+            print(f"{s}.{k}", type(obj[k]), "TORCH" if isinstance(obj[k], nn.Module) else "")
             print_obj(obj[k], f"{s}.{k}", seen)
     elif isinstance(obj, (list, tuple, set)):
         for i, item in enumerate(obj):
