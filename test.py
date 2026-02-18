@@ -1935,7 +1935,9 @@ class LWDETR_tiny():
 
         outputs_coord = to_torch(outputs_coord)
 
+        hs = to_tiny(hs)
         outputs_class = self.class_embed(hs)
+        outputs_class = to_torch(outputs_class)
         out = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
         hs_enc_list = hs_enc.chunk(1, dim=1)
         cls_enc = []
@@ -2008,33 +2010,6 @@ class LWDETR(nn.Module):
                 [copy.deepcopy(self.class_embed) for _ in range(group_detr)])
 
         self._export = False
-
-    def forward(self, samples: NestedTensor, targets=None):
-        samples = nested_tensor_from_tensor_list(samples)
-        features, poss = self.backbone(samples)
-        src, mask = features[0].tensors, features[0].mask
-        refpoint_embed_weight = self.refpoint_embed.weight[:self.num_queries]
-        query_feat_weight = self.query_feat.weight[:self.num_queries]
-        hs, ref_unsigmoid, hs_enc, ref_enc = self.transformer(src, mask, poss, refpoint_embed_weight, query_feat_weight)
-        outputs_coord_delta = self.bbox_embed(hs)
-
-        outputs_coord_delta = to_tiny(outputs_coord_delta)
-        ref_unsigmoid = to_tiny(ref_unsigmoid)
-
-        outputs_coord_cxcy = outputs_coord_delta[..., :2] * ref_unsigmoid[..., 2:] + ref_unsigmoid[..., :2]
-        outputs_coord_wh = outputs_coord_delta[..., 2:].exp() * ref_unsigmoid[..., 2:]
-        outputs_coord = tinyTensor.cat(outputs_coord_cxcy, outputs_coord_wh, dim=-1)
-
-        outputs_coord = to_torch(outputs_coord)
-
-        outputs_class = self.class_embed(hs)
-        out = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
-        hs_enc_list = hs_enc.chunk(1, dim=1)
-        cls_enc = []
-        cls_enc_gidx = self.transformer.enc_out_class_embed[0](hs_enc_list[0])
-        cls_enc.append(cls_enc_gidx)
-        out['enc_outputs'] = {'pred_logits': cls_enc, 'pred_boxes': ref_enc}
-        return out
 
 def build_model(args):
     # the `num_classes` naming here is somewhat misleading.
@@ -2389,6 +2364,12 @@ class Model:
 
         for i in range(len(self.model.transformer.decoder.layers.list)):
             self.model.transformer.decoder.layers.list[i].cross_attn = MSDeformAttn_tiny(self.model.transformer.decoder.layers.list[i].cross_attn)
+
+        self.model.bbox_embed.layers = to_tiny_seq(self.model.bbox_embed.layers)
+        for i in range(len(self.model.bbox_embed.layers.list)):
+            self.model.bbox_embed.layers.list[i] = to_tiny_linear(self.model.bbox_embed.layers.list[i])
+
+        self.model.class_embed = to_tiny_linear(self.model.class_embed)
 
         print_obj(self.model, "self.model")
         
