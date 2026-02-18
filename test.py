@@ -2329,10 +2329,11 @@ class Model:
         for i in range(len(self.model.transformer.enc_out_bbox_embed.list)):
             self.model.transformer.enc_out_bbox_embed.list[i] = MLP_tiny(self.model.transformer.enc_out_bbox_embed.list[i])
 
-        self.model.transformer.enc_out_bbox_embed.list[0].layers = to_tiny_seq(self.model.transformer.enc_out_bbox_embed.list[0].layers)
 
-        for i in range(len(self.model.transformer.enc_out_bbox_embed.list[0].layers.list)):
-            self.model.transformer.enc_out_bbox_embed.list[0].layers.list[i] = to_tiny_linear(self.model.transformer.enc_out_bbox_embed.list[0].layers.list[i])
+        for j in range(len(self.model.transformer.enc_out_bbox_embed.list)):
+            self.model.transformer.enc_out_bbox_embed.list[j].layers = to_tiny_seq(self.model.transformer.enc_out_bbox_embed.list[j].layers)
+            for i in range(len(self.model.transformer.enc_out_bbox_embed.list[j].layers.list)):
+                self.model.transformer.enc_out_bbox_embed.list[j].layers.list[i] = to_tiny_linear(self.model.transformer.enc_out_bbox_embed.list[j].layers.list[i])
 
         print_obj(self.model, "self.model")
         
