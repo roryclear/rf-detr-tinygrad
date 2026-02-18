@@ -1169,6 +1169,19 @@ class ConvX(nn.Module):
         if type(x) != tinyTensor: x = to_tiny(x)
         out = tinyTensor.silu(x)
         return to_torch(out)
+    
+class ConvX_tiny():
+    def __init__(self, c):
+        self.conv_tiny = c.conv_tiny
+        self.bn = c.bn
+
+    def __call__(self, x):
+        x = to_tiny(x)
+        x = self.conv_tiny(x)
+        x = self.bn(x)
+        if type(x) != tinyTensor: x = to_tiny(x)
+        out = tinyTensor.silu(x)
+        return to_torch(out)
 
 class Bottleneck(nn.Module):
     """Standard bottleneck."""
@@ -2244,6 +2257,9 @@ class Model:
         self.model.backbone.projector.stages.list[0] = to_tiny_seq(self.model.backbone.projector.stages.list[0])
 
         self.model.backbone.projector.stages.list[0].list[0] = C2f_tiny(self.model.backbone.projector.stages.list[0].list[0])
+
+        self.model.backbone.projector.stages.list[0].list[0].cv1 = ConvX_tiny(self.model.backbone.projector.stages.list[0].list[0].cv1)
+        self.model.backbone.projector.stages.list[0].list[0].cv2 = ConvX_tiny(self.model.backbone.projector.stages.list[0].list[0].cv2)
 
         print_obj(self.model, "self.model")
         
