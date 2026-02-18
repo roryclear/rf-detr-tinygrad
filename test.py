@@ -1994,6 +1994,23 @@ def box_cxcywh_to_xyxy(x):
     ]
     return tinyTensor.stack(b, dim=-1)
 
+class tiny_seq():
+    def __init__(self, size=0):
+        self.list = [None] * size
+
+    def __setitem__(self, key, value):
+        self.list[key] = value
+
+    def __getitem__(self, idx):
+        return self.list[idx]
+
+    def __call__(self, x):
+        for y in self.list:
+            x = y(x)
+        return x
+        
+        
+
 class PostProcess():
     """ This module converts the model's output into the format expected by the coco api"""
     def __init__(self, num_select=300) -> None:
@@ -2169,11 +2186,22 @@ class Model:
         self.model.backbone.encoder.encoder.encoder = WindowedDinov2WithRegistersEncoder_tiny(self.model.backbone.encoder.encoder.encoder)
         self.model.backbone.projector = MultiScaleProjector_tiny(self.model.backbone.projector)
 
+        self.model.backbone.encoder.encoder.encoder.layer = to_tiny_seq(self.model.backbone.encoder.encoder.encoder.layer)
+        self.model.backbone.projector.stages = to_tiny_seq(self.model.backbone.projector.stages)
+        self.model.transformer.enc_out_class_embed = to_tiny_seq(self.model.transformer.enc_out_class_embed)
+        self.model.transformer.enc_out_bbox_embed = to_tiny_seq(self.model.transformer.enc_out_bbox_embed)
+
         print_obj(self.model, "self.model")
         
         self.postprocess = PostProcess(num_select=args.num_select)
         self.stop_early = False
 
+
+def to_tiny_seq(x):
+    seq = tiny_seq(len(x))
+    for i in range(len(x)):
+        seq[i] = x[i]
+    return seq
 
 def print_obj(obj, s, seen=None):
     s = s.replace("._modules","")
