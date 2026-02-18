@@ -1358,12 +1358,7 @@ class MultiScaleProjector_tiny():
         feat_fuse = tinyTensor.cat(*x, dim=1)
         stage_output = self.stages[0](feat_fuse)
         return [stage_output]
-
-class NestedTensor(object):
-    def __init__(self, tensors: Tensor, mask: Optional[Tensor]) -> None:
-        self.tensors = tensors
-        self.mask = mask
-
+    
 def build_position_encoding(hidden_dim, position_embedding):
     N_steps = hidden_dim // 2
     if position_embedding in ('v2', 'sine'):
@@ -1389,9 +1384,8 @@ class PositionEmbeddingSine_tiny():
         self.num_pos_feats = p.num_pos_feats
         self.temperature = p.temperature
 
-    def __call__(self, tensor_list: NestedTensor, align_dim_orders = True):
-        mask = tensor_list.mask
-        if type(mask) != tinyTensor: mask = to_tiny(mask)
+    def __call__(self, tensors, mask, align_dim_orders = True):
+        mask = to_tiny(mask)
         not_mask = ~mask
         y_embed = not_mask.cumsum(1)
         x_embed = not_mask.cumsum(2)
@@ -1491,12 +1485,10 @@ class Backbone_tiny():
     def __call__(self, tensors ,mask):
         feats = self.encoder(tensors)
         feats = self.projector(feats)
-        out = []
         m = mask
         m = to_tiny(m)
         mask = ~tinyTensor.interpolate(m.unsqueeze(0), size=feats[0].shape[-2:])[0]
-        out.append(NestedTensor(feats[0], mask))
-        return out
+        return feats[0], mask
 
 def build_backbone(
     encoder,
@@ -1839,15 +1831,14 @@ class LWDETR_tiny():
         self.bbox_embed = l.bbox_embed
         self.class_embed = l.class_embed
 
-    def __call__(self, samples: NestedTensor, targets=None):
+    def __call__(self, samples, targets=None):
         _, _, h, w = samples.shape
         mask = torch.zeros((1, h, w), dtype=torch.bool)
-        feature = self.backbone(samples, mask)[0]
-        pos = self.position_embedding(feature)[0]
-        src, mask = feature.tensors, feature.mask
+        feature, mask = self.backbone(samples, mask)
+        pos = self.position_embedding(feature, mask)[0]
         refpoint_embed_weight = self.refpoint_embed_tiny[:self.num_queries]
         query_feat_weight = self.query_feat_tiny[:self.num_queries]
-        hs, ref_unsigmoid, hs_enc, ref_enc = self.transformer(src, mask, [pos], refpoint_embed_weight, query_feat_weight)
+        hs, ref_unsigmoid, hs_enc, ref_enc = self.transformer(feature, mask, [pos], refpoint_embed_weight, query_feat_weight)
         outputs_coord_delta = self.bbox_embed(hs)
 
         outputs_coord_delta = to_tiny(outputs_coord_delta)
