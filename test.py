@@ -1018,8 +1018,19 @@ class Transformer(nn.Module):
 
         self._export = False
 
-    # todo, no list inputs
-    def forward(self, srcs, masks, pos_embeds, refpoint_embed, query_feat):
+
+class Transformer_tiny():
+    def __init__(self, t):
+        self.enc_out_class_embed = t.enc_out_class_embed
+        self.bbox_reparam = t.bbox_reparam
+        self.enc_output_norm_tiny = t.enc_output_norm_tiny
+        self.enc_output_tiny = t.enc_output_tiny
+        self.enc_out_bbox_embed = t.enc_out_bbox_embed
+        self.num_queries = t.num_queries
+        self.d_model = t.d_model
+        self.decoder = t.decoder
+
+    def __call__(self, srcs, masks, pos_embeds, refpoint_embed, query_feat):
 
         self.enc_out_class_embed_w = to_tiny(self.enc_out_class_embed[0].weight)
         self.enc_out_class_embed_b = to_tiny(self.enc_out_class_embed[0].bias)
@@ -2149,6 +2160,7 @@ class Model:
         self.model.position_embedding = self.model.backbone.position_embedding
         self.model.backbone = self.model.backbone.backbone
 
+        self.model.transformer = Transformer_tiny(self.model.transformer)
         self.model.backbone = Backbone_tiny(self.model.backbone)
         self.model.backbone.encoder = DinoV2_tiny(self.model.backbone.encoder)
         self.model.backbone.encoder.encoder = WindowedDinov2WithRegistersBackbone_tiny(self.model.backbone.encoder.encoder)
