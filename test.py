@@ -867,7 +867,14 @@ class TransformerDecoder(nn.Module):
 
         self._export = False
 
-    def forward(self, tgt, memory,
+class TransformerDecoder_tiny():
+    def __init__(self, t):
+        self.d_model = t.d_model
+        self.ref_point_head = t.ref_point_head
+        self.layers = t.layers
+        self.norm_tiny = t.norm_tiny
+
+    def __call__(self, tgt, memory,
                 tgt_mask: Optional[Tensor] = None,
                 memory_mask: Optional[Tensor] = None,
                 tgt_key_padding_mask: Optional[Tensor] = None,
@@ -2334,6 +2341,8 @@ class Model:
             self.model.transformer.enc_out_bbox_embed.list[j].layers = to_tiny_seq(self.model.transformer.enc_out_bbox_embed.list[j].layers)
             for i in range(len(self.model.transformer.enc_out_bbox_embed.list[j].layers.list)):
                 self.model.transformer.enc_out_bbox_embed.list[j].layers.list[i] = to_tiny_linear(self.model.transformer.enc_out_bbox_embed.list[j].layers.list[i])
+
+        self.model.transformer.decoder = TransformerDecoder_tiny(self.model.transformer.decoder)
 
         print_obj(self.model, "self.model")
         
