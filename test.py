@@ -202,8 +202,14 @@ class WindowedDinov2WithRegistersEmbeddings(nn.Module):
         self.patch_size = config.patch_size
         self.config = config
 
-
-    def forward(self, pixel_values, bool_masked_pos: Optional[Any] = None):
+class WindowedDinov2WithRegistersEmbeddings_tiny():
+    def __init__(self, w):
+        self.patch_embeddings = w.patch_embeddings
+        self.position_embeddings_tiny = w.position_embeddings_tiny
+        self.config = w.config
+        self.cls_token_tiny = w.cls_token_tiny
+    
+    def __call__(self, pixel_values, bool_masked_pos: Optional[Any] = None):
         batch_size, _, height, width = pixel_values.shape
         embeddings = self.patch_embeddings(pixel_values)
 
@@ -2121,6 +2127,7 @@ class Model:
         self.model.backbone = Backbone_tiny(self.model.backbone)
         self.model.backbone.encoder = DinoV2_tiny(self.model.backbone.encoder)
         self.model.backbone.encoder.encoder = WindowedDinov2WithRegistersBackbone_tiny(self.model.backbone.encoder.encoder)
+        self.model.backbone.encoder.encoder.embeddings = WindowedDinov2WithRegistersEmbeddings_tiny(self.model.backbone.encoder.encoder.embeddings)
 
         print_obj(self.model, "self.model")
         
