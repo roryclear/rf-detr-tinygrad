@@ -2377,6 +2377,7 @@ class Model:
         self.model.class_embed = to_tiny_linear(self.model.class_embed)
 
         del self.model.backbone.encoder.encoder.embeddings.config.dtype
+        self.model.refpoint_embed_tiny = to_tiny(self.model.refpoint_embed_tiny)
 
         print_obj(self.model, "self.model")
         
