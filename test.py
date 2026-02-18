@@ -1194,8 +1194,14 @@ class Bottleneck(nn.Module):
         self.cv2 = ConvX(c_, c2, k[1], 1, groups=g, act=act, layer_norm=layer_norm, rms_norm=rms_norm)
         self.add = shortcut and c1 == c2
 
-    def forward(self, x):
-        """'forward()' applies the YOLOv5 FPN to input data."""
+
+class Bottleneck_tiny():
+    def __init__(self, b):
+        self.cv1 = b.cv1
+        self.cv2 = b.cv2
+        self.add = b.add
+
+    def __call__(self, x):
         return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
 
 class C2f(nn.Module):
@@ -2287,7 +2293,11 @@ class Model:
         self.model.backbone.projector.stages.list[0].list[0].cv2 = ConvX_tiny(self.model.backbone.projector.stages.list[0].list[0].cv2)
 
         self.model.backbone.projector.stages.list[0].list[0].cv1.bn = LayerNorm_tiny(self.model.backbone.projector.stages.list[0].list[0].cv1.bn)
+        self.model.backbone.projector.stages.list[0].list[0].cv2.bn = LayerNorm_tiny(self.model.backbone.projector.stages.list[0].list[0].cv2.bn)
         self.model.position_embedding = PositionEmbeddingSine_tiny(self.model.position_embedding)
+        self.model.backbone.projector.stages.list[0].list[0].m = to_tiny_seq(self.model.backbone.projector.stages.list[0].list[0].m)
+        for i in range(len(self.model.backbone.projector.stages.list[0].list[0].m.list)):
+            self.model.backbone.projector.stages.list[0].list[0].m.list[i] = Bottleneck_tiny(self.model.backbone.projector.stages.list[0].list[0].m.list[i])
         
         print_obj(self.model, "self.model")
         
