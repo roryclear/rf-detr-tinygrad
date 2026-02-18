@@ -995,7 +995,20 @@ class MSDeformAttn(nn.Module):
 
         self._export = False
 
-    def forward(self, query, reference_points, input_flatten, input_spatial_shapes,
+class MSDeformAttn_tiny():
+    """Multi-Scale Deformable Attention Module
+    """
+    def __init__(self, m):
+        self.value_proj_tiny = m.value_proj_tiny
+        self.n_heads = m.n_heads
+        self.n_levels = m.n_levels
+        self.n_points = m.n_points
+        self.sampling_offsets_tiny = m.sampling_offsets_tiny
+        self.attention_weights_tiny = m.attention_weights_tiny
+        self.d_model = m.d_model
+        self.output_proj_tiny = m.output_proj_tiny
+
+    def __call__(self, query, reference_points, input_flatten, input_spatial_shapes,
                 input_level_start_index, input_padding_mask=None):
         query = to_tiny(query)
         reference_points = to_tiny(reference_points)
@@ -2373,6 +2386,9 @@ class Model:
             self.model.transformer.decoder.layers.list[i].self_attn.out_proj_weight = self.model.transformer.decoder.layers.list[i].self_attn.out_proj.weight
             self.model.transformer.decoder.layers.list[i].self_attn.out_proj_bias = self.model.transformer.decoder.layers.list[i].self_attn.out_proj.bias
             del self.model.transformer.decoder.layers.list[i].self_attn.out_proj
+
+        for i in range(len(self.model.transformer.decoder.layers.list)):
+            self.model.transformer.decoder.layers.list[i].cross_attn = MSDeformAttn_tiny(self.model.transformer.decoder.layers.list[i].cross_attn)
 
         print_obj(self.model, "self.model")
         
