@@ -797,10 +797,10 @@ class TransformerDecoderLayer_tiny():
         B, T, C = q.shape
         H = 8
         D = C // H
-        w = to_tiny(self.self_attn.in_proj_weight)
-        b = to_tiny(self.self_attn.in_proj_bias)
-        wo = to_tiny(self.self_attn.out_proj_weight)
-        bo = to_tiny(self.self_attn.out_proj_bias)
+        w = self.self_attn.in_proj_weight
+        b = self.self_attn.in_proj_bias
+        wo = self.self_attn.out_proj_weight
+        bo = self.self_attn.out_proj_bias
         wq, wk, wv = w.chunk(3, dim=0)
         bq, bk, bv = b.chunk(3, dim=0)
 
@@ -2361,6 +2361,11 @@ class Model:
             self.model.transformer.decoder.layers.list[i].self_attn.out_proj_weight = self.model.transformer.decoder.layers.list[i].self_attn.out_proj.weight
             self.model.transformer.decoder.layers.list[i].self_attn.out_proj_bias = self.model.transformer.decoder.layers.list[i].self_attn.out_proj.bias
             del self.model.transformer.decoder.layers.list[i].self_attn.out_proj
+            self.model.transformer.decoder.layers.list[i].self_attn.in_proj_weight = to_tiny(self.model.transformer.decoder.layers.list[i].self_attn.in_proj_weight)
+            self.model.transformer.decoder.layers.list[i].self_attn.in_proj_bias = to_tiny(self.model.transformer.decoder.layers.list[i].self_attn.in_proj_bias)
+            self.model.transformer.decoder.layers.list[i].self_attn.out_proj_weight = to_tiny(self.model.transformer.decoder.layers.list[i].self_attn.out_proj_weight)
+            self.model.transformer.decoder.layers.list[i].self_attn.out_proj_bias = to_tiny(self.model.transformer.decoder.layers.list[i].self_attn.out_proj_bias)
+            
 
         for i in range(len(self.model.transformer.decoder.layers.list)):
             self.model.transformer.decoder.layers.list[i].cross_attn = MSDeformAttn_tiny(self.model.transformer.decoder.layers.list[i].cross_attn)
@@ -2370,6 +2375,8 @@ class Model:
             self.model.bbox_embed.layers.list[i] = to_tiny_linear(self.model.bbox_embed.layers.list[i])
 
         self.model.class_embed = to_tiny_linear(self.model.class_embed)
+
+        del self.model.backbone.encoder.encoder.embeddings.config.dtype
 
         print_obj(self.model, "self.model")
         
