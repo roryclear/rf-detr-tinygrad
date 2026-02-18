@@ -665,7 +665,8 @@ def ms_deform_attn_core_pytorch(value, value_spatial_shapes, sampling_locations,
     B, n_heads, head_dim, _ = value.shape
     _, Len_q, n_heads, L, P, _ = sampling_locations.shape
     sampling_grids = 2 * sampling_locations - 1
-    value_l_ = value.view(B * n_heads, head_dim, int(value_spatial_shapes[0][0]), int(value_spatial_shapes[0][0]))
+    value_spatial_shapes = to_torch(value_spatial_shapes)
+    value_l_ = value.view(B * n_heads, head_dim, int(value_spatial_shapes), int(value_spatial_shapes))
     sampling_grid_l_ = sampling_grids[:, :, :, 0].transpose(1, 2).flatten(0, 1)
 
     N, C, H, W = value_l_.shape
@@ -812,7 +813,7 @@ class TransformerDecoderLayer_tiny():
             tgt+query_pos,
             reference_points,
             memory,
-            spatial_shapes,
+            spatial_shapes[0][0],
             level_start_index,
             memory_key_padding_mask
         )
@@ -1001,13 +1002,10 @@ class MSDeformAttn_tiny():
         query = to_tiny(query)
         reference_points = to_tiny(reference_points)
         input_flatten = to_tiny(input_flatten)
-        input_spatial_shapes = to_tiny(input_spatial_shapes)
         input_padding_mask = to_tiny(input_padding_mask)
 
         N, Len_q, _ = query.shape
         N, Len_in, _ = input_flatten.shape
-
-        input_spatial_shapes = to_torch(input_spatial_shapes)
 
         value = self.value_proj_tiny(input_flatten)
         value = value.masked_fill(input_padding_mask[..., None], float(0))
