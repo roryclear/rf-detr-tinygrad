@@ -2329,6 +2329,11 @@ class Model:
         for i in range(len(self.model.transformer.enc_out_bbox_embed.list)):
             self.model.transformer.enc_out_bbox_embed.list[i] = MLP_tiny(self.model.transformer.enc_out_bbox_embed.list[i])
 
+        self.model.transformer.enc_out_bbox_embed.list[0].layers = to_tiny_seq(self.model.transformer.enc_out_bbox_embed.list[0].layers)
+
+        for i in range(len(self.model.transformer.enc_out_bbox_embed.list[0].layers.list)):
+            self.model.transformer.enc_out_bbox_embed.list[0].layers.list[i] = to_tiny_linear(self.model.transformer.enc_out_bbox_embed.list[0].layers.list[i])
+
         print_obj(self.model, "self.model")
         
         self.postprocess = PostProcess(num_select=args.num_select)
@@ -2340,6 +2345,12 @@ def to_tiny_seq(x):
     for i in range(len(x)):
         seq[i] = x[i]
     return seq
+
+def to_tiny_linear(x):
+    lin = tinynn.Linear(x.in_features, x.out_features)
+    lin.weight = to_tiny(x.weight)
+    lin.bias = to_tiny(x.bias)
+    return lin
 
 def print_obj(obj, s, seen=None):
     s = s.replace("._modules","")
