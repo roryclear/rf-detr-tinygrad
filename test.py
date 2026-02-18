@@ -325,7 +325,12 @@ class Dinov2WithRegistersSdpaAttention(nn.Module):
         self.output = Dinov2WithRegistersSelfOutput(config)
         self.pruned_heads = set()
 
-    def forward(
+class Dinov2WithRegistersSdpaAttention_tiny():
+    def __init__(self, d):
+        self.attention = d.attention
+        self.output = d.output
+
+    def __call__(
         self,
         hidden_states: Any,
         head_mask: Optional[Any] = None,
@@ -335,7 +340,6 @@ class Dinov2WithRegistersSdpaAttention(nn.Module):
         attention_output = self.output(self_outputs[0])
         outputs = (attention_output,) + self_outputs[1:]
         return outputs
-
 
 HOSTED_MODELS = {**OPEN_SOURCE_MODELS, **PLATFORM_MODELS}
 
@@ -2195,6 +2199,8 @@ class Model:
 
         for i in range(len(self.model.backbone.encoder.encoder.encoder.layer.list)):
             self.model.backbone.encoder.encoder.encoder.layer.list[i] = WindowedDinov2WithRegistersLayer_tiny(self.model.backbone.encoder.encoder.encoder.layer.list[i])
+            self.model.backbone.encoder.encoder.encoder.layer.list[i].attention = Dinov2WithRegistersSdpaAttention_tiny(self.model.backbone.encoder.encoder.encoder.layer.list[i].attention)
+
         print_obj(self.model, "self.model")
         
         self.postprocess = PostProcess(num_select=args.num_select)
