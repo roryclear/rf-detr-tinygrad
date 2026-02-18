@@ -279,7 +279,7 @@ class Dinov2WithRegistersSelfOutput_tiny():
     def __call__(self, x):
         x = to_tiny(x)
         x = self.dense_tiny(x)
-        return to_torch(x)
+        return x
 
 class Dinov2WithRegistersSdpaSelfAttention(Dinov2WithRegistersSelfAttention):
     def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
@@ -1794,15 +1794,6 @@ class MLP(nn.Module):
         for _ in range(num_layers - 2): self.layers_tiny.append(tinynn.Linear(hidden_dim, hidden_dim))
         self.layers_tiny.append(tinynn.Linear(hidden_dim, output_dim))
 
-    def forward(self, x):
-        for i in range(self.num_layers):
-            self.layers_tiny[i].weight = to_tiny(self.layers[i].weight)
-            self.layers_tiny[i].bias = to_tiny(self.layers[i].bias)
-
-        x = to_tiny(x)
-        for i, layer in enumerate(self.layers_tiny):
-            x = tinyTensor.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
-        return to_torch(x)
 
 class MLP_tiny():
     def __init__(self, m):
