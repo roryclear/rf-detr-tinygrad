@@ -1384,7 +1384,13 @@ class PositionEmbeddingSine(nn.Module):
         self.scale = scale
         self._export = False
 
-    def forward(self, tensor_list: NestedTensor, align_dim_orders = True):
+class PositionEmbeddingSine_tiny():
+    def __init__(self, p):
+        self.scale = p.scale
+        self.num_pos_feats = p.num_pos_feats
+        self.temperature = p.temperature
+
+    def __call__(self, tensor_list: NestedTensor, align_dim_orders = True):
         mask = tensor_list.mask
         if type(mask) != tinyTensor: mask = to_tiny(mask)
         not_mask = ~mask
@@ -1401,7 +1407,7 @@ class PositionEmbeddingSine(nn.Module):
         pos_y = tinyTensor.stack((pos_y[:, :, :, 0::2].sin(), pos_y[:, :, :, 1::2].cos()), dim=4).flatten(3)
         pos = tinyTensor.cat(pos_y, pos_x, dim=3).permute(0, 3, 1, 2)
         return to_torch(pos)
-
+    
 class Backbone(nn.Module):
     """backbone."""
     def __init__(self,
@@ -2281,6 +2287,8 @@ class Model:
         self.model.backbone.projector.stages.list[0].list[0].cv2 = ConvX_tiny(self.model.backbone.projector.stages.list[0].list[0].cv2)
 
         self.model.backbone.projector.stages.list[0].list[0].cv1.bn = LayerNorm_tiny(self.model.backbone.projector.stages.list[0].list[0].cv1.bn)
+        self.model.position_embedding = PositionEmbeddingSine_tiny(self.model.position_embedding)
+        
         print_obj(self.model, "self.model")
         
         self.postprocess = PostProcess(num_select=args.num_select)
