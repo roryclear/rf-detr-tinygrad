@@ -2326,6 +2326,8 @@ class Model:
             self.model.transformer.enc_out_class_embed.list[i] = lin
 
         self.model.bbox_embed = MLP_tiny(self.model.bbox_embed)
+        for i in range(len(self.model.transformer.enc_out_bbox_embed.list)):
+            self.model.transformer.enc_out_bbox_embed.list[i] = MLP_tiny(self.model.transformer.enc_out_bbox_embed.list[i])
 
         print_obj(self.model, "self.model")
         
