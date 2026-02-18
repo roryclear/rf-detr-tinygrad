@@ -1844,8 +1844,6 @@ class MLP(nn.Module):
         self.layers_tiny.append(tinynn.Linear(hidden_dim, output_dim))
 
     def forward(self, x):
-        
-        # todo move
         for i in range(self.num_layers):
             self.layers_tiny[i].weight = to_tiny(self.layers[i].weight)
             self.layers_tiny[i].bias = to_tiny(self.layers[i].bias)
@@ -1855,6 +1853,22 @@ class MLP(nn.Module):
             x = tinyTensor.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
         return to_torch(x)
 
+class MLP_tiny():
+    def __init__(self, m):
+        self.num_layers = m.num_layers
+        self.layers_tiny = m.layers_tiny
+        self.layers = m.layers
+
+    def __call__(self, x):
+        for i in range(self.num_layers):
+            self.layers_tiny[i].weight = to_tiny(self.layers[i].weight)
+            self.layers_tiny[i].bias = to_tiny(self.layers[i].bias)
+
+        x = to_tiny(x)
+        for i, layer in enumerate(self.layers_tiny):
+            x = tinyTensor.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
+        return to_torch(x)
+    
 class LWDETR_tiny():
     """ This is the Group DETR v3 module that performs object detection """
     def __init__(self, l):
@@ -2310,6 +2324,8 @@ class Model:
             lin.weight = to_tiny(self.model.transformer.enc_out_class_embed.list[i].weight)
             lin.bias = to_tiny(self.model.transformer.enc_out_class_embed.list[i].bias)
             self.model.transformer.enc_out_class_embed.list[i] = lin
+
+        self.model.bbox_embed = MLP_tiny(self.model.bbox_embed)
 
         print_obj(self.model, "self.model")
         
