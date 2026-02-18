@@ -2344,6 +2344,13 @@ class Model:
 
         self.model.transformer.decoder = TransformerDecoder_tiny(self.model.transformer.decoder)
 
+        self.model.transformer.decoder.ref_point_head = MLP_tiny(self.model.transformer.decoder.ref_point_head)
+        self.model.transformer.decoder.ref_point_head.layers = to_tiny_seq(self.model.transformer.decoder.ref_point_head.layers)
+        for i in range(len(self.model.transformer.decoder.ref_point_head.layers.list)):
+            self.model.transformer.decoder.ref_point_head.layers.list[i] = to_tiny_linear(self.model.transformer.decoder.ref_point_head.layers.list[i])
+
+        self.model.transformer.decoder.layers = to_tiny_seq(self.model.transformer.decoder.layers)
+
         print_obj(self.model, "self.model")
         
         self.postprocess = PostProcess(num_select=args.num_select)
