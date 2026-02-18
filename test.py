@@ -372,7 +372,12 @@ class Dinov2WithRegistersMLP(nn.Module):
         self.fc1_tiny = tinynn.Linear(in_features, hidden_features, bias=True) 
         self.fc2_tiny = tinynn.Linear(hidden_features, out_features, bias=True)
 
-    def forward(self, hidden_state):
+class Dinov2WithRegistersMLP_tiny():
+    def __init__(self, d):
+        self.fc1_tiny = d.fc1_tiny
+        self.fc2_tiny = d.fc2_tiny
+
+    def __call__(self, hidden_state):
         hidden_state = to_tiny(hidden_state)
         hidden_state = self.fc1_tiny(hidden_state)
         hidden_state = hidden_state * 0.5 * (1.0 + tinyTensor.erf(hidden_state / math.sqrt(2.0)))
@@ -2226,6 +2231,7 @@ class Model:
             self.model.backbone.encoder.encoder.encoder.layer.list[i].attention.output = Dinov2WithRegistersSelfOutput_tiny(self.model.backbone.encoder.encoder.encoder.layer.list[i].attention.output)
             self.model.backbone.encoder.encoder.encoder.layer.list[i].layer_scale1 = Dinov2WithRegistersLayerScale_tiny(self.model.backbone.encoder.encoder.encoder.layer.list[i].layer_scale1)
             self.model.backbone.encoder.encoder.encoder.layer.list[i].layer_scale2 = Dinov2WithRegistersLayerScale_tiny(self.model.backbone.encoder.encoder.encoder.layer.list[i].layer_scale2)
+            self.model.backbone.encoder.encoder.encoder.layer.list[i].mlp = Dinov2WithRegistersMLP_tiny(self.model.backbone.encoder.encoder.encoder.layer.list[i].mlp)
 
         print_obj(self.model, "self.model")
         
