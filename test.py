@@ -1260,6 +1260,25 @@ class LayerNorm(nn.Module):
         return to_torch(x)
 
 
+class LayerNorm_tiny():
+    def __init__(self, l):
+        self.eps = l.eps
+        self.weight_tiny = l.weight_tiny
+        self.bias_tiny = l.bias_tiny
+
+    def __call__(self, x):
+        if type(x) != tinyTensor: x = to_tiny(x)
+        x = x.permute(0, 2, 3, 1)
+        x -= x.mean(axis=-1, keepdim=True)
+        var = (x ** 2).mean(axis=-1, keepdim=True) + self.eps
+        var = tinyTensor.sqrt(var)
+        x_norm = x / var
+        x_norm = x_norm * self.weight_tiny
+        x_norm = x_norm + self.bias_tiny
+        x = x_norm
+        x = x.permute(0, 3, 1, 2)
+        return to_torch(x)
+
 def get_norm(norm, out_channels):
     """
     Args:
@@ -2261,6 +2280,7 @@ class Model:
         self.model.backbone.projector.stages.list[0].list[0].cv1 = ConvX_tiny(self.model.backbone.projector.stages.list[0].list[0].cv1)
         self.model.backbone.projector.stages.list[0].list[0].cv2 = ConvX_tiny(self.model.backbone.projector.stages.list[0].list[0].cv2)
 
+        self.model.backbone.projector.stages.list[0].list[0].cv1.bn = LayerNorm_tiny(self.model.backbone.projector.stages.list[0].list[0].cv1.bn)
         print_obj(self.model, "self.model")
         
         self.postprocess = PostProcess(num_select=args.num_select)
