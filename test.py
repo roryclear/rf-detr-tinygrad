@@ -33,12 +33,6 @@ def to_tiny(x):
         for i in range(len(x)): ret.append(to_tiny(x[i]))
         return tuple(ret) if type(x) is tuple else ret
     return tinyTensor(x.detach().numpy()) if type(x) != tinyTensor else x
-def to_torch(x):
-    if type(x) in [tuple, list]:
-        ret = []
-        for i in range(len(x)): ret.append(to_torch(x[i]))
-        return tuple(ret) if type(x) == tuple else ret
-    return Tensor(x.numpy()) if type(x) != Tensor else x
 
 COCO_CLASSES = {1: "person", 2: "bicycle", 3: "car", 4: "motorcycle", 5: "airplane", 6: "bus", 7: "train", 8: "truck", 9: "boat",
 10: "traffic light", 11: "fire hydrant", 13: "stop sign", 14: "parking meter", 15: "bench", 16: "bird", 17: "cat", 18: "dog",
@@ -1837,8 +1831,7 @@ class LWDETR_tiny():
 
         hs = to_tiny(hs)
         outputs_class = self.class_embed(hs)
-        outputs_class = to_torch(outputs_class)
-        out = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
+        out = {'pred_logits': outputs_class.numpy()[-1], 'pred_boxes': outputs_coord[-1]}
         hs_enc_list = hs_enc.chunk(1, dim=1)
         cls_enc = []
         cls_enc_gidx = self.transformer.enc_out_class_embed[0](to_tiny(hs_enc_list[0]))
@@ -2037,7 +2030,7 @@ class PostProcess():
                           For visualization, this should be the image size after data augment, but before padding
         """
         out_logits, out_bbox = outputs['pred_logits'], outputs['pred_boxes']
-        out_logits = to_tiny(out_logits)
+        out_logits = tinyTensor(out_logits) #todo
         out_bbox = to_tiny(out_bbox)
         prob = out_logits.sigmoid()
         topk_values, topk_indexes = tinyTensor.topk(prob.view(out_logits.shape[0], -1), self.num_select, dim=1)
@@ -2529,7 +2522,6 @@ class RFDETR:
 
         processed_images = to_tiny(processed_images)
         batch_tensor = tinyTensor.stack(*processed_images)
-        batch_tensor = to_torch(batch_tensor)
         predictions = self.model.model(batch_tensor)
         target_sizes = tinyTensor(orig_sizes)
         results = self.model.postprocess(predictions, target_sizes=target_sizes)
