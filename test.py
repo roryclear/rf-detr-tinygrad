@@ -665,7 +665,6 @@ def ms_deform_attn_core_pytorch(value, value_spatial_shapes, sampling_locations,
     B, n_heads, head_dim, _ = value.shape
     _, Len_q, n_heads, L, P, _ = sampling_locations.shape
     sampling_grids = 2 * sampling_locations - 1
-    value_spatial_shapes = to_torch(value_spatial_shapes)
     value_l_ = value.view(B * n_heads, head_dim, int(value_spatial_shapes), int(value_spatial_shapes))
     sampling_grid_l_ = sampling_grids[:, :, :, 0].transpose(1, 2).flatten(0, 1)
 
@@ -813,7 +812,7 @@ class TransformerDecoderLayer_tiny():
             tgt+query_pos,
             reference_points,
             memory,
-            spatial_shapes[0][0],
+            spatial_shapes,
             level_start_index,
             memory_key_padding_mask
         )
@@ -1098,7 +1097,6 @@ class Transformer_tiny():
         src = src.flatten(2).transpose(1, 2)              # bs, hw, c
         pos_embed = pos_embed.flatten(2).transpose(1, 2)  # bs, hw, c
         mask = masks[0].flatten(1) if type(masks) == list else masks.flatten(1)
-        spatial_shapes = Tensor([[h,h]]).long()
         level_start_index = Tensor([0])
 
         output_memory, output_proposals = gen_encoder_output_proposals(
@@ -1144,11 +1142,10 @@ class Transformer_tiny():
         refpoint_embed_wh = refpoint_embed_ts_subset[..., 2:].exp() * boxes_ts[..., 2:]
         refpoint_embed_ts_subset = tinyTensor.cat(refpoint_embed_cxcy, refpoint_embed_wh, dim=-1)
         refpoint_embed = tinyTensor.cat(refpoint_embed_ts_subset, refpoint_embed_subset, dim=-2)
-
         hs, references = self.decoder(tgt, src, memory_key_padding_mask=mask,
                         pos=pos_embed, refpoints_unsigmoid=refpoint_embed,
                         level_start_index=level_start_index,
-                        spatial_shapes=spatial_shapes,
+                        spatial_shapes=h,
                         valid_ratios=Tensor([[[1., 1.]]]))
 
         return hs, references, memory_ts, boxes_ts
@@ -2052,10 +2049,7 @@ class PostProcess():
         img_w = target_sizes[:, 1]
         scale_fct = tinyTensor.stack(img_w, img_h, img_w, img_h, dim=1)
         boxes = boxes * scale_fct[:, None, :]
-        topk_values = to_torch(topk_values)
-        labels = to_torch(labels).int()
-        boxes = to_torch(boxes)
-        return [{'scores': s, 'labels': l, 'boxes': b} for s, l, b in zip(topk_values, labels, boxes)]
+        return [{'scores': s, 'labels': l, 'boxes': b} for s, l, b in zip(topk_values.numpy(), labels.numpy(), boxes.numpy())]
 
 class Model:
     def __init__(self, **kwargs):
@@ -2556,16 +2550,16 @@ class RFDETR:
                 masks = masks[keep]
 
                 detections = sv.Detections(
-                    xyxy=boxes.float().cpu().numpy(),
-                    confidence=scores.float().cpu().numpy(),
-                    class_id=labels.cpu().numpy(),
+                    xyxy=boxes,
+                    confidence=scores,
+                    class_id=labels,
                     mask=masks.squeeze(1).cpu().numpy(),
                 )
             else:
                 detections = sv.Detections(
-                    xyxy=boxes.float().cpu().numpy(),
-                    confidence=scores.float().cpu().numpy(),
-                    class_id=labels.cpu().numpy(),
+                    xyxy=boxes,
+                    confidence=scores,
+                    class_id=labels,
                 )
 
             detections_list.append(detections)
