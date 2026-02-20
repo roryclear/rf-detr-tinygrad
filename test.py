@@ -215,7 +215,6 @@ class WindowedDinov2WithRegistersEmbeddings_tiny():
 
         # add the [CLS] token to the embedded patch tokens
         cls_tokens = self.cls_token_tiny.expand(batch_size, -1, -1)
-        embeddings = to_tiny(embeddings)
         embeddings = tinyTensor.cat(cls_tokens, embeddings, dim=1)
         # add positional encoding to each token
         embeddings = embeddings + self.position_embeddings_tiny
@@ -2030,7 +2029,6 @@ class PostProcess():
         """
         out_logits, out_bbox = outputs['pred_logits'], outputs['pred_boxes']
         out_logits.realize() # todo, why do we have to do this?
-        out_bbox = to_tiny(out_bbox)
         prob = out_logits.sigmoid()
         topk_values, topk_indexes = tinyTensor.topk(prob.view(out_logits.shape[0], -1), self.num_select, dim=1)
         topk_boxes = topk_indexes // out_logits.shape[2]
