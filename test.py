@@ -1830,14 +1830,13 @@ class LWDETR_tiny():
 
 
         hs = to_tiny(hs)
-        outputs_class = self.class_embed(hs)
-        out = {'pred_logits': outputs_class.numpy()[-1], 'pred_boxes': outputs_coord[-1]}
+        outputs_class = self.class_embed(hs)[-1]
+        out = {'pred_logits': outputs_class, 'pred_boxes': outputs_coord[-1]}
         hs_enc_list = hs_enc.chunk(1, dim=1)
         cls_enc = []
         cls_enc_gidx = self.transformer.enc_out_class_embed[0](to_tiny(hs_enc_list[0]))
         cls_enc_gidx = to_tiny(cls_enc_gidx)
         cls_enc.append(cls_enc_gidx)
-        out['enc_outputs'] = {'pred_logits': cls_enc, 'pred_boxes': ref_enc}
         return out
 
 class LWDETR(nn.Module):
@@ -2030,7 +2029,7 @@ class PostProcess():
                           For visualization, this should be the image size after data augment, but before padding
         """
         out_logits, out_bbox = outputs['pred_logits'], outputs['pred_boxes']
-        out_logits = tinyTensor(out_logits) #todo
+        out_logits.realize() # todo, why do we have to do this?
         out_bbox = to_tiny(out_bbox)
         prob = out_logits.sigmoid()
         topk_values, topk_indexes = tinyTensor.topk(prob.view(out_logits.shape[0], -1), self.num_select, dim=1)
