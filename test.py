@@ -1181,7 +1181,8 @@ class ConvX(nn.Module):
 
     
 class ConvX_tiny():
-    def __init__(self, c):
+    def __init__(self, c=None):
+        if c is None: return
         self.conv_tiny = c.conv_tiny
         self.bn = c.bn
 
@@ -1226,7 +1227,8 @@ class C2f(nn.Module):
         self.m = nn.ModuleList(Bottleneck(self.c, self.c, shortcut, g, k=(3, 3), e=1.0, act=act, layer_norm=layer_norm, rms_norm=rms_norm) for _ in range(n))
 
 class C2f_tiny():
-    def __init__(self, c):
+    def __init__(self, c=None):
+        if c is None: return
         self.cv1 = c.cv1
         self.cv2 = c.cv2
         self.c = c.c
@@ -1263,7 +1265,8 @@ class LayerNorm(nn.Module):
 
 
 class LayerNorm_tiny():
-    def __init__(self, l):
+    def __init__(self, l=None):
+        if l is None: return
         self.eps = l.eps
         self.weight_tiny = l.weight_tiny
         self.bias_tiny = l.bias_tiny
@@ -1343,7 +1346,8 @@ class MultiScaleProjector(nn.Module):
         self.stages = nn.ModuleList(stages)
 
 class MultiScaleProjector_tiny():
-    def __init__(self, m):
+    def __init__(self, m=None):
+        if m is None: return
         self.stages = m.stages
 
     def __call__(self, x):
@@ -1471,7 +1475,8 @@ class Backbone(nn.Module):
         self._export = False
 
 class Backbone_tiny():
-    def __init__(self, b):
+    def __init__(self, b=None):
+        if b is None: return
         self.encoder = b.encoder
         self.projector = b.projector
 
@@ -2354,6 +2359,24 @@ class Model:
           new_model.transformer.decoder.ref_point_head.layers[0] = tinynn.Linear(512, 256) # todo remove
           new_model.transformer.decoder.ref_point_head.layers[1] = tinynn.Linear(256, 256)
 
+          new_model.backbone = Backbone_tiny()
+          new_model.backbone.projector = MultiScaleProjector_tiny()
+          new_model.backbone.projector.stages = tiny_seq(1) # todo, this is dumb
+          new_model.backbone.projector.stages[0] = tiny_seq(2)
+          new_model.backbone.projector.stages[0][0] = C2f_tiny()
+          new_model.backbone.projector.stages[0][0].cv1 = ConvX_tiny()
+          new_model.backbone.projector.stages[0][0].cv2 = ConvX_tiny()
+          #print(self.model.backbone.projector.stages[0][0].cv1.conv_tiny.weight)
+          #exit()
+          new_model.backbone.projector.stages[0][0].cv1.conv_tiny = tinynn.Conv2d(in_channels=1536, out_channels=256, kernel_size=1, bias=False)
+          new_model.backbone.projector.stages[0][0].cv2.conv_tiny = tinynn.Conv2d(in_channels=640, out_channels=256, kernel_size=1, bias=False)
+
+          new_model.backbone.projector.stages[0][0].cv1.bn = LayerNorm_tiny()
+          new_model.backbone.projector.stages[0][0].cv1.bn.weight_tiny = tinyTensor.empty((256))
+          new_model.backbone.projector.stages[0][0].cv1.bn.bias_tiny = tinyTensor.empty((256))
+          new_model.backbone.projector.stages[0][0].cv2.bn = LayerNorm_tiny()
+          new_model.backbone.projector.stages[0][0].cv2.bn.weight_tiny = tinyTensor.empty((256))
+          new_model.backbone.projector.stages[0][0].cv2.bn.bias_tiny = tinyTensor.empty((256))
 
           state_dict = get_state_dict(self.model)
           load_state_dict(self.model, state_dict)
@@ -2361,7 +2384,6 @@ class Model:
           #print(get_state_dict(new_model))
           #exit()
           load_state_dict(new_model, state_dict)
-          print(self.model.refpoint_embed_tiny.shape)
           print("NANO")
           m = 0
           new_state_dict = get_state_dict(new_model)
@@ -2371,7 +2393,7 @@ class Model:
               m+=1
           print("missing keys =",m)
         print(type(self.model))
-        print(type(self.model.transformer.enc_output_norm_tiny))
+        print(type(self.model.backbone.projector.stages[0][0].cv1.bn))
         #exit()
 
 
