@@ -1207,7 +1207,8 @@ class Bottleneck(nn.Module):
 
 
 class Bottleneck_tiny():
-    def __init__(self, b):
+    def __init__(self, b=None):
+        if b is None: return
         self.cv1 = b.cv1
         self.cv2 = b.cv2
         self.add = b.add
@@ -2364,6 +2365,9 @@ class Model:
           new_model.backbone.projector.stages = tiny_seq(1) # todo, this is dumb
           new_model.backbone.projector.stages[0] = tiny_seq(2)
           new_model.backbone.projector.stages[0][0] = C2f_tiny()
+          new_model.backbone.projector.stages[0][1] = LayerNorm_tiny()
+          new_model.backbone.projector.stages[0][1].weight_tiny = tinyTensor.empty((256))
+          new_model.backbone.projector.stages[0][1].bias_tiny = tinyTensor.empty((256))
           new_model.backbone.projector.stages[0][0].cv1 = ConvX_tiny()
           new_model.backbone.projector.stages[0][0].cv2 = ConvX_tiny()
           #print(self.model.backbone.projector.stages[0][0].cv1.conv_tiny.weight)
@@ -2377,6 +2381,21 @@ class Model:
           new_model.backbone.projector.stages[0][0].cv2.bn = LayerNorm_tiny()
           new_model.backbone.projector.stages[0][0].cv2.bn.weight_tiny = tinyTensor.empty((256))
           new_model.backbone.projector.stages[0][0].cv2.bn.bias_tiny = tinyTensor.empty((256))
+        
+          new_model.backbone.projector.stages[0][0].m = tiny_seq(size=3)
+          for i in range(3):
+            new_model.backbone.projector.stages[0][0].m[i] = Bottleneck_tiny()
+            new_model.backbone.projector.stages[0][0].m[i].cv1 = ConvX_tiny()
+            new_model.backbone.projector.stages[0][0].m[i].cv1.conv_tiny = tinynn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, bias=False)
+            new_model.backbone.projector.stages[0][0].m[i].cv2 = ConvX_tiny()
+            new_model.backbone.projector.stages[0][0].m[i].cv2.conv_tiny = tinynn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, bias=False)
+            new_model.backbone.projector.stages[0][0].m[i].cv1.bn = LayerNorm_tiny()
+            new_model.backbone.projector.stages[0][0].m[i].cv1.bn.weight_tiny = tinyTensor.empty((128))
+            new_model.backbone.projector.stages[0][0].m[i].cv1.bn.bias_tiny = tinyTensor.empty((128))
+            new_model.backbone.projector.stages[0][0].m[i].cv2.bn = LayerNorm_tiny()
+            new_model.backbone.projector.stages[0][0].m[i].cv2.bn.weight_tiny = tinyTensor.empty((128))
+            new_model.backbone.projector.stages[0][0].m[i].cv2.bn.bias_tiny = tinyTensor.empty((128))
+        
 
           state_dict = get_state_dict(self.model)
           load_state_dict(self.model, state_dict)
@@ -2393,7 +2412,7 @@ class Model:
               m+=1
           print("missing keys =",m)
         print(type(self.model))
-        print(type(self.model.backbone.projector.stages[0][0].cv1.bn))
+        print(type(self.model.backbone.projector.stages[0][1]))
         #exit()
 
 
