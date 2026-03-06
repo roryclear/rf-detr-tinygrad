@@ -708,7 +708,8 @@ def ms_deform_attn_core_pytorch(value, value_spatial_shapes, sampling_locations,
     return ret
 
 class MultiheadAttention_tiny():
-    def __init__(self, m):
+    def __init__(self, m=None):
+        if m is None: return
         self.out_proj = m.out_proj
         self.in_proj_weight = m.in_proj_weight
         self.in_proj_bias = m.in_proj_bias
@@ -749,7 +750,8 @@ class TransformerDecoderLayer(nn.Module):
     def with_pos_embed(self, tensor, pos: Optional[Tensor]): return tensor + pos
 
 class TransformerDecoderLayer_tiny():
-    def __init__(self, t):
+    def __init__(self, t=None):
+        if t is None: return
         self.self_attn = t.self_attn
         self.norm1_tiny = t.norm1_tiny
         self.norm2_tiny = t.norm2_tiny
@@ -868,7 +870,8 @@ class TransformerDecoder(nn.Module):
         self._export = False
 
 class TransformerDecoder_tiny():
-    def __init__(self, t):
+    def __init__(self, t=None):
+        if t is None: return
         self.d_model = t.d_model
         self.ref_point_head = t.ref_point_head
         self.layers = t.layers
@@ -979,7 +982,8 @@ class MSDeformAttn(nn.Module):
 class MSDeformAttn_tiny():
     """Multi-Scale Deformable Attention Module
     """
-    def __init__(self, m):
+    def __init__(self, m=None):
+        if m is None: return
         self.value_proj_tiny = m.value_proj_tiny
         self.n_heads = m.n_heads
         self.n_levels = m.n_levels
@@ -1067,7 +1071,8 @@ class Transformer(nn.Module):
 
 
 class Transformer_tiny():
-    def __init__(self, t):
+    def __init__(self, t=None):
+        if not t: return
         self.enc_out_class_embed = t.enc_out_class_embed
         self.bbox_reparam = t.bbox_reparam
         self.enc_output_norm_tiny = t.enc_output_norm_tiny
@@ -2292,6 +2297,34 @@ class Model:
           new_model.bbox_embed.layers_tiny[1] = tinynn.Linear(256, 256)
           new_model.bbox_embed.layers_tiny[2] = tinynn.Linear(256, 4)
 
+          new_model.transformer = Transformer_tiny()
+          new_model.transformer.decoder = TransformerDecoder_tiny()
+          new_model.transformer.decoder.norm_tiny = tinynn.LayerNorm(256)
+          new_model.transformer.decoder.layers = tiny_seq(3)
+          for i in range(2):
+            new_model.transformer.decoder.layers[i] = TransformerDecoderLayer_tiny()
+            new_model.transformer.decoder.layers[i] = MultiheadAttention_tiny()
+            new_model.transformer.decoder.layers[i].self_attn = MultiheadAttention_tiny()
+            new_model.transformer.decoder.layers[i].cross_attn = MSDeformAttn_tiny()
+            new_model.transformer.decoder.layers[i].linear1_tiny = tinynn.Linear(256, 2048)
+            new_model.transformer.decoder.layers[i].linear2_tiny = tinynn.Linear(2048, 256)
+
+            new_model.transformer.decoder.layers[i].self_attn.in_proj_weight = tinyTensor.empty(768, 256)
+            new_model.transformer.decoder.layers[i].self_attn.in_proj_bias = tinyTensor.empty(768)
+            new_model.transformer.decoder.layers[i].self_attn.out_proj_weight = tinyTensor.empty(256, 256)
+            new_model.transformer.decoder.layers[i].self_attn.out_proj_bias = tinyTensor.empty(256)
+
+            new_model.transformer.decoder.layers[i].norm1_tiny = tinynn.LayerNorm(256)
+            new_model.transformer.decoder.layers[i].norm2_tiny = tinynn.LayerNorm(256)
+            new_model.transformer.decoder.layers[i].norm3_tiny = tinynn.LayerNorm(256)
+
+            new_model.transformer.decoder.layers[i].cross_attn.value_proj_tiny = tinynn.Linear(256, 256)
+            new_model.transformer.decoder.layers[i].cross_attn.output_proj_tiny = tinynn.Linear(256, 256)
+            new_model.transformer.decoder.layers[i].cross_attn.sampling_offsets_tiny = tinynn.Linear(256, 64)
+            new_model.transformer.decoder.layers[i].cross_attn.attention_weights_tiny = tinynn.Linear(256, 32)
+
+
+
           state_dict = get_state_dict(self.model)
           load_state_dict(self.model, state_dict)
 
@@ -2308,7 +2341,7 @@ class Model:
               m+=1
           print("missing keys =",m)
         print(type(self.model))
-        print(type(self.model.bbox_embed.layers))
+        print(type(self.model.transformer.decoder.layers[0].cross_attn.value_proj_tiny))
         #exit()
 
 
