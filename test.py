@@ -2297,7 +2297,15 @@ class Model:
           new_model.bbox_embed.layers_tiny[1] = tinynn.Linear(256, 256)
           new_model.bbox_embed.layers_tiny[2] = tinynn.Linear(256, 4)
 
+          new_model.bbox_embed.layers = tiny_seq(size=3)
+          new_model.bbox_embed.layers[0] = tinynn.Linear(256, 256)
+          new_model.bbox_embed.layers[1] = tinynn.Linear(256, 256)
+          new_model.bbox_embed.layers[2] = tinynn.Linear(256, 4)
+
+
           new_model.transformer = Transformer_tiny()
+          new_model.transformer.enc_output_tiny = tinynn.Linear(256, 256)
+          new_model.transformer.enc_output_norm_tiny = tinynn.LayerNorm(256)
           new_model.transformer.decoder = TransformerDecoder_tiny()
           new_model.transformer.decoder.norm_tiny = tinynn.LayerNorm(256)
           new_model.transformer.decoder.layers = tiny_seq(3)
@@ -2323,6 +2331,28 @@ class Model:
             new_model.transformer.decoder.layers[i].cross_attn.sampling_offsets_tiny = tinynn.Linear(256, 64)
             new_model.transformer.decoder.layers[i].cross_attn.attention_weights_tiny = tinynn.Linear(256, 32)
 
+          new_model.transformer.enc_out_bbox_embed = tiny_seq(13)
+          new_model.transformer.enc_out_class_embed = tiny_seq(13)
+          for i in range(13):
+            new_model.transformer.enc_out_bbox_embed[i] = MLP_tiny()
+            new_model.transformer.enc_out_bbox_embed[i].layers_tiny = tiny_seq(3)
+            new_model.transformer.enc_out_bbox_embed[i].layers_tiny[0] = tinynn.Linear(256, 256)
+            new_model.transformer.enc_out_bbox_embed[i].layers_tiny[1] = tinynn.Linear(256, 256)
+            new_model.transformer.enc_out_bbox_embed[i].layers_tiny[2] = tinynn.Linear(256, 4)
+            new_model.transformer.enc_out_bbox_embed[i].layers = tiny_seq(3)
+            new_model.transformer.enc_out_bbox_embed[i].layers[0] = tinynn.Linear(256, 256)
+            new_model.transformer.enc_out_bbox_embed[i].layers[1] = tinynn.Linear(256, 256)
+            new_model.transformer.enc_out_bbox_embed[i].layers[2] = tinynn.Linear(256, 4)
+
+            new_model.transformer.enc_out_class_embed[i] = tinynn.Linear(256, 91)         
+
+          new_model.transformer.decoder.ref_point_head = MLP_tiny()
+          new_model.transformer.decoder.ref_point_head.layers_tiny = tiny_seq(size=2)
+          new_model.transformer.decoder.ref_point_head.layers = tiny_seq(size=2)
+          new_model.transformer.decoder.ref_point_head.layers_tiny[0] = tinynn.Linear(512, 256)
+          new_model.transformer.decoder.ref_point_head.layers_tiny[1] = tinynn.Linear(256, 256)
+          new_model.transformer.decoder.ref_point_head.layers[0] = tinynn.Linear(512, 256) # todo remove
+          new_model.transformer.decoder.ref_point_head.layers[1] = tinynn.Linear(256, 256)
 
 
           state_dict = get_state_dict(self.model)
@@ -2341,7 +2371,7 @@ class Model:
               m+=1
           print("missing keys =",m)
         print(type(self.model))
-        print(type(self.model.transformer.decoder.layers[0].cross_attn.value_proj_tiny))
+        print(type(self.model.transformer.enc_output_norm_tiny))
         #exit()
 
 
