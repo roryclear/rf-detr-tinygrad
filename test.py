@@ -1784,7 +1784,8 @@ class MLP(nn.Module):
 
 
 class MLP_tiny():
-    def __init__(self, m):
+    def __init__(self, m=None):
+        if not m: return
         self.num_layers = m.num_layers
         self.layers_tiny = m.layers_tiny
         self.layers = m.layers
@@ -1997,21 +1998,27 @@ def box_cxcywh_to_xyxy(x):
     ]
     return tinyTensor.stack(b, dim=-1)
 
-class tiny_seq():
+class tiny_seq:
     def __init__(self, size=0):
-        self.list = [None] * size
+        self.size = size
 
     def __setitem__(self, key, value):
-        self.list[key] = value
+        setattr(self, str(key), value)
 
     def __getitem__(self, idx):
-        return self.list[idx]
+        try:
+            return getattr(self, str(idx))
+        except AttributeError:
+            raise IndexError(idx)
+
+    def __len__(self):
+        return self.size
 
     def __call__(self, x):
-        for y in self.list:
-            x = y(x)
+        for i in range(self.size):
+            layer = getattr(self, str(i))
+            x = layer(x)
         return x
-        
         
 
 class PostProcess():
@@ -2190,77 +2197,77 @@ class Model:
         self.model.transformer.enc_out_class_embed = to_tiny_seq(self.model.transformer.enc_out_class_embed)
         self.model.transformer.enc_out_bbox_embed = to_tiny_seq(self.model.transformer.enc_out_bbox_embed)
 
-        for i in range(len(self.model.backbone.encoder.encoder.encoder.layer.list)):
-            self.model.backbone.encoder.encoder.encoder.layer.list[i] = WindowedDinov2WithRegistersLayer_tiny(self.model.backbone.encoder.encoder.encoder.layer.list[i])
-            self.model.backbone.encoder.encoder.encoder.layer.list[i].attention = Dinov2WithRegistersSdpaAttention_tiny(self.model.backbone.encoder.encoder.encoder.layer.list[i].attention)
-            self.model.backbone.encoder.encoder.encoder.layer.list[i].attention.attention = Dinov2WithRegistersSdpaSelfAttention_tiny(self.model.backbone.encoder.encoder.encoder.layer.list[i].attention.attention)
-            self.model.backbone.encoder.encoder.encoder.layer.list[i].attention.output = Dinov2WithRegistersSelfOutput_tiny(self.model.backbone.encoder.encoder.encoder.layer.list[i].attention.output)
-            self.model.backbone.encoder.encoder.encoder.layer.list[i].layer_scale1 = Dinov2WithRegistersLayerScale_tiny(self.model.backbone.encoder.encoder.encoder.layer.list[i].layer_scale1)
-            self.model.backbone.encoder.encoder.encoder.layer.list[i].layer_scale2 = Dinov2WithRegistersLayerScale_tiny(self.model.backbone.encoder.encoder.encoder.layer.list[i].layer_scale2)
-            self.model.backbone.encoder.encoder.encoder.layer.list[i].mlp = Dinov2WithRegistersMLP_tiny(self.model.backbone.encoder.encoder.encoder.layer.list[i].mlp)
+        for i in range(len(self.model.backbone.encoder.encoder.encoder.layer)):
+            self.model.backbone.encoder.encoder.encoder.layer[i] = WindowedDinov2WithRegistersLayer_tiny(self.model.backbone.encoder.encoder.encoder.layer[i])
+            self.model.backbone.encoder.encoder.encoder.layer[i].attention = Dinov2WithRegistersSdpaAttention_tiny(self.model.backbone.encoder.encoder.encoder.layer[i].attention)
+            self.model.backbone.encoder.encoder.encoder.layer[i].attention.attention = Dinov2WithRegistersSdpaSelfAttention_tiny(self.model.backbone.encoder.encoder.encoder.layer[i].attention.attention)
+            self.model.backbone.encoder.encoder.encoder.layer[i].attention.output = Dinov2WithRegistersSelfOutput_tiny(self.model.backbone.encoder.encoder.encoder.layer[i].attention.output)
+            self.model.backbone.encoder.encoder.encoder.layer[i].layer_scale1 = Dinov2WithRegistersLayerScale_tiny(self.model.backbone.encoder.encoder.encoder.layer[i].layer_scale1)
+            self.model.backbone.encoder.encoder.encoder.layer[i].layer_scale2 = Dinov2WithRegistersLayerScale_tiny(self.model.backbone.encoder.encoder.encoder.layer[i].layer_scale2)
+            self.model.backbone.encoder.encoder.encoder.layer[i].mlp = Dinov2WithRegistersMLP_tiny(self.model.backbone.encoder.encoder.encoder.layer[i].mlp)
 
-        self.model.backbone.projector.stages.list[0] = to_tiny_seq(self.model.backbone.projector.stages.list[0])
+        self.model.backbone.projector.stages[0] = to_tiny_seq(self.model.backbone.projector.stages[0])
 
-        self.model.backbone.projector.stages.list[0].list[0] = C2f_tiny(self.model.backbone.projector.stages.list[0].list[0])
+        self.model.backbone.projector.stages[0][0] = C2f_tiny(self.model.backbone.projector.stages[0][0])
 
-        self.model.backbone.projector.stages.list[0].list[0].cv1 = ConvX_tiny(self.model.backbone.projector.stages.list[0].list[0].cv1)
-        self.model.backbone.projector.stages.list[0].list[0].cv2 = ConvX_tiny(self.model.backbone.projector.stages.list[0].list[0].cv2)
+        self.model.backbone.projector.stages[0][0].cv1 = ConvX_tiny(self.model.backbone.projector.stages[0][0].cv1)
+        self.model.backbone.projector.stages[0][0].cv2 = ConvX_tiny(self.model.backbone.projector.stages[0][0].cv2)
 
-        self.model.backbone.projector.stages.list[0].list[0].cv1.bn = LayerNorm_tiny(self.model.backbone.projector.stages.list[0].list[0].cv1.bn)
-        self.model.backbone.projector.stages.list[0].list[0].cv2.bn = LayerNorm_tiny(self.model.backbone.projector.stages.list[0].list[0].cv2.bn)
-        self.model.backbone.projector.stages.list[0].list[1] = LayerNorm_tiny(self.model.backbone.projector.stages.list[0].list[1])
+        self.model.backbone.projector.stages[0][0].cv1.bn = LayerNorm_tiny(self.model.backbone.projector.stages[0][0].cv1.bn)
+        self.model.backbone.projector.stages[0][0].cv2.bn = LayerNorm_tiny(self.model.backbone.projector.stages[0][0].cv2.bn)
+        self.model.backbone.projector.stages[0][1] = LayerNorm_tiny(self.model.backbone.projector.stages[0][1])
         self.model.position_embedding = PositionEmbeddingSine_tiny(self.model.position_embedding)
-        self.model.backbone.projector.stages.list[0].list[0].m = to_tiny_seq(self.model.backbone.projector.stages.list[0].list[0].m)
-        for i in range(len(self.model.backbone.projector.stages.list[0].list[0].m.list)):
-            self.model.backbone.projector.stages.list[0].list[0].m.list[i] = Bottleneck_tiny(self.model.backbone.projector.stages.list[0].list[0].m.list[i])
-            self.model.backbone.projector.stages.list[0].list[0].m.list[i].cv1 = ConvX_tiny(self.model.backbone.projector.stages.list[0].list[0].m.list[i].cv1)
-            self.model.backbone.projector.stages.list[0].list[0].m.list[i].cv1.bn = LayerNorm_tiny(self.model.backbone.projector.stages.list[0].list[0].m.list[i].cv1.bn)
-            self.model.backbone.projector.stages.list[0].list[0].m.list[i].cv2 = ConvX_tiny(self.model.backbone.projector.stages.list[0].list[0].m.list[i].cv2)
-            self.model.backbone.projector.stages.list[0].list[0].m.list[i].cv2.bn = LayerNorm_tiny(self.model.backbone.projector.stages.list[0].list[0].m.list[i].cv2.bn)
+        self.model.backbone.projector.stages[0][0].m = to_tiny_seq(self.model.backbone.projector.stages[0][0].m)
+        for i in range(len(self.model.backbone.projector.stages[0][0].m)):
+            self.model.backbone.projector.stages[0][0].m[i] = Bottleneck_tiny(self.model.backbone.projector.stages[0][0].m[i])
+            self.model.backbone.projector.stages[0][0].m[i].cv1 = ConvX_tiny(self.model.backbone.projector.stages[0][0].m[i].cv1)
+            self.model.backbone.projector.stages[0][0].m[i].cv1.bn = LayerNorm_tiny(self.model.backbone.projector.stages[0][0].m[i].cv1.bn)
+            self.model.backbone.projector.stages[0][0].m[i].cv2 = ConvX_tiny(self.model.backbone.projector.stages[0][0].m[i].cv2)
+            self.model.backbone.projector.stages[0][0].m[i].cv2.bn = LayerNorm_tiny(self.model.backbone.projector.stages[0][0].m[i].cv2.bn)
         
-        for i in range(len(self.model.transformer.enc_out_class_embed.list)):
-            lin = tinynn.Linear(self.model.transformer.enc_out_class_embed.list[i].in_features, self.model.transformer.enc_out_class_embed.list[i].out_features)
-            lin.weight = to_tiny(self.model.transformer.enc_out_class_embed.list[i].weight)
-            lin.bias = to_tiny(self.model.transformer.enc_out_class_embed.list[i].bias)
-            self.model.transformer.enc_out_class_embed.list[i] = lin
+        for i in range(len(self.model.transformer.enc_out_class_embed)):
+            lin = tinynn.Linear(self.model.transformer.enc_out_class_embed[i].in_features, self.model.transformer.enc_out_class_embed[i].out_features)
+            lin.weight = to_tiny(self.model.transformer.enc_out_class_embed[i].weight)
+            lin.bias = to_tiny(self.model.transformer.enc_out_class_embed[i].bias)
+            self.model.transformer.enc_out_class_embed[i] = lin
 
         self.model.bbox_embed = MLP_tiny(self.model.bbox_embed)
-        for i in range(len(self.model.transformer.enc_out_bbox_embed.list)):
-            self.model.transformer.enc_out_bbox_embed.list[i] = MLP_tiny(self.model.transformer.enc_out_bbox_embed.list[i])
+        for i in range(len(self.model.transformer.enc_out_bbox_embed)):
+            self.model.transformer.enc_out_bbox_embed[i] = MLP_tiny(self.model.transformer.enc_out_bbox_embed[i])
 
 
-        for j in range(len(self.model.transformer.enc_out_bbox_embed.list)):
-            self.model.transformer.enc_out_bbox_embed.list[j].layers = to_tiny_seq(self.model.transformer.enc_out_bbox_embed.list[j].layers)
-            for i in range(len(self.model.transformer.enc_out_bbox_embed.list[j].layers.list)):
-                self.model.transformer.enc_out_bbox_embed.list[j].layers.list[i] = to_tiny_linear(self.model.transformer.enc_out_bbox_embed.list[j].layers.list[i])
+        for j in range(len(self.model.transformer.enc_out_bbox_embed)):
+            self.model.transformer.enc_out_bbox_embed[j].layers = to_tiny_seq(self.model.transformer.enc_out_bbox_embed[j].layers)
+            for i in range(len(self.model.transformer.enc_out_bbox_embed[j].layers)):
+                self.model.transformer.enc_out_bbox_embed[j].layers[i] = to_tiny_linear(self.model.transformer.enc_out_bbox_embed[j].layers[i])
 
         self.model.transformer.decoder = TransformerDecoder_tiny(self.model.transformer.decoder)
 
         self.model.transformer.decoder.ref_point_head = MLP_tiny(self.model.transformer.decoder.ref_point_head)
         self.model.transformer.decoder.ref_point_head.layers = to_tiny_seq(self.model.transformer.decoder.ref_point_head.layers)
-        for i in range(len(self.model.transformer.decoder.ref_point_head.layers.list)):
-            self.model.transformer.decoder.ref_point_head.layers.list[i] = to_tiny_linear(self.model.transformer.decoder.ref_point_head.layers.list[i])
+        for i in range(len(self.model.transformer.decoder.ref_point_head.layers)):
+            self.model.transformer.decoder.ref_point_head.layers[i] = to_tiny_linear(self.model.transformer.decoder.ref_point_head.layers[i])
 
         self.model.transformer.decoder.layers = to_tiny_seq(self.model.transformer.decoder.layers)
 
-        for i in range(len(self.model.transformer.decoder.layers.list)):
-            self.model.transformer.decoder.layers.list[i] = TransformerDecoderLayer_tiny(self.model.transformer.decoder.layers.list[i])
-            self.model.transformer.decoder.layers.list[i].self_attn = MultiheadAttention_tiny(self.model.transformer.decoder.layers.list[i].self_attn)
-            self.model.transformer.decoder.layers.list[i].self_attn.out_proj_weight = self.model.transformer.decoder.layers.list[i].self_attn.out_proj.weight
-            self.model.transformer.decoder.layers.list[i].self_attn.out_proj_bias = self.model.transformer.decoder.layers.list[i].self_attn.out_proj.bias
-            del self.model.transformer.decoder.layers.list[i].self_attn.out_proj
-            self.model.transformer.decoder.layers.list[i].self_attn.in_proj_weight = to_tiny(self.model.transformer.decoder.layers.list[i].self_attn.in_proj_weight)
-            self.model.transformer.decoder.layers.list[i].self_attn.in_proj_bias = to_tiny(self.model.transformer.decoder.layers.list[i].self_attn.in_proj_bias)
-            self.model.transformer.decoder.layers.list[i].self_attn.out_proj_weight = to_tiny(self.model.transformer.decoder.layers.list[i].self_attn.out_proj_weight)
-            self.model.transformer.decoder.layers.list[i].self_attn.out_proj_bias = to_tiny(self.model.transformer.decoder.layers.list[i].self_attn.out_proj_bias)
+        for i in range(len(self.model.transformer.decoder.layers)):
+            self.model.transformer.decoder.layers[i] = TransformerDecoderLayer_tiny(self.model.transformer.decoder.layers[i])
+            self.model.transformer.decoder.layers[i].self_attn = MultiheadAttention_tiny(self.model.transformer.decoder.layers[i].self_attn)
+            self.model.transformer.decoder.layers[i].self_attn.out_proj_weight = self.model.transformer.decoder.layers[i].self_attn.out_proj.weight
+            self.model.transformer.decoder.layers[i].self_attn.out_proj_bias = self.model.transformer.decoder.layers[i].self_attn.out_proj.bias
+            del self.model.transformer.decoder.layers[i].self_attn.out_proj
+            self.model.transformer.decoder.layers[i].self_attn.in_proj_weight = to_tiny(self.model.transformer.decoder.layers[i].self_attn.in_proj_weight)
+            self.model.transformer.decoder.layers[i].self_attn.in_proj_bias = to_tiny(self.model.transformer.decoder.layers[i].self_attn.in_proj_bias)
+            self.model.transformer.decoder.layers[i].self_attn.out_proj_weight = to_tiny(self.model.transformer.decoder.layers[i].self_attn.out_proj_weight)
+            self.model.transformer.decoder.layers[i].self_attn.out_proj_bias = to_tiny(self.model.transformer.decoder.layers[i].self_attn.out_proj_bias)
             
 
-        for i in range(len(self.model.transformer.decoder.layers.list)):
-            self.model.transformer.decoder.layers.list[i].cross_attn = MSDeformAttn_tiny(self.model.transformer.decoder.layers.list[i].cross_attn)
+        for i in range(len(self.model.transformer.decoder.layers)):
+            self.model.transformer.decoder.layers[i].cross_attn = MSDeformAttn_tiny(self.model.transformer.decoder.layers[i].cross_attn)
 
         self.model.bbox_embed.layers = to_tiny_seq(self.model.bbox_embed.layers)
-        for i in range(len(self.model.bbox_embed.layers.list)):
-            self.model.bbox_embed.layers.list[i] = to_tiny_linear(self.model.bbox_embed.layers.list[i])
+        for i in range(len(self.model.bbox_embed.layers)):
+            self.model.bbox_embed.layers[i] = to_tiny_linear(self.model.bbox_embed.layers[i])
 
         self.model.class_embed = to_tiny_linear(self.model.class_embed)
 
@@ -2273,14 +2280,23 @@ class Model:
         self.postprocess = PostProcess(num_select=args.num_select)
         self.stop_early = False
 
-        state_dict = get_state_dict(self.model)
-        load_state_dict(self.model, state_dict)
-
         if "nano" in args.pretrain_weights:
           new_model = LWDETR_tiny()
           new_model.query_feat_tiny = tinyTensor.empty((3900, 256))
           new_model.refpoint_embed_tiny = tinyTensor.empty((3900, 4))
           new_model.class_embed = tinynn.Linear(256, 91)
+          new_model.bbox_embed = MLP_tiny()
+          new_model.bbox_embed.num_layers = 3
+          new_model.bbox_embed.layers_tiny = tiny_seq(size=3)
+          new_model.bbox_embed.layers_tiny[0] = tinynn.Linear(256, 256)
+          new_model.bbox_embed.layers_tiny[1] = tinynn.Linear(256, 256)
+          new_model.bbox_embed.layers_tiny[2] = tinynn.Linear(256, 4)
+
+          state_dict = get_state_dict(self.model)
+          load_state_dict(self.model, state_dict)
+
+          #print(get_state_dict(new_model))
+          #exit()
           load_state_dict(new_model, state_dict)
           print(self.model.refpoint_embed_tiny.shape)
           print("NANO")
@@ -2292,6 +2308,7 @@ class Model:
               m+=1
           print("missing keys =",m)
         print(type(self.model))
+        print(type(self.model.bbox_embed.layers))
         #exit()
 
 
