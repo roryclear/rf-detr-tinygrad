@@ -2278,6 +2278,11 @@ class Model:
 
         if "nano" in args.pretrain_weights:
           new_model = LWDETR_tiny()
+          new_model.query_feat_tiny = tinyTensor.empty((3900, 256))
+          new_model.refpoint_embed_tiny = tinyTensor.empty((3900, 4))
+          new_model.class_embed = tinynn.Linear(256, 91)
+          load_state_dict(new_model, state_dict)
+          print(self.model.refpoint_embed_tiny.shape)
           print("NANO")
           m = 0
           new_state_dict = get_state_dict(new_model)
@@ -2286,7 +2291,6 @@ class Model:
               print("missing",k)
               m+=1
           print("missing keys =",m)
-
         print(type(self.model))
         #exit()
 
