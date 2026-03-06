@@ -1801,7 +1801,8 @@ class MLP_tiny():
     
 class LWDETR_tiny():
     """ This is the Group DETR v3 module that performs object detection """
-    def __init__(self, l):
+    def __init__(self, l=None):
+        if not l: return
         self.backbone = l.backbone
         self.refpoint_embed = l.refpoint_embed
         self.num_queries = l.num_queries
@@ -2267,15 +2268,27 @@ class Model:
         self.model.refpoint_embed_tiny = to_tiny(self.model.refpoint_embed_tiny)
         self.model.query_feat_tiny = to_tiny(self.model.query_feat_tiny)
 
-        print_obj(self.model, "self.model")
+        #print_obj(self.model, "self.model")
         
         self.postprocess = PostProcess(num_select=args.num_select)
         self.stop_early = False
 
-        #state_dict = get_state_dict(self.model)
-        #load_state_dict(self.model, state_dict)
+        state_dict = get_state_dict(self.model)
+        load_state_dict(self.model, state_dict)
+
+        if "nano" in args.pretrain_weights:
+          new_model = LWDETR_tiny()
+          print("NANO")
+          m = 0
+          new_state_dict = get_state_dict(new_model)
+          for k in state_dict:
+            if k not in new_state_dict:
+              print("missing",k)
+              m+=1
+          print("missing keys =",m)
 
         print(type(self.model))
+        #exit()
 
 
 def to_tiny_seq(x):
