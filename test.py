@@ -988,32 +988,15 @@ class PostProcess():
         boxes = boxes * scale_fct[:, None, :]
         return [{'scores': s, 'labels': l, 'boxes': b} for s, l, b in zip(topk_values.numpy(), labels.numpy(), boxes.numpy())]
 
-def populate_args(num_classes=2, pretrain_weights=None, num_select=100,resolution=640
-):
-    args = argparse.Namespace(
-        pretrain_weights=pretrain_weights,
-        num_classes=num_classes,
-        num_select=num_select,
-        resolution=resolution,
-    )
-    return args
-
-import argparse
-import inspect
-
 class Model:
     def __init__(self, **kwargs):
-        sig = inspect.signature(populate_args)
-        filtered_kwargs = {k: v for k, v in kwargs.items() if k in sig.parameters}
-        args = populate_args(**filtered_kwargs)
-        self.args = args
-        self.resolution = args.resolution
-        #print_obj(self.model, "self.model")
+        print(kwargs)
+        self.resolution = kwargs['resolution']
         
-        self.postprocess = PostProcess(num_select=args.num_select)
+        self.postprocess = PostProcess(num_select=kwargs['resolution'])
         self.stop_early = False
 
-        if "nano" in args.pretrain_weights:
+        if "nano" in kwargs['pretrain_weights']:
           new_model = LWDETR_tiny()
           new_model.position_embedding = PositionEmbeddingSine_tiny()
           new_model.query_feat_tiny = tinyTensor.empty((3900, 256))
@@ -1168,7 +1151,7 @@ class Model:
         #exit()
 
 
-        if "small" in args.pretrain_weights:
+        if "small" in kwargs['pretrain_weights']:
           new_model = LWDETR_tiny()
           new_model.position_embedding = PositionEmbeddingSine_tiny()
           new_model.query_feat_tiny = tinyTensor.empty((3900, 256))
@@ -1323,7 +1306,7 @@ class Model:
 
 
 
-        if "medium" in args.pretrain_weights:
+        if "medium" in kwargs['pretrain_weights']:
           new_model = LWDETR_tiny()
           new_model.position_embedding = PositionEmbeddingSine_tiny()
           new_model.query_feat_tiny = tinyTensor.empty((3900, 256))
@@ -1474,7 +1457,7 @@ class Model:
               m+=1
           print("missing keys =",m)
 
-        if "large" in args.pretrain_weights:
+        if "large" in kwargs['pretrain_weights']:
           new_model = LWDETR_tiny()
           new_model.position_embedding = PositionEmbeddingSine_tiny()
           new_model.query_feat_tiny = tinyTensor.empty((3900, 256))
