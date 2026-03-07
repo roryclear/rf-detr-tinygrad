@@ -284,7 +284,8 @@ class Dinov2WithRegistersSdpaSelfAttention(Dinov2WithRegistersSelfAttention):
         self.attention_probs_dropout_prob = config.attention_probs_dropout_prob
 
 class Dinov2WithRegistersSdpaSelfAttention_tiny():
-    def __init__(self, d):
+    def __init__(self, d=None):
+        if d is None: return
         self.query_tiny = d.query_tiny
         self.key_tiny = d.key_tiny
         self.value_tiny = d.value_tiny
@@ -294,7 +295,7 @@ class Dinov2WithRegistersSdpaSelfAttention_tiny():
 
     def transpose_for_scores(self, x):
         x = to_tiny(x)
-        new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
+        new_x_shape = x.size()[:-1] + (6, 64)
         x = x.view(new_x_shape)
         x = x.permute(0, 2, 1, 3)
         return x
@@ -320,7 +321,7 @@ class Dinov2WithRegistersSdpaSelfAttention_tiny():
         attn_probs = tinyTensor.softmax(attn_scores, axis=-1)
         context_layer = tinyTensor.matmul(attn_probs, value_layer)
         context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
-        new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
+        new_context_layer_shape = context_layer.size()[:-2] + (384,)
         context_layer = context_layer.view(new_context_layer_shape)
 
         return context_layer, None
@@ -434,6 +435,7 @@ class WindowedDinov2WithRegistersLayer_tiny():
     ):
         hidden_states = to_tiny(hidden_states)
         shortcut = hidden_states
+        self.num_windows = 2
         if run_full_attention:
             # reshape x to remove windows
             B, HW, C = hidden_states.shape
@@ -524,7 +526,10 @@ class WindowedDinov2WithRegistersBackbone(PreTrainedModel, BackboneMixin):
 
 class WindowedDinov2WithRegistersBackbone_tiny():
     def __init__(self, w=None):
-        if w is None: return None
+        if w is None:
+          self.stage_names = ['stem', 'stage1', 'stage2', 'stage3', 'stage4', 'stage5', 'stage6', 'stage7', 'stage8', 'stage9', 'stage10', 'stage11', 'stage12']
+          self.out_features = ['stage3', 'stage6', 'stage9', 'stage12']
+          return None
         self.embeddings = w.embeddings
         self.encoder = w.encoder
         self.stage_names = w.stage_names
@@ -2425,7 +2430,7 @@ class Model:
             new_model.backbone.encoder.encoder.encoder.layer[i].norm1_tiny = tinynn.LayerNorm(384)
             new_model.backbone.encoder.encoder.encoder.layer[i].norm2_tiny = tinynn.LayerNorm(384)
             new_model.backbone.encoder.encoder.encoder.layer[i].attention = Dinov2WithRegistersSdpaAttention_tiny()
-            new_model.backbone.encoder.encoder.encoder.layer[i].attention.attention = Dinov2WithRegistersSdpaAttention_tiny()
+            new_model.backbone.encoder.encoder.encoder.layer[i].attention.attention = Dinov2WithRegistersSdpaSelfAttention_tiny()
             new_model.backbone.encoder.encoder.encoder.layer[i].attention.attention.query_tiny = tinynn.Linear(384, 384)
             new_model.backbone.encoder.encoder.encoder.layer[i].attention.attention.key_tiny = tinynn.Linear(384, 384)
             new_model.backbone.encoder.encoder.encoder.layer[i].attention.attention.value_tiny = tinynn.Linear(384, 384)
@@ -2439,10 +2444,14 @@ class Model:
             new_model.backbone.encoder.encoder.encoder.layer[i].mlp.fc1_tiny = tinynn.Linear(384, 1536)
             new_model.backbone.encoder.encoder.encoder.layer[i].mlp.fc2_tiny = tinynn.Linear(1536, 384)
 
-          state_dict = get_state_dict(self.model)
-          load_state_dict(new_model, state_dict)
-          #self.model = new_model
+          print(self.model.backbone.encoder.encoder.encoder.layer[i].attention)
+          print(self.model.backbone.encoder.encoder.encoder.layer[i].attention.attention.num_attention_heads)
+          #exit()
 
+          state_dict = get_state_dict(self.model)
+          load_state_dict(new_model, state_dict)            
+
+          #self.model = new_model
 
           print("NANO")
           m = 0
