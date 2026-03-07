@@ -469,7 +469,8 @@ class WindowedDinov2WithRegistersEncoder(nn.Module):
 
 
 class WindowedDinov2WithRegistersEncoder_tiny():
-    def __init__(self, w):
+    def __init__(self, w=None):
+        if w is None: return
         self.layer = w.layer
         self.config = w.config
 
@@ -514,7 +515,8 @@ class WindowedDinov2WithRegistersBackbone(PreTrainedModel, BackboneMixin):
         self.post_init()
 
 class WindowedDinov2WithRegistersBackbone_tiny():
-    def __init__(self, w):
+    def __init__(self, w=None):
+        if w is None: return None
         self.embeddings = w.embeddings
         self.encoder = w.encoder
         self.stage_names = w.stage_names
@@ -640,7 +642,8 @@ class DinoV2(nn.Module):
         return list(x[0])
 
 class DinoV2_tiny():
-    def __init__(self, d):
+    def __init__(self, d=None):
+        if d is None: return
         self.patch_size = d.patch_size
         self.num_windows = d.num_windows
         self.encoder = d.encoder
@@ -2396,6 +2399,13 @@ class Model:
             new_model.backbone.projector.stages[0][0].m[i].cv2.bn.weight_tiny = tinyTensor.empty((128))
             new_model.backbone.projector.stages[0][0].m[i].cv2.bn.bias_tiny = tinyTensor.empty((128))
         
+          new_model.backbone.encoder = DinoV2_tiny()
+          new_model.backbone.encoder.encoder = WindowedDinov2WithRegistersBackbone_tiny()
+          new_model.backbone.encoder.encoder.layernorm_tiny = LayerNorm_tiny()
+          new_model.backbone.encoder.encoder.layernorm_tiny.weight = tinyTensor.empty((384))
+          new_model.backbone.encoder.encoder.layernorm_tiny.bias = tinyTensor.empty((384))
+          new_model.backbone.encoder.encoder.encoder = WindowedDinov2WithRegistersEncoder_tiny()
+          #self.model.backbone.encoder.encoder.encoder.layer = tiny_seq(size=13)
 
           state_dict = get_state_dict(self.model)
           load_state_dict(self.model, state_dict)
@@ -2412,7 +2422,7 @@ class Model:
               m+=1
           print("missing keys =",m)
         print(type(self.model))
-        print(type(self.model.backbone.projector.stages[0][1]))
+        print(type(self.model.backbone.encoder.encoder.encoder.layer))
         #exit()
 
 
