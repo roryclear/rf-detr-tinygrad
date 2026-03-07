@@ -990,9 +990,7 @@ class PostProcess():
 
 class Model:
     def __init__(self, **kwargs):
-        print(kwargs)
         self.resolution = kwargs['resolution']
-        
         self.postprocess = PostProcess(num_select=kwargs['resolution'])
         self.stop_early = False
 
@@ -1821,23 +1819,23 @@ class RFDETRLargeConfig(ModelConfig):
     pretrain_weights: Optional[str] = "rf-detr-large-2026.pth"
     resolution: int = 704
 
-excepted_xyxys = [[[61.86511,247.66309,652.2484,930.8369,],
-[1.3346028,361.53326,648.76166,1264.4553, ],
-[622.7612,720.39746,698.42926,787.9133, ]],
+excepted_xyxys = [[[61.59328,247.66426,652.32355,928.3689,],
+[1.2408543,361.55093,649.4161,1264.488,],
+[622.7948,720.442,698.4076,787.92175,]],
 
-[[68.586105,247.72815,620.7118,930.0703, ],
-[0.51882505,661.1699,443.48486,1268.1208, ],
-[0.45747757,354.613,641.79736,1264.0822, ],
-[623.15704,715.6762,701.5984,787.10944, ],],
+[[68.508965,247.73727,620.56354,930.30994,],
+[0.4297328,661.0969,443.56732,1268.2306,],
+[0.3834057,354.28635,641.4768,1263.6902,],
+[623.1764,715.69305,701.5879,787.0987,]],
 
-[[68.82359,247.85782,621.86975,926.5808, ],
-[626.3732,731.4297,696.52435,787.97186, ],
-[0.800972,354.816,647.8018,1265.4277, ]],
+[[68.70639,247.85626,620.48596,927.8142,],
+[626.4464,731.493,696.3892,787.9792,],
+[1.2272072,355.78497,649.1565,1266.314,]],
 
-[[68.12298,249.11542,634.0267,927.67834, ],
-[-0.49580097,660.9515,439.59613,1272.4813, ],
-[625.1135,730.70593,695.80963,787.00354, ],
-[2.5050545,357.18567,593.51825,1266.9233, ]],
+[[67.91085,249.38751,633.45123,928.10974,],
+[-0.5587363,660.9967,439.97687,1272.4303,],
+[625.08136,730.78894,695.82074,786.9195,],
+[2.4219275,357.44083,596.1476,1265.3009,]]
 ]
 
 models = [RFDETRNano(), RFDETRSmall(), RFDETRMedium(), RFDETRLarge()]
@@ -1848,7 +1846,7 @@ for i, model in enumerate(models):
   labels = [f"{COCO_CLASSES[class_id]}" for class_id in detections.class_id]
   annotated_image = sv.BoxAnnotator().annotate(image, detections)
   annotated_image = sv.LabelAnnotator().annotate(annotated_image, detections, labels)
-  #np.testing.assert_allclose(detections.xyxy, excepted_xyxys[i], atol=0.5)
+  np.testing.assert_allclose(detections.xyxy, excepted_xyxys[i], atol=0.5)
   annotated_image.save(f"annotated_image_{i}.jpg")
 
 print("PASSED")
