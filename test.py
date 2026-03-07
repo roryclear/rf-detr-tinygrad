@@ -26,6 +26,7 @@ from tinygrad.dtype import dtypes
 from tinygrad.nn.state import get_state_dict, load_state_dict
 
 from tinygrad import Tensor as tinyTensor, nn as tinynn
+import copy
 
 def to_tiny(x):
     if type(x) in [tuple, list]:
@@ -2405,8 +2406,11 @@ class Model:
             new_model.backbone.projector.stages[0][0].m[i].cv2.bn = LayerNorm_tiny()
             new_model.backbone.projector.stages[0][0].m[i].cv2.bn.weight_tiny = tinyTensor.empty((128))
             new_model.backbone.projector.stages[0][0].m[i].cv2.bn.bias_tiny = tinyTensor.empty((128))
-        
+          
+
           new_model.backbone.encoder = DinoV2_tiny()
+          new_model.backbone.encoder.patch_size = 16 # todo, not in state_dict?
+          new_model.backbone.encoder.num_windows = 2 # todo, not in state_dict?
           new_model.backbone.encoder.encoder = WindowedDinov2WithRegistersBackbone_tiny()
           new_model.backbone.encoder.encoder.layernorm_tiny = LayerNorm_tiny()
           new_model.backbone.encoder.encoder.layernorm_tiny.weight = tinyTensor.empty((384))
@@ -2438,11 +2442,10 @@ class Model:
             new_model.backbone.encoder.encoder.encoder.layer[i].mlp.fc2_tiny = tinynn.Linear(1536, 384)
 
           state_dict = get_state_dict(self.model)
-          load_state_dict(self.model, state_dict)
-
-          #print(get_state_dict(new_model))
-          #exit()
           load_state_dict(new_model, state_dict)
+          #self.model = new_model
+
+
           print("NANO")
           m = 0
           new_state_dict = get_state_dict(new_model)
@@ -2451,8 +2454,7 @@ class Model:
               print("missing",k)
               m+=1
           print("missing keys =",m)
-        print(type(self.model))
-        print(type(self.model.backbone.encoder.encoder.embeddings.patch_embeddings.projection_tiny))
+        
         #exit()
 
 
