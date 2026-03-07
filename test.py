@@ -48,56 +48,6 @@ COCO_CLASSES = {1: "person", 2: "bicycle", 3: "car", 4: "motorcycle", 5: "airpla
 89: "hair drier", 90: "toothbrush",
 }
 
-DEVICE = "cpu"
-
-size_to_config = {
-    "small": "dinov2_small.json",
-    "base": "dinov2_base.json",
-    "large": "dinov2_large.json",
-}
-
-size_to_config_with_registers = {
-    "small": "dinov2_with_registers_small.json",
-    "base": "dinov2_with_registers_base.json",
-    "large": "dinov2_with_registers_large.json",
-}
-
-size_to_width = {
-    "tiny": 192,
-    "small": 384,
-    "base": 768,
-    "large": 1024,
-}
-
-configs = {"small": {'architectures': ['Dinov2Model'], 'attention_probs_dropout_prob': 0.0, 'drop_path_rate': 0.0, 'hidden_act': 'gelu', 'hidden_dropout_prob': 0.0, 'hidden_size': 384, 'image_size': 518, 'initializer_range': 0.02, 'layer_norm_eps': 1e-06, 'layerscale_value': 1.0, 'mlp_ratio': 4, 'model_type': 'dinov2', 'num_attention_heads': 6, 'num_channels': 3, 'num_hidden_layers': 12, 'patch_size': 14, 'qkv_bias': True, 'torch_dtype': 'float32', 'transformers_version': '4.32.0.dev0', 'use_swiglu_ffn': False}}
-
-PLATFORM_MODELS = {
-    "rf-detr-xlarge.pth": "https://storage.googleapis.com/rfdetr/platform-licensed/rf-detr-xlarge.pth",
-    "rf-detr-xxlarge.pth": "https://storage.googleapis.com/rfdetr/platform-licensed/rf-detr-xxlarge.pth",
-}
-
-
-OPEN_SOURCE_MODELS = {
-    "rf-detr-base.pth": "https://storage.googleapis.com/rfdetr/rf-detr-base-coco.pth",
-    "rf-detr-base-o365.pth": "https://storage.googleapis.com/rfdetr/top-secret-1234/lwdetr_dinov2_small_o365_checkpoint.pth",
-    # below is a less converged model that may be better for finetuning but worse for inference
-    "rf-detr-base-2.pth": "https://storage.googleapis.com/rfdetr/rf-detr-base-2.pth",
-    "rf-detr-large.pth": "https://storage.googleapis.com/rfdetr/rf-detr-large.pth",
-    "rf-detr-nano.pth": "https://storage.googleapis.com/rfdetr/nano_coco/checkpoint_best_regular.pth",
-    "rf-detr-small.pth": "https://storage.googleapis.com/rfdetr/small_coco/checkpoint_best_regular.pth",
-    "rf-detr-medium.pth": "https://storage.googleapis.com/rfdetr/medium_coco/checkpoint_best_regular.pth",
-    "rf-detr-seg-preview.pt": "https://storage.googleapis.com/rfdetr/rf-detr-seg-preview.pt",
-    "rf-detr-large-2026.pth": "https://storage.googleapis.com/rfdetr/rf-detr-large-2026.pth",
-    "rf-detr-xlarge.pth": "https://storage.googleapis.com/rfdetr/rf-detr-xl-ft.pth",
-    "rf-detr-xxlarge.pth": "https://storage.googleapis.com/rfdetr/rf-detr-2xl-ft.pth",
-    "rf-detr-seg-nano.pt": "https://storage.googleapis.com/rfdetr/rf-detr-seg-n-ft.pth",
-    "rf-detr-seg-small.pt": "https://storage.googleapis.com/rfdetr/rf-detr-seg-s-ft.pth",
-    "rf-detr-seg-medium.pt": "https://storage.googleapis.com/rfdetr/rf-detr-seg-m-ft.pth",
-    "rf-detr-seg-large.pt": "https://storage.googleapis.com/rfdetr/rf-detr-seg-l-ft.pth",
-    "rf-detr-seg-xlarge.pt": "https://storage.googleapis.com/rfdetr/rf-detr-seg-xl-ft.pth",
-    "rf-detr-seg-xxlarge.pt": "https://storage.googleapis.com/rfdetr/rf-detr-seg-2xl-ft.pth",
-}
-
 class Dinov2WithRegistersPatchEmbeddings_tiny():
     def __init__(self, d=None):
         if d is None: return
@@ -1597,65 +1547,6 @@ class Model:
           state_dict = safe_load("large.safetensors")
           load_state_dict(new_model, state_dict)            
           self.model = new_model
-
-          print("LARGE")
-          m = 0
-          new_state_dict = get_state_dict(new_model)
-          for k in state_dict:
-            if k not in new_state_dict:
-              print("missing",k)
-              m+=1
-          print("missing keys =",m)
-
-        #exit()
-
-
-def to_tiny_seq(x):
-    seq = tiny_seq(len(x))
-    for i in range(len(x)):
-        seq[i] = x[i]
-    return seq
-
-def to_tiny_linear(x):
-    lin = tinynn.Linear(x.in_features, x.out_features)
-    lin.weight = to_tiny(x.weight)
-    lin.bias = to_tiny(x.bias)
-    return lin
-
-def print_obj(obj, s, seen=None):
-    s = s.replace("._modules","")
-    if seen is None: seen = set()
-
-    if obj is None: return
-    
-    obj_id = id(obj)
-    if obj_id in seen: return
-    seen.add(obj_id)
-    
-    if isinstance(obj, dict):
-        for k in obj.keys():
-            print(f"{s}.{k}", type(obj[k]), "TORCH" if isinstance(obj[k], nn.Module) else "")
-            print_obj(obj[k], f"{s}.{k}", seen)
-    elif isinstance(obj, (list, tuple, set)):
-        for i, item in enumerate(obj):
-            print(f"{s}[{i}]", type(item), "TORCH" if isinstance(item, nn.Module) else "")
-            print_obj(item, f"{s}[{i}]", seen)
-    else:
-        attr_names = []
-        if hasattr(obj, "__dict__"):
-            attr_names.extend(vars(obj).keys())
-        if hasattr(obj, "__slots__"):
-            attr_names.extend(obj.__slots__)
-        
-        for v in attr_names:
-            if v == "uop": continue
-            v = v.replace("._modules","")
-            print(f"{s}.{v}", type(getattr(obj, v)), "TORCH" if isinstance(getattr(obj, v), nn.Module) else "")
-            try:
-                attr = getattr(obj, v)
-                print_obj(attr, f"{s}.{v}", seen)
-            except Exception as e:
-                return
 
 class ModelConfig(BaseModel): pass
 
