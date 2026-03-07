@@ -177,7 +177,8 @@ class Dinov2WithRegistersPatchEmbeddings(nn.Module):
         self.projection_tiny = tinynn.Conv2d(num_channels, hidden_size, patch_size, stride=patch_size)
 
 class Dinov2WithRegistersPatchEmbeddings_tiny():
-    def __init__(self, d):
+    def __init__(self, d=None):
+        if d is None: return
         self.projection_tiny = d.projection_tiny
 
     def __call__(self, x):
@@ -203,7 +204,8 @@ class WindowedDinov2WithRegistersEmbeddings(nn.Module):
         self.config = config
 
 class WindowedDinov2WithRegistersEmbeddings_tiny():
-    def __init__(self, w):
+    def __init__(self, w=None):
+        if w is None: return
         self.patch_embeddings = w.patch_embeddings
         self.position_embeddings_tiny = w.position_embeddings_tiny
         self.config = w.config
@@ -266,7 +268,8 @@ class Dinov2WithRegistersSelfOutput(nn.Module):
 
 
 class Dinov2WithRegistersSelfOutput_tiny():
-    def __init__(self, d):
+    def __init__(self, d=None):
+        if d is None: return
         self.dense_tiny = d.dense_tiny
 
     def __call__(self, x):
@@ -330,7 +333,8 @@ class Dinov2WithRegistersSdpaAttention(nn.Module):
         self.pruned_heads = set()
 
 class Dinov2WithRegistersSdpaAttention_tiny():
-    def __init__(self, d):
+    def __init__(self, d=None):
+        if d is None: return
         self.attention = d.attention
         self.output = d.output
 
@@ -359,7 +363,8 @@ class Dinov2WithRegistersMLP(nn.Module):
         self.fc2_tiny = tinynn.Linear(hidden_features, out_features, bias=True)
 
 class Dinov2WithRegistersMLP_tiny():
-    def __init__(self, d):
+    def __init__(self, d=None):
+        if d is None: return
         self.fc1_tiny = d.fc1_tiny
         self.fc2_tiny = d.fc2_tiny
 
@@ -377,7 +382,8 @@ class Dinov2WithRegistersLayerScale(nn.Module):
         self.lambda1_tiny = to_tiny(self.lambda1)
     
 class Dinov2WithRegistersLayerScale_tiny():
-    def __init__(self, d):
+    def __init__(self, d=None):
+        if d is None: return
         self.lambda1_tiny = d.lambda1_tiny
 
     def __call__(self, hidden_state):
@@ -408,7 +414,8 @@ class WindowedDinov2WithRegistersLayer(nn.Module):
         self.layer_scale2 = Dinov2WithRegistersLayerScale(config)
 
 class WindowedDinov2WithRegistersLayer_tiny():
-    def __init__(self, w):
+    def __init__(self, w=None):
+        if w is None: return
         self.norm1_tiny = w.norm1_tiny
         self.norm2_tiny = w.norm2_tiny
         self.attention = w.attention
@@ -2405,7 +2412,30 @@ class Model:
           new_model.backbone.encoder.encoder.layernorm_tiny.weight = tinyTensor.empty((384))
           new_model.backbone.encoder.encoder.layernorm_tiny.bias = tinyTensor.empty((384))
           new_model.backbone.encoder.encoder.encoder = WindowedDinov2WithRegistersEncoder_tiny()
-          #self.model.backbone.encoder.encoder.encoder.layer = tiny_seq(size=13)
+          new_model.backbone.encoder.encoder.embeddings = WindowedDinov2WithRegistersEmbeddings_tiny()
+          new_model.backbone.encoder.encoder.embeddings.patch_embeddings = Dinov2WithRegistersPatchEmbeddings_tiny()
+          new_model.backbone.encoder.encoder.embeddings.patch_embeddings.projection_tiny = tinynn.Conv2d(in_channels=3, out_channels=384, kernel_size=16)
+          new_model.backbone.encoder.encoder.embeddings.cls_token_tiny = tinyTensor.empty((1, 1, 384))
+          new_model.backbone.encoder.encoder.embeddings.position_embeddings_tiny = tinyTensor.empty((1, 577, 384))
+          new_model.backbone.encoder.encoder.encoder.layer = tiny_seq(size=13)
+          for i in range(12):
+            new_model.backbone.encoder.encoder.encoder.layer[i] = WindowedDinov2WithRegistersLayer_tiny()
+            new_model.backbone.encoder.encoder.encoder.layer[i].norm1_tiny = tinynn.LayerNorm(384)
+            new_model.backbone.encoder.encoder.encoder.layer[i].norm2_tiny = tinynn.LayerNorm(384)
+            new_model.backbone.encoder.encoder.encoder.layer[i].attention = Dinov2WithRegistersSdpaAttention_tiny()
+            new_model.backbone.encoder.encoder.encoder.layer[i].attention.attention = Dinov2WithRegistersSdpaAttention_tiny()
+            new_model.backbone.encoder.encoder.encoder.layer[i].attention.attention.query_tiny = tinynn.Linear(384, 384)
+            new_model.backbone.encoder.encoder.encoder.layer[i].attention.attention.key_tiny = tinynn.Linear(384, 384)
+            new_model.backbone.encoder.encoder.encoder.layer[i].attention.attention.value_tiny = tinynn.Linear(384, 384)
+            new_model.backbone.encoder.encoder.encoder.layer[i].attention.output = Dinov2WithRegistersSelfOutput_tiny()
+            new_model.backbone.encoder.encoder.encoder.layer[i].attention.output.dense_tiny = tinynn.Linear(384, 384)
+            new_model.backbone.encoder.encoder.encoder.layer[i].layer_scale1 = Dinov2WithRegistersLayerScale_tiny()
+            new_model.backbone.encoder.encoder.encoder.layer[i].layer_scale2 = Dinov2WithRegistersLayerScale_tiny()
+            new_model.backbone.encoder.encoder.encoder.layer[i].layer_scale1.lambda1_tiny = tinyTensor.empty((384))
+            new_model.backbone.encoder.encoder.encoder.layer[i].layer_scale2.lambda1_tiny = tinyTensor.empty((384))
+            new_model.backbone.encoder.encoder.encoder.layer[i].mlp = Dinov2WithRegistersMLP_tiny()
+            new_model.backbone.encoder.encoder.encoder.layer[i].mlp.fc1_tiny = tinynn.Linear(384, 1536)
+            new_model.backbone.encoder.encoder.encoder.layer[i].mlp.fc2_tiny = tinynn.Linear(1536, 384)
 
           state_dict = get_state_dict(self.model)
           load_state_dict(self.model, state_dict)
@@ -2422,7 +2452,7 @@ class Model:
               m+=1
           print("missing keys =",m)
         print(type(self.model))
-        print(type(self.model.backbone.encoder.encoder.encoder.layer))
+        print(type(self.model.backbone.encoder.encoder.embeddings.patch_embeddings.projection_tiny))
         #exit()
 
 
