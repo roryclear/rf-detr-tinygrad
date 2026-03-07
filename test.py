@@ -98,86 +98,6 @@ OPEN_SOURCE_MODELS = {
     "rf-detr-seg-xxlarge.pt": "https://storage.googleapis.com/rfdetr/rf-detr-seg-2xl-ft.pth",
 }
 
-class WindowedDinov2WithRegistersConfig(BackboneConfigMixin, PretrainedConfig):
-    model_type = "dinov2_with_registers"
-    def __init__(
-        self,
-        hidden_size=768,
-        num_hidden_layers=12,
-        num_attention_heads=12,
-        mlp_ratio=4,
-        hidden_act="gelu",
-        hidden_dropout_prob=0.0,
-        attention_probs_dropout_prob=0.0,
-        initializer_range=0.02,
-        layer_norm_eps=1e-6,
-        image_size=224,
-        patch_size=16,
-        num_channels=3,
-        qkv_bias=True,
-        layerscale_value=1.0,
-        drop_path_rate=0.0,
-        use_swiglu_ffn=False,
-        num_register_tokens=4,
-        out_features=None,
-        out_indices=None,
-        apply_layernorm=True,
-        reshape_hidden_states=True,
-        num_windows=1,
-        window_block_indexes=None,
-        gradient_checkpointing=False,
-        **kwargs,
-    ):
-        super().__init__(**kwargs)
-
-        self.hidden_size = hidden_size
-        self.num_hidden_layers = num_hidden_layers
-        self.num_attention_heads = num_attention_heads
-        self.mlp_ratio = mlp_ratio
-        self.hidden_act = hidden_act
-        self.hidden_dropout_prob = hidden_dropout_prob
-        self.attention_probs_dropout_prob = attention_probs_dropout_prob
-        self.initializer_range = initializer_range
-        self.layer_norm_eps = layer_norm_eps
-        self.image_size = image_size
-        self.patch_size = patch_size
-        self.num_channels = num_channels
-        self.qkv_bias = qkv_bias
-        self.layerscale_value = layerscale_value
-        self.drop_path_rate = drop_path_rate
-        self.use_swiglu_ffn = use_swiglu_ffn
-        self.num_register_tokens = num_register_tokens
-        self.stage_names = ["stem"] + [f"stage{idx}" for idx in range(1, num_hidden_layers + 1)]
-        self._out_features = ['stage3', 'stage6', 'stage9', 'stage12']
-        self.apply_layernorm = apply_layernorm
-        self.reshape_hidden_states = reshape_hidden_states
-        self.num_windows = num_windows
-        self.window_block_indexes = list(range(num_hidden_layers)) if window_block_indexes is None else window_block_indexes
-        self.gradient_checkpointing = gradient_checkpointing
-
-class Dinov2WithRegistersPatchEmbeddings(nn.Module):
-    """
-    This class turns `pixel_values` of shape `(batch_size, num_channels, height, width)` into the initial
-    `hidden_states` (patch embeddings) of shape `(batch_size, seq_length, hidden_size)` to be consumed by a
-    Transformer.
-    """
-
-    def __init__(self, config):
-        super().__init__()
-        image_size, patch_size = config.image_size, config.patch_size
-        num_channels, hidden_size = config.num_channels, config.hidden_size
-
-        image_size = image_size if isinstance(image_size, collections.abc.Iterable) else (image_size, image_size)
-        patch_size = patch_size if isinstance(patch_size, collections.abc.Iterable) else (patch_size, patch_size)
-        num_patches = (image_size[1] // patch_size[1]) * (image_size[0] // patch_size[0])
-        self.image_size = image_size
-        self.patch_size = patch_size
-        self.num_channels = num_channels
-        self.num_patches = num_patches
-
-        self.projection = nn.Conv2d(num_channels, hidden_size, kernel_size=patch_size, stride=patch_size)
-        self.projection_tiny = tinynn.Conv2d(num_channels, hidden_size, patch_size, stride=patch_size)
-
 class Dinov2WithRegistersPatchEmbeddings_tiny():
     def __init__(self, d=None):
         if d is None: return
@@ -187,23 +107,6 @@ class Dinov2WithRegistersPatchEmbeddings_tiny():
         x = to_tiny(x)
         x = self.projection_tiny(x).flatten(2).transpose(1, 2)
         return x
-
-class WindowedDinov2WithRegistersEmbeddings(nn.Module):
-    """
-    Construct the CLS token, mask token, register tokens, position and patch embeddings.
-    """
-
-    def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
-        super().__init__()
-
-        self.cls_token = nn.Parameter(torch.randn(1, 1, config.hidden_size))
-        self.cls_token_tiny = to_tiny(self.cls_token)
-        self.patch_embeddings = Dinov2WithRegistersPatchEmbeddings(config)
-        num_patches = self.patch_embeddings.num_patches
-        self.position_embeddings = nn.Parameter(torch.randn(1, num_patches + 1, config.hidden_size))
-        self.position_embeddings_tiny = to_tiny(self.position_embeddings)
-        self.patch_size = config.patch_size
-        self.config = config
 
 class WindowedDinov2WithRegistersEmbeddings_tiny():
     def __init__(self, w=None):
@@ -240,35 +143,6 @@ class WindowedDinov2WithRegistersEmbeddings_tiny():
         embeddings = tinyTensor.cat(windowed_cls_token_with_pos_embed, windowed_pixel_tokens, dim=1)
         return embeddings
 
-class Dinov2WithRegistersSelfAttention(nn.Module):
-    def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
-        super().__init__()
-        if config.hidden_size % config.num_attention_heads != 0 and not hasattr(config, "embedding_size"):
-            raise ValueError(
-                f"The hidden size {config.hidden_size,} is not a multiple of the number of attention "
-                f"heads {config.num_attention_heads}."
-            )
-
-        self.num_attention_heads = config.num_attention_heads
-        self.attention_head_size = int(config.hidden_size / config.num_attention_heads)
-        self.all_head_size = self.num_attention_heads * self.attention_head_size
-
-        self.query = nn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
-
-        self.query_tiny = tinynn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
-
-        self.key = nn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
-        self.key_tiny = tinynn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
-        self.value = nn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
-        self.value_tiny = tinynn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
-
-class Dinov2WithRegistersSelfOutput(nn.Module):
-    def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
-        super().__init__()
-        self.dense = nn.Linear(config.hidden_size, config.hidden_size)
-        self.dense_tiny = tinynn.Linear(config.hidden_size, config.hidden_size)
-
-
 class Dinov2WithRegistersSelfOutput_tiny():
     def __init__(self, d=None):
         if d is None: return
@@ -278,11 +152,6 @@ class Dinov2WithRegistersSelfOutput_tiny():
         x = to_tiny(x)
         x = self.dense_tiny(x)
         return x
-
-class Dinov2WithRegistersSdpaSelfAttention(Dinov2WithRegistersSelfAttention):
-    def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
-        super().__init__(config)
-        self.attention_probs_dropout_prob = config.attention_probs_dropout_prob
 
 class Dinov2WithRegistersSdpaSelfAttention_tiny():
     def __init__(self, d=None):
@@ -327,14 +196,6 @@ class Dinov2WithRegistersSdpaSelfAttention_tiny():
 
         return context_layer, None
 
-
-class Dinov2WithRegistersSdpaAttention(nn.Module):
-    def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
-        super().__init__()
-        self.attention = Dinov2WithRegistersSdpaSelfAttention(config)
-        self.output = Dinov2WithRegistersSelfOutput(config)
-        self.pruned_heads = set()
-
 class Dinov2WithRegistersSdpaAttention_tiny():
     def __init__(self, d=None):
         if d is None: return
@@ -352,19 +213,6 @@ class Dinov2WithRegistersSdpaAttention_tiny():
         outputs = (attention_output,) + self_outputs[1:]
         return outputs
 
-HOSTED_MODELS = {**OPEN_SOURCE_MODELS, **PLATFORM_MODELS}
-
-class Dinov2WithRegistersMLP(nn.Module):
-    def __init__(self, config) -> None:
-        super().__init__()
-        in_features = out_features = config.hidden_size
-        hidden_features = int(config.hidden_size * config.mlp_ratio)
-        self.fc1 = nn.Linear(in_features, hidden_features, bias=True)
-        self.fc2 = nn.Linear(hidden_features, out_features, bias=True)
-
-        self.fc1_tiny = tinynn.Linear(in_features, hidden_features, bias=True) 
-        self.fc2_tiny = tinynn.Linear(hidden_features, out_features, bias=True)
-
 class Dinov2WithRegistersMLP_tiny():
     def __init__(self, d=None):
         if d is None: return
@@ -378,12 +226,6 @@ class Dinov2WithRegistersMLP_tiny():
         hidden_state = self.fc2_tiny(hidden_state)
         return hidden_state
 
-class Dinov2WithRegistersLayerScale(nn.Module):
-    def __init__(self, config) -> None:
-        super().__init__()
-        self.lambda1 = nn.Parameter(config.layerscale_value * torch.ones(config.hidden_size))
-        self.lambda1_tiny = to_tiny(self.lambda1)
-    
 class Dinov2WithRegistersLayerScale_tiny():
     def __init__(self, d=None):
         if d is None: return
@@ -393,28 +235,6 @@ class Dinov2WithRegistersLayerScale_tiny():
         hidden_state = to_tiny(hidden_state)
         x = hidden_state * self.lambda1_tiny
         return x
-
-class WindowedDinov2WithRegistersLayer(nn.Module):
-    """This corresponds to the Block class in the original implementation."""
-
-    def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
-        super().__init__()
-
-        self.num_windows = config.num_windows
-
-        self.norm1 = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-        self.norm1_tiny = tinynn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-        self.attention = Dinov2WithRegistersSdpaAttention(config)
-        self.layer_scale1 = Dinov2WithRegistersLayerScale(config)
-        self.drop_path = nn.Identity()
-
-        self.norm2 = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-
-        self.norm2_tiny = tinynn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-
-
-        self.mlp = Dinov2WithRegistersMLP(config)
-        self.layer_scale2 = Dinov2WithRegistersLayerScale(config)
 
 class WindowedDinov2WithRegistersLayer_tiny():
     def __init__(self, w=None):
@@ -469,16 +289,6 @@ class WindowedDinov2WithRegistersLayer_tiny():
         outputs = (layer_output,) + outputs
         return outputs
 
-
-
-class WindowedDinov2WithRegistersEncoder(nn.Module):
-    def __init__(self, config: WindowedDinov2WithRegistersConfig) -> None:
-        super().__init__()
-        self.config = config
-        self.layer = nn.ModuleList([WindowedDinov2WithRegistersLayer(config) for _ in range(config.num_hidden_layers)])
-        self.gradient_checkpointing = config.gradient_checkpointing
-
-
 class WindowedDinov2WithRegistersEncoder_tiny():
     def __init__(self, w=None):
         if w is None: return
@@ -505,25 +315,6 @@ class WindowedDinov2WithRegistersEncoder_tiny():
 
         all_hidden_states = all_hidden_states + (hidden_states,)
         return tuple(v for v in [hidden_states, all_hidden_states, all_self_attentions] if v is not None)
-
-
-class WindowedDinov2WithRegistersBackbone(PreTrainedModel, BackboneMixin):
-    _supports_sdpa = True #todo, why need?
-
-    def __init__(self, config: WindowedDinov2WithRegistersConfig):
-        super().__init__(config)
-        super()._init_backbone(config)
-        self.num_features = [config.hidden_size for _ in range(config.num_hidden_layers + 1)]
-        self.embeddings = WindowedDinov2WithRegistersEmbeddings(config)
-        self.encoder = WindowedDinov2WithRegistersEncoder(config)
-
-        self.layernorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-        self.layernorm_tiny = tinynn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-
-        self.num_register_tokens = config.num_register_tokens
-
-        # Initialize weights and apply final processing
-        self.post_init()
 
 class WindowedDinov2WithRegistersBackbone_tiny():
     def __init__(self, w=None):
@@ -585,77 +376,6 @@ class WindowedDinov2WithRegistersBackbone_tiny():
 
         output = (feature_maps,) + outputs[2:]
         return output
-
-class DinoV2(nn.Module):
-    def __init__(self,
-            shape=(640, 640),
-            out_feature_indexes=[2, 4, 5, 9],
-            size="base",
-            use_registers=True,
-            use_windowed_attn=True,
-            gradient_checkpointing=False,
-            load_dinov2_weights=True,
-            patch_size=14,
-            num_windows=4,
-            positional_encoding_size=37,
-            ):
-        super().__init__()
-
-        name = f"facebook/dinov2-with-registers-{size}" if use_registers else f"facebook/dinov2-{size}"
-
-        self.shape = shape
-        self.patch_size = patch_size
-        self.num_windows = num_windows
-
-        window_block_indexes = set(range(out_feature_indexes[-1] + 1))
-        window_block_indexes.difference_update(out_feature_indexes)
-        window_block_indexes = list(window_block_indexes)
-
-        dino_config = configs[size]
-
-        dino_config["return_dict"] = False
-        dino_config["out_features"] = [f"stage{i}" for i in out_feature_indexes]
-
-        implied_resolution = positional_encoding_size * patch_size
-
-        if implied_resolution != dino_config["image_size"]:
-            print("Using a different number of positional encodings than DINOv2, which means we're not loading DINOv2 backbone weights. This is not a problem if finetuning a pretrained RF-DETR model.")
-            dino_config["image_size"] = implied_resolution
-            load_dinov2_weights = False
-
-        if patch_size != 14:
-            print(f"Using patch size {patch_size} instead of 14, which means we're not loading DINOv2 backbone weights. This is not a problem if finetuning a pretrained RF-DETR model.")
-            dino_config["patch_size"] = patch_size
-            load_dinov2_weights = False
-
-        if use_registers:
-            windowed_dino_config = WindowedDinov2WithRegistersConfig(
-                **dino_config,
-                num_windows=num_windows,
-                window_block_indexes=window_block_indexes,
-                gradient_checkpointing=gradient_checkpointing,
-            )
-        else:
-            windowed_dino_config = WindowedDinov2WithRegistersConfig(
-                **dino_config,
-                num_windows=num_windows,
-                window_block_indexes=window_block_indexes,
-                num_register_tokens=0,
-                gradient_checkpointing=gradient_checkpointing,
-            )
-        self.encoder = WindowedDinov2WithRegistersBackbone.from_pretrained(
-            name,
-            config=windowed_dino_config,
-        ) if load_dinov2_weights else WindowedDinov2WithRegistersBackbone(windowed_dino_config)
-
-        self._out_feature_channels = [size_to_width[size]] * len(out_feature_indexes)
-        self._export = False
-
-    def forward(self, x):
-        block_size = self.patch_size * self.num_windows
-        assert x.shape[2] % block_size == 0 and x.shape[3] % block_size == 0, f"Backbone requires input shape to be divisible by {block_size}, but got {x.shape}"
-        x = self.encoder(x)
-        return list(x[0])
 
 class DinoV2_tiny():
     def __init__(self, d=None):
@@ -732,41 +452,6 @@ class MultiheadAttention_tiny():
         self.out_proj = m.out_proj
         self.in_proj_weight = m.in_proj_weight
         self.in_proj_bias = m.in_proj_bias
-
-class TransformerDecoderLayer(nn.Module):
-    def __init__(self, d_model, sa_nhead, ca_nhead, dim_feedforward=2048, dropout=0.1,
-                 activation="relu", normalize_before=False, group_detr=1,
-                 num_feature_levels=4, dec_n_points=4,
-                 skip_self_attn=False):
-        super().__init__()
-        # Decoder Self-Attention
-        self.self_attn = nn.MultiheadAttention(embed_dim=256, num_heads=8, dropout=0, batch_first=True)
-        self.norm1 = nn.LayerNorm(d_model)
-
-        self.norm1_tiny = tinynn.LayerNorm(d_model)
-        self.norm2_tiny = tinynn.LayerNorm(d_model)
-        self.norm3_tiny = tinynn.LayerNorm(d_model)
-
-        # Decoder Cross-Attention
-        self.cross_attn = MSDeformAttn(
-            d_model, n_levels=num_feature_levels, n_heads=ca_nhead, n_points=dec_n_points)
-
-        self.nhead = ca_nhead
-
-        # Implementation of Feedforward model
-        self.linear1 = nn.Linear(d_model, dim_feedforward)
-        self.linear2 = nn.Linear(dim_feedforward, d_model)
-
-        self.linear1_tiny = tinynn.Linear(d_model, dim_feedforward)
-        self.linear2_tiny = tinynn.Linear(dim_feedforward, d_model)
-
-        self.norm2 = nn.LayerNorm(d_model)
-        self.norm3 = nn.LayerNorm(d_model)
-        
-        self.normalize_before = normalize_before
-        self.group_detr = group_detr
-
-    def with_pos_embed(self, tensor, pos: Optional[Tensor]): return tensor + pos
 
 class TransformerDecoderLayer_tiny():
     def __init__(self, t=None):
@@ -860,34 +545,6 @@ def gen_sineembed_for_position(pos_tensor, dim=128):
     pos = tinyTensor.cat(pos_y, pos_x, pos_w, pos_h, dim=2)
     return pos
 
-def _get_clones(module, N):
-    return nn.ModuleList([copy.deepcopy(module) for i in range(N)])
-
-class TransformerDecoder(nn.Module):
-
-    def __init__(self,
-                 decoder_layer,
-                 num_layers,
-                 norm=None,
-                 return_intermediate=False,
-                 d_model=256,
-                 lite_refpoint_refine=False,
-                 bbox_reparam=False):
-        super().__init__()
-        self.layers = _get_clones(decoder_layer, num_layers)
-        self.num_layers = num_layers
-        self.d_model = d_model
-        self.norm = norm
-        self.return_intermediate = return_intermediate
-        self.lite_refpoint_refine = lite_refpoint_refine
-        self.bbox_reparam = bbox_reparam
-
-        self.ref_point_head = MLP(2 * d_model, d_model, d_model, 2)
-
-        self.norm_tiny = tinynn.LayerNorm(self.norm.normalized_shape, eps=self.norm.eps)
-
-        self._export = False
-
 class TransformerDecoder_tiny():
     def __init__(self, t=None):
         if t is None: return
@@ -974,30 +631,6 @@ def gen_encoder_output_proposals(memory, memory_padding_mask, spatial_shape, uns
     output_memory = output_memory.masked_fill(~output_proposals_valid, float(0))
     return output_memory, output_proposals
 
-class MSDeformAttn(nn.Module):
-    """Multi-Scale Deformable Attention Module
-    """
-    def __init__(self, d_model=256, n_levels=4, n_heads=8, n_points=4):
-        super().__init__()
-        self.im2col_step = 64
-
-        self.d_model = d_model
-        self.n_levels = n_levels
-        self.n_heads = n_heads
-        self.n_points = n_points
-
-        self.sampling_offsets = nn.Linear(d_model, n_heads * n_levels * n_points * 2)
-        self.attention_weights = nn.Linear(d_model, n_heads * n_levels * n_points)
-        self.value_proj = nn.Linear(d_model, d_model)
-        self.output_proj = nn.Linear(d_model, d_model)
-
-        self.value_proj_tiny = tinynn.Linear(d_model, d_model)
-        self.sampling_offsets_tiny = tinynn.Linear(d_model, n_heads * n_levels * n_points * 2)
-        self.attention_weights_tiny = tinynn.Linear(d_model, n_heads * n_levels * n_points)
-        self.output_proj_tiny = tinynn.Linear(d_model, d_model)
-
-        self._export = False
-
 class MSDeformAttn_tiny():
     """Multi-Scale Deformable Attention Module
     """
@@ -1035,59 +668,6 @@ class MSDeformAttn_tiny():
         output = to_tiny(output)
         output = self.output_proj_tiny(output)
         return output
-
-class Transformer(nn.Module):
-    def __init__(self, d_model=512, sa_nhead=8, ca_nhead=8, num_queries=300,
-                 num_decoder_layers=6, dim_feedforward=2048, dropout=0.0,
-                 activation="relu", normalize_before=False,
-                 return_intermediate_dec=False, group_detr=1,
-                 two_stage=False,
-                 num_feature_levels=4, dec_n_points=4,
-                 lite_refpoint_refine=False,
-                 decoder_norm_type='LN',
-                 bbox_reparam=False):
-        super().__init__()
-        self.encoder = None
-
-        decoder_layer = TransformerDecoderLayer(d_model, sa_nhead, ca_nhead, dim_feedforward,
-                                                dropout, activation, normalize_before,
-                                                group_detr=group_detr,
-                                                num_feature_levels=num_feature_levels,
-                                                dec_n_points=dec_n_points,
-                                                skip_self_attn=False,)
-        assert decoder_norm_type in ['LN', 'Identity']
-        norm = {
-            "LN": lambda channels: nn.LayerNorm(channels),
-            "Identity": lambda channels: nn.Identity(),
-        }
-        decoder_norm = norm[decoder_norm_type](d_model)
-
-        self.decoder = TransformerDecoder(decoder_layer, num_decoder_layers, decoder_norm,
-                                          return_intermediate=return_intermediate_dec,
-                                          d_model=d_model,
-                                          lite_refpoint_refine=lite_refpoint_refine,
-                                          bbox_reparam=bbox_reparam)
-
-
-        self.two_stage = two_stage
-        if two_stage:
-            self.enc_output = nn.ModuleList([nn.Linear(d_model, d_model) for _ in range(group_detr)])
-            self.enc_output_norm = nn.ModuleList([nn.LayerNorm(d_model) for _ in range(group_detr)])
-
-        
-        self.enc_output_tiny = tinynn.Linear(d_model, d_model)
-
-        self.enc_output_norm_tiny = tinynn.LayerNorm(d_model)
-
-        self.num_queries = num_queries
-        self.d_model = d_model
-        self.dec_layers = num_decoder_layers
-        self.group_detr = group_detr
-        self.num_feature_levels = num_feature_levels
-        self.bbox_reparam = bbox_reparam
-
-        self._export = False
-
 
 class Transformer_tiny():
     def __init__(self, t=None):
@@ -1165,37 +745,6 @@ class Transformer_tiny():
 
         return hs, references, memory_ts, boxes_ts
 
-def build_transformer(args):
-    return Transformer(
-        d_model=args.hidden_dim,
-        sa_nhead=args.sa_nheads,
-        ca_nhead=args.ca_nheads,
-        num_queries=args.num_queries,
-        dropout=args.dropout,
-        dim_feedforward=args.dim_feedforward,
-        num_decoder_layers=args.dec_layers,
-        return_intermediate_dec=True,
-        group_detr=args.group_detr,
-        two_stage=True,
-        num_feature_levels=args.num_feature_levels,
-        dec_n_points=args.dec_n_points,
-        lite_refpoint_refine=args.lite_refpoint_refine,
-        decoder_norm_type=args.decoder_norm,
-        bbox_reparam=args.bbox_reparam,
-    )
-
-
-class ConvX(nn.Module):
-    def __init__(self, in_planes, out_planes, kernel=3, stride=1, groups=1, dilation=1, act='relu', layer_norm=False, rms_norm=False):
-        super(ConvX, self).__init__()
-        padding = (kernel // 2, kernel // 2)
-        self.conv = nn.Conv2d(in_planes, out_planes, kernel_size=(kernel, kernel),
-                              stride=stride, padding=padding, groups=groups,
-                              dilation=dilation, bias=False)
-        
-        self.conv_tiny = tinynn.Conv2d(in_planes, out_planes, (kernel, kernel), stride, padding, dilation, groups, False)
-        self.bn = LayerNorm(out_planes)
-
     
 class ConvX_tiny():
     def __init__(self, c=None):
@@ -1211,18 +760,6 @@ class ConvX_tiny():
         out = tinyTensor.silu(x)
         return out
 
-class Bottleneck(nn.Module):
-    """Standard bottleneck."""
-
-    def __init__(self, c1, c2, shortcut=True, g=1, k=(3, 3), e=0.5, act='silu', layer_norm=False, rms_norm=False):
-        """ ch_in, ch_out, shortcut, groups, kernels, expand """
-        super().__init__()
-        c_ = int(c2 * e)  # hidden channels
-        self.cv1 = ConvX(c1, c_, k[0], 1, act=act, layer_norm=layer_norm, rms_norm=rms_norm)
-        self.cv2 = ConvX(c_, c2, k[1], 1, groups=g, act=act, layer_norm=layer_norm, rms_norm=rms_norm)
-        self.add = shortcut and c1 == c2
-
-
 class Bottleneck_tiny():
     def __init__(self, b=None):
         if b is None: return
@@ -1231,17 +768,6 @@ class Bottleneck_tiny():
         self.add = b.add
 
     def __call__(self, x): return self.cv2(self.cv1(x))
-
-class C2f(nn.Module):
-    """Faster Implementation of CSP Bottleneck with 2 convolutions."""
-
-    def __init__(self, c1, c2, n=1, shortcut=False, g=1, e=0.5, act='silu', layer_norm=False, rms_norm=False):
-        """ ch_in, ch_out, number, shortcut, groups, expansion """
-        super().__init__()
-        self.c = int(c2 * e)  # hidden channels
-        self.cv1 = ConvX(c1, 2 * self.c, 1, 1, act=act, layer_norm=layer_norm, rms_norm=rms_norm)
-        self.cv2 = ConvX((2 + n) * self.c, c2, 1, act=act, layer_norm=layer_norm, rms_norm=rms_norm)  # optional act=FReLU(c2)
-        self.m = nn.ModuleList(Bottleneck(self.c, self.c, shortcut, g, k=(3, 3), e=1.0, act=act, layer_norm=layer_norm, rms_norm=rms_norm) for _ in range(n))
 
 class C2f_tiny():
     def __init__(self, c=None):
@@ -1262,26 +788,6 @@ class C2f_tiny():
         y = tinyTensor.cat(*y, dim=1)
         y = self.cv2(y)
         return y
-
-class LayerNorm(nn.Module):
-    """
-    A LayerNorm variant, popularized by Transformers, that performs point-wise mean and
-    variance normalization over the channel dimension for inputs that have shape
-    (batch_size, channels, height, width).
-    https://github.com/facebookresearch/ConvNeXt/blob/d1fa8f6fef0a165b27399986cc2bdacc92777e40/models/convnext.py#L119
-    """
-
-    def __init__(self, normalized_shape, eps=1e-6):
-        super().__init__()
-        self.weight = nn.Parameter(torch.ones(normalized_shape))
-        self.bias = nn.Parameter(torch.zeros(normalized_shape))
-
-        self.weight_tiny = to_tiny(self.weight)
-        self.bias_tiny = to_tiny(self.bias)
-
-        self.eps = eps
-        self.normalized_shape = (normalized_shape,)
-
 
 class LayerNorm_tiny():
     def __init__(self, l=None):
@@ -1305,67 +811,6 @@ class LayerNorm_tiny():
         x = x.permute(0, 3, 1, 2)
         return x
 
-def get_norm(norm, out_channels):
-    """
-    Args:
-        norm (str or callable): either one of BN, SyncBN, FrozenBN, GN;
-            or a callable that takes a channel number and returns
-            the normalization layer as a nn.Module.
-    Returns:
-        nn.Module or None: the normalization layer
-    """
-    if norm is None:
-        return None
-    if isinstance(norm, str):
-        if len(norm) == 0:
-            return None
-        norm = {
-            "LN": lambda channels: LayerNorm(channels),
-        }[norm]
-    return norm(out_channels)
-
-
-class MultiScaleProjector(nn.Module):
-    """
-    This module implements MultiScaleProjector in :paper:`lwdetr`.
-    It creates pyramid features built on top of the input feature map.
-    """
-
-    def __init__(
-        self,
-        in_channels,
-        out_channels,
-        scale_factors,
-        num_blocks=3,
-        layer_norm=False,
-        rms_norm=False,
-        survival_prob=1.0,
-        force_drop_last_n_features=0,
-    ):
-        super(MultiScaleProjector, self).__init__()
-
-        self.scale_factors = scale_factors
-        self.survival_prob = survival_prob
-        self.force_drop_last_n_features = force_drop_last_n_features
-
-        stages_sampling = []
-        stages = []
-        self.use_extra_pool = False
-        for scale in scale_factors:
-            stages_sampling.append([])
-            for in_dim in in_channels:
-                stages_sampling[-1].append(nn.Sequential())
-            stages_sampling[-1] = nn.ModuleList(stages_sampling[-1])
-            in_dim = int(sum(in_channel // max(1, scale) for in_channel in in_channels))
-            layers = [
-                C2f(in_dim, out_channels, num_blocks, layer_norm=layer_norm),
-                get_norm('LN', out_channels),
-            ]
-            layers = nn.Sequential(*layers)
-            stages.append(layers)
-        self.stages_sampling = nn.ModuleList(stages_sampling)
-        self.stages = nn.ModuleList(stages)
-
 class MultiScaleProjector_tiny():
     def __init__(self, m=None):
         if m is None: return
@@ -1376,25 +821,6 @@ class MultiScaleProjector_tiny():
         feat_fuse = tinyTensor.cat(*x, dim=1)
         stage_output = self.stages[0](feat_fuse)
         return [stage_output]
-    
-def build_position_encoding(hidden_dim, position_embedding):
-    N_steps = hidden_dim // 2
-    if position_embedding in ('v2', 'sine'):
-        position_embedding = PositionEmbeddingSine(N_steps, normalize=True)
-    return position_embedding
-
-class PositionEmbeddingSine(nn.Module):
-    def __init__(self, num_pos_feats=64, temperature=10000, normalize=False, scale=None):
-        super().__init__()
-        self.num_pos_feats = num_pos_feats
-        self.temperature = temperature
-        self.normalize = normalize
-        if scale is not None and normalize is False:
-            raise ValueError("normalize should be True if scale is passed")
-        if scale is None:
-            scale = 2 * math.pi
-        self.scale = scale
-        self._export = False
 
 class PositionEmbeddingSine_tiny():
     def __init__(self, p=None):
@@ -1424,82 +850,6 @@ class PositionEmbeddingSine_tiny():
         pos = tinyTensor.cat(pos_y, pos_x, dim=3).permute(0, 3, 1, 2)
         return pos
     
-class Backbone(nn.Module):
-    """backbone."""
-    def __init__(self,
-                 name: str,
-                 pretrained_encoder: str=None,
-                 window_block_indexes: list=None,
-                 drop_path=0.0,
-                 out_channels=256,
-                 out_feature_indexes: list=None,
-                 projector_scale: list=None,
-                 use_cls_token: bool = False,
-                 freeze_encoder: bool = False,
-                 layer_norm: bool = False,
-                 target_shape: tuple[int, int] = (640, 640),
-                 rms_norm: bool = False,
-                 backbone_lora: bool = False,
-                 gradient_checkpointing: bool = False,
-                 load_dinov2_weights: bool = True,
-                 patch_size: int = 14,
-                 num_windows: int = 4,
-                 positional_encoding_size: bool = False,
-                 ):
-        super().__init__()
-        # an example name here would be "dinov2_base" or "dinov2_registers_windowed_base"
-        # if "registers" is in the name, then use_registers is set to True, otherwise it is set to False
-        # similarly, if "windowed" is in the name, then use_windowed_attn is set to True, otherwise it is set to False
-        # the last part of the name should be the size
-        # and the start should be dinov2
-        name_parts = name.split("_")
-        assert name_parts[0] == "dinov2"
-        # name_parts[-1]
-        use_registers = False
-        if "registers" in name_parts:
-            use_registers = True
-            name_parts.remove("registers")
-        use_windowed_attn = False
-        if "windowed" in name_parts:
-            use_windowed_attn = True
-            name_parts.remove("windowed")
-        assert len(name_parts) == 2, "name should be dinov2, then either registers, windowed, both, or none, then the size"
-        self.encoder = DinoV2(
-            size=name_parts[-1],
-            out_feature_indexes=out_feature_indexes,
-            shape=target_shape,
-            use_registers=use_registers,
-            use_windowed_attn=use_windowed_attn,
-            gradient_checkpointing=gradient_checkpointing,
-            load_dinov2_weights=load_dinov2_weights,
-            patch_size=patch_size,
-            num_windows=num_windows,
-            positional_encoding_size=positional_encoding_size,
-        )
-        # build encoder + projector as backbone module
-        if freeze_encoder:
-            for param in self.encoder.parameters():
-                param.requires_grad = False
-
-        self.projector_scale = projector_scale
-        assert len(self.projector_scale) > 0
-        # x[0]
-        assert (
-            sorted(self.projector_scale) == self.projector_scale
-        ), "only support projector scale P3/P4/P5/P6 in ascending order."
-        level2scalefactor = dict(P3=2.0, P4=1.0, P5=0.5, P6=0.25)
-        scale_factors = [level2scalefactor[lvl] for lvl in self.projector_scale]
-
-        self.projector = MultiScaleProjector(
-            in_channels=self.encoder._out_feature_channels,
-            out_channels=out_channels,
-            scale_factors=scale_factors,
-            layer_norm=layer_norm,
-            rms_norm=rms_norm,
-        )
-
-        self._export = False
-
 class Backbone_tiny():
     def __init__(self, b=None):
         if b is None: return
@@ -1513,62 +863,6 @@ class Backbone_tiny():
         m = to_tiny(m)
         mask = ~tinyTensor.interpolate(m.unsqueeze(0), size=feats[0].shape[-2:])[0]
         return feats[0], mask
-
-def build_backbone(
-    encoder,
-    pretrained_encoder,
-    window_block_indexes,
-    drop_path,
-    out_channels,
-    out_feature_indexes,
-    projector_scale,
-    use_cls_token,
-    hidden_dim,
-    position_embedding,
-    freeze_encoder,
-    layer_norm,
-    target_shape,
-    rms_norm,
-    backbone_lora,
-    gradient_checkpointing,
-    load_dinov2_weights,
-    patch_size,
-    num_windows,
-    positional_encoding_size,
-):
-    """
-    Useful args:
-        - encoder: encoder name
-        - lr_encoder:
-        - dilation
-        - use_checkpoint: for swin only for now
-
-    """
-    position_embedding = build_position_encoding(hidden_dim, position_embedding)
-
-    backbone = Backbone(
-        encoder,
-        pretrained_encoder,
-        window_block_indexes=window_block_indexes,
-        drop_path=drop_path,
-        out_channels=out_channels,
-        out_feature_indexes=out_feature_indexes,
-        projector_scale=projector_scale,
-        use_cls_token=use_cls_token,
-        layer_norm=layer_norm,
-        freeze_encoder=freeze_encoder,
-        target_shape=target_shape,
-        rms_norm=rms_norm,
-        backbone_lora=backbone_lora,
-        gradient_checkpointing=gradient_checkpointing,
-        load_dinov2_weights=load_dinov2_weights,
-        patch_size=patch_size,
-        num_windows=num_windows,
-        positional_encoding_size=positional_encoding_size,
-    )
-    
-    model = Joiner(backbone, position_embedding)
-    return model
 
 def populate_args(
     # Basic training parameters
@@ -1796,29 +1090,6 @@ def populate_args(
     )
     return args
 
-class Joiner(nn.Sequential): # so dumb
-    def __init__(self, backbone, position_embedding):
-        super().__init__(backbone, position_embedding)
-        self.position_embedding = position_embedding
-        self.backbone = backbone
-
-class MLP(nn.Module):
-    """ Very simple multi-layer perceptron (also called FFN)"""
-
-    def __init__(self, input_dim, hidden_dim, output_dim, num_layers):
-        super().__init__()
-        self.num_layers = num_layers
-        self.layers = nn.ModuleList()
-        self.layers.append(nn.Linear(input_dim, hidden_dim))
-        for _ in range(num_layers - 2): self.layers.append(nn.Linear(hidden_dim, hidden_dim))
-        self.layers.append(nn.Linear(hidden_dim, output_dim))
-
-        self.layers_tiny = []
-        self.layers_tiny.append(tinynn.Linear(input_dim, hidden_dim))
-        for _ in range(num_layers - 2): self.layers_tiny.append(tinynn.Linear(hidden_dim, hidden_dim))
-        self.layers_tiny.append(tinynn.Linear(hidden_dim, output_dim))
-
-
 class MLP_tiny():
     def __init__(self, m=None):
         if not m: return
@@ -1877,150 +1148,6 @@ class LWDETR_tiny():
         cls_enc_gidx = to_tiny(cls_enc_gidx)
         cls_enc.append(cls_enc_gidx)
         return out
-
-class LWDETR(nn.Module):
-    """ This is the Group DETR v3 module that performs object detection """
-    def __init__(self,
-                 backbone,
-                 transformer,
-                 segmentation_head,
-                 num_classes,
-                 num_queries,
-                 aux_loss=False,
-                 group_detr=1,
-                 two_stage=False,
-                 lite_refpoint_refine=False,
-                 bbox_reparam=False):
-        """ Initializes the model.
-        Parameters:
-            backbone: torch module of the backbone to be used. See backbone.py
-            transformer: torch module of the transformer architecture. See transformer.py
-            num_classes: number of object classes
-            num_queries: number of object queries, ie detection slot. This is the maximal number of objects
-                         Conditional DETR can detect in a single image. For COCO, we recommend 100 queries.
-            aux_loss: True if auxiliary decoding losses (loss at each decoder layer) are to be used.
-            group_detr: Number of groups to speed detr training. Default is 1.
-            lite_refpoint_refine: TODO
-        """
-        super().__init__()
-        self.num_queries = num_queries
-        self.transformer = transformer
-        hidden_dim = transformer.d_model
-        self.class_embed = nn.Linear(hidden_dim, num_classes)
-        self.bbox_embed = MLP(hidden_dim, hidden_dim, 4, 3)
-        self.segmentation_head = segmentation_head
-
-        query_dim=4
-        self.refpoint_embed = nn.Embedding(num_queries * group_detr, query_dim)
-        self.query_feat = nn.Embedding(num_queries * group_detr, hidden_dim)
-        nn.init.constant_(self.refpoint_embed.weight.data, 0)
-
-        self.backbone = backbone
-        self.aux_loss = aux_loss
-        self.group_detr = group_detr
-
-        # iter update
-        self.lite_refpoint_refine = lite_refpoint_refine
-        if not self.lite_refpoint_refine:
-            self.transformer.decoder.bbox_embed = self.bbox_embed
-        else:
-            self.transformer.decoder.bbox_embed = None
-
-        self.bbox_reparam = bbox_reparam
-
-        # init bbox_mebed
-        nn.init.constant_(self.bbox_embed.layers[-1].weight.data, 0)
-        nn.init.constant_(self.bbox_embed.layers[-1].bias.data, 0)
-
-        # two_stage
-        self.two_stage = two_stage
-        if self.two_stage:
-            self.transformer.enc_out_bbox_embed = nn.ModuleList(
-                [copy.deepcopy(self.bbox_embed) for _ in range(group_detr)])
-            self.transformer.enc_out_class_embed = nn.ModuleList(
-                [copy.deepcopy(self.class_embed) for _ in range(group_detr)])
-
-        self._export = False
-
-def build_model(args):
-    # the `num_classes` naming here is somewhat misleading.
-    # it indeed corresponds to `max_obj_id + 1`, where max_obj_id
-    # is the maximum id for a class in your dataset. For example,
-    # COCO has a max_obj_id of 90, so we pass `num_classes` to be 91.
-    # As another example, for a dataset that has a single class with id 1,
-    # you should pass `num_classes` to be 2 (max_obj_id + 1).
-    # For more details on this, check the following discussion
-    # https://github.com/facebookresearch/detr/issues/108#issuecomment-650269223
-    num_classes = args.num_classes + 1
-
-    backbone = build_backbone(
-        encoder=args.encoder,
-        pretrained_encoder=args.pretrained_encoder,
-        window_block_indexes=args.window_block_indexes,
-        drop_path=args.drop_path,
-        out_channels=args.hidden_dim,
-        out_feature_indexes=args.out_feature_indexes,
-        projector_scale=args.projector_scale,
-        use_cls_token=args.use_cls_token,
-        hidden_dim=args.hidden_dim,
-        position_embedding=args.position_embedding,
-        freeze_encoder=args.freeze_encoder,
-        layer_norm=args.layer_norm,
-        target_shape=args.shape if hasattr(args, 'shape') else (args.resolution, args.resolution) if hasattr(args, 'resolution') else (640, 640),
-        rms_norm=args.rms_norm,
-        backbone_lora=args.backbone_lora,
-        gradient_checkpointing=args.gradient_checkpointing,
-        load_dinov2_weights=args.pretrain_weights is None,
-        patch_size=args.patch_size,
-        num_windows=args.num_windows,
-        positional_encoding_size=args.positional_encoding_size,
-    )
-    if args.encoder_only:
-        return backbone.backbone.encoder, None, None
-    if args.backbone_only:
-        return backbone, None, None
-
-    args.num_feature_levels = len(args.projector_scale)
-    transformer = build_transformer(args)
-
-    segmentation_head = None
-
-    model = LWDETR(
-        backbone,
-        transformer,
-        segmentation_head,
-        num_classes=num_classes,
-        num_queries=args.num_queries,
-        aux_loss=args.aux_loss,
-        group_detr=args.group_detr,
-        two_stage=args.two_stage,
-        lite_refpoint_refine=args.lite_refpoint_refine,
-        bbox_reparam=args.bbox_reparam,
-    )
-    return model
-
-def download_file(url: str, filename: str) -> None:
-    print("rory downloading url",url)
-    response = requests.get(url, stream=True)
-    total_size = int(response.headers['content-length'])
-    with open(filename, "wb") as f, tqdm(
-        desc=filename,
-        total=total_size,
-        unit='iB',
-        unit_scale=True,
-        unit_divisor=1024,
-    ) as pbar:
-        for data in response.iter_content(chunk_size=1024):
-            size = f.write(data)
-            pbar.update(size)
-
-def download_pretrain_weights(pretrain_weights: str, redownload=False):
-    if pretrain_weights in HOSTED_MODELS:
-        if redownload or not os.path.exists(pretrain_weights):
-            download_file(
-                HOSTED_MODELS[pretrain_weights],
-                pretrain_weights,
-            )
 
 def box_cxcywh_to_xyxy(x):
     x_c, y_c, w, h = [t.squeeze(-1) for t in x.split(1, dim=-1)]
@@ -2760,107 +1887,22 @@ def print_obj(obj, s, seen=None):
             except Exception as e:
                 return
 
-class ModelConfig(BaseModel):
-    encoder: Literal["dinov2_windowed_small", "dinov2_windowed_base"]
-    out_feature_indexes: List[int]
-    dec_layers: int
-    two_stage: bool = True
-    projector_scale: List[Literal["P3", "P4", "P5"]]
-    hidden_dim: int
-    patch_size: int
-    num_windows: int
-    sa_nheads: int
-    ca_nheads: int
-    dec_n_points: int
-    bbox_reparam: bool = True
-    lite_refpoint_refine: bool = True
-    layer_norm: bool = True
-    amp: bool = True
-    num_classes: int = 90
-    pretrain_weights: Optional[str] = None
-    device: Literal["cpu", "cuda", "mps"] = DEVICE
-    resolution: int
-    group_detr: int = 13
-    gradient_checkpointing: bool = False
-    positional_encoding_size: int
-    ia_bce_loss: bool = True
-    cls_loss_coef: float = 1.0
-    segmentation_head: bool = False
-    mask_downsample_ratio: int = 4
-    license: str = "Apache-2.0"
+class ModelConfig(BaseModel): pass
 
 
 class RFDETRBaseConfig(ModelConfig):
-    """
-    The configuration for an RF-DETR Base model.
-    """
-    encoder: Literal["dinov2_windowed_small", "dinov2_windowed_base"] = "dinov2_windowed_small"
-    hidden_dim: int = 256
-    patch_size: int = 14
-    num_windows: int = 4
-    dec_layers: int = 3
-    sa_nheads: int = 8
-    ca_nheads: int = 16
-    dec_n_points: int = 2
-    num_queries: int = 300
-    num_select: int = 300
-    projector_scale: List[Literal["P3", "P4", "P5"]] = ["P4"]
-    out_feature_indexes: List[int] = [2, 5, 8, 11]
     pretrain_weights: Optional[str] = "rf-detr-base.pth"
     resolution: int = 560
     positional_encoding_size: int = 37
 
 class RFDETRNanoConfig(RFDETRBaseConfig):
-    """
-    The configuration for an RF-DETR Nano model.
-    """
-    out_feature_indexes: List[int] = [3, 6, 9, 12]
-    num_windows: int = 2
-    dec_layers: int = 2
-    patch_size: int = 16
     resolution: int = 384
-    positional_encoding_size: int = 24
     pretrain_weights: Optional[str] = "rf-detr-nano.pth"
 
 class ModelConfig(BaseModel):
-    encoder: Literal["dinov2_windowed_small", "dinov2_windowed_base"]
-    out_feature_indexes: List[int]
-    dec_layers: int
-    two_stage: bool = True
-    projector_scale: List[Literal["P3", "P4", "P5"]]
-    hidden_dim: int
-    patch_size: int
-    num_windows: int
-    sa_nheads: int
-    ca_nheads: int
-    dec_n_points: int
-    bbox_reparam: bool = True
-    lite_refpoint_refine: bool = True
-    layer_norm: bool = True
-    amp: bool = True
     num_classes: int = 90
     pretrain_weights: Optional[str] = None
-    device: Literal["cpu", "cuda", "mps"] = DEVICE
     resolution: int
-    group_detr: int = 13
-    gradient_checkpointing: bool = False
-    positional_encoding_size: int
-    ia_bce_loss: bool = True
-    cls_loss_coef: float = 1.0
-    segmentation_head: bool = False
-    mask_downsample_ratio: int = 4
-    license: str = "Apache-2.0"
-
-    @field_validator("pretrain_weights", mode="after")
-    @classmethod
-    def expand_path(cls, v: Optional[str]) -> Optional[str]:
-        """
-        Expand user paths (e.g., '~' or paths with separators) but leave simple filenames
-        (like 'rf-detr-base.pth') unchanged so they can match hosted model keys.
-        """
-        if v is None:
-            return v
-        return os.path.realpath(os.path.expanduser(v))
 
 class RFDETR:
     """
@@ -2874,40 +1916,13 @@ class RFDETR:
 
     def __init__(self, **kwargs):
         self.model_config = self.get_model_config(**kwargs)
-        self.maybe_download_pretrain_weights()
         self.model = self.get_model(self.model_config)
-        self.callbacks = defaultdict(list)
-
-        self.model.inference_model = None
-        self._is_optimized_for_inference = False
-        self._has_warned_about_not_being_optimized_for_inference = False
-        self._optimized_has_been_compiled = False
-        self._optimized_batch_size = None
-        self._optimized_resolution = None
-        self._optimized_dtype = None
-
-    def maybe_download_pretrain_weights(self):
-        """
-        Download pre-trained weights if they are not already downloaded.
-        """
-        download_pretrain_weights(self.model_config.pretrain_weights)
-
 
     def get_model(self, config: ModelConfig):
-        """
-        Retrieve a model instance based on the provided configuration.
-        """
         return Model(**config.dict())
 
-    # Get class_names from the model
     @property
     def class_names(self):
-        """
-        Retrieve the class names supported by the loaded model.
-
-        Returns:
-            dict: A dictionary mapping class IDs to class names. The keys are integers starting from
-        """
         if hasattr(self.model, 'class_names') and self.model.class_names:
             return {i+1: name for i, name in enumerate(self.model.class_names)}
 
@@ -2994,11 +2009,6 @@ class RFDETRNano(RFDETR):
     def get_model_config(self, **kwargs): return RFDETRNanoConfig(**kwargs)
 
 class RFDETRSmallConfig(RFDETRBaseConfig):
-    """
-    The configuration for an RF-DETR Small model.
-    """
-    out_feature_indexes: List[int] = [3, 6, 9, 12]
-    num_windows: int = 2
     dec_layers: int = 3
     patch_size: int = 16
     resolution: int = 512
@@ -3009,10 +2019,6 @@ class RFDETRSmall(RFDETR):
     def get_model_config(self, **kwargs): return RFDETRSmallConfig(**kwargs)
     
 class RFDETRMediumConfig(RFDETRBaseConfig):
-    """
-    The configuration for an RF-DETR Medium model.
-    """
-    out_feature_indexes: List[int] = [3, 6, 9, 12]
     num_windows: int = 2
     dec_layers: int = 4
     patch_size: int = 16
