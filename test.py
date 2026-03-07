@@ -527,6 +527,7 @@ class WindowedDinov2WithRegistersBackbone(PreTrainedModel, BackboneMixin):
 class WindowedDinov2WithRegistersBackbone_tiny():
     def __init__(self, w=None):
         if w is None:
+          self.config = {}
           self.stage_names = ['stem', 'stage1', 'stage2', 'stage3', 'stage4', 'stage5', 'stage6', 'stage7', 'stage8', 'stage9', 'stage10', 'stage11', 'stage12']
           self.out_features = ['stage3', 'stage6', 'stage9', 'stage12']
           return None
@@ -558,22 +559,23 @@ class WindowedDinov2WithRegistersBackbone_tiny():
             if stage in self.out_features:
                 hidden_state = to_tiny(hidden_state)
                 hidden_state = self.layernorm_tiny(hidden_state)
-                hidden_state = hidden_state[:, self.num_register_tokens + 1 :]
+                hidden_state = hidden_state[:, 1 :]
                 # this was actually a bug in the original implementation that we copied here,
                 # cause normally the order is height, width
                 batch_size, _, height, width = pixel_values.shape
-                patch_size = self.config.patch_size
+                patch_size = 16
+
 
                 num_h_patches = height // patch_size
                 num_w_patches = width // patch_size
 
                 # undo windowing
-                num_windows_squared = self.config.num_windows ** 2
+                num_windows_squared = 4
                 B, HW, C = hidden_state.shape
-                num_h_patches_per_window = num_h_patches // self.config.num_windows
-                num_w_patches_per_window = num_w_patches // self.config.num_windows
+                num_h_patches_per_window = num_h_patches // 2
+                num_w_patches_per_window = num_w_patches // 2
                 hidden_state = hidden_state.reshape(B // num_windows_squared, num_windows_squared * HW, C)
-                hidden_state = hidden_state.reshape((B // num_windows_squared) * self.config.num_windows, self.config.num_windows, num_h_patches_per_window, num_w_patches_per_window, C)
+                hidden_state = hidden_state.reshape((B // num_windows_squared) * 2, 2, num_h_patches_per_window, num_w_patches_per_window, C)
                 hidden_state = hidden_state.permute(0, 2, 1, 3, 4)
 
                 hidden_state = hidden_state.reshape(batch_size, num_h_patches, num_w_patches, -1)
@@ -913,7 +915,7 @@ class TransformerDecoder_tiny():
             obj_center = refpoints_unsigmoid[..., :4]
             refpoints_input = obj_center[:, :, None] * tinyTensor.cat(valid_ratios, valid_ratios, dim=-1)[:, None]
             query_sine_embed = gen_sineembed_for_position(
-                refpoints_input[:, :, 0, :], self.d_model / 2) # bs, nq, 256*2
+                refpoints_input[:, :, 0, :], 256 / 2) # bs, nq, 256*2
             query_pos = self.ref_point_head(query_sine_embed)
             return refpoints_input, query_pos, query_sine_embed
 
@@ -1021,12 +1023,12 @@ class MSDeformAttn_tiny():
 
         value = self.value_proj_tiny(input_flatten)
         value = value.masked_fill(input_padding_mask[..., None], float(0))
-        sampling_offsets = self.sampling_offsets_tiny(query).view(N, Len_q, self.n_heads, self.n_levels, self.n_points, 2)
-        attention_weights = self.attention_weights_tiny(query).view(N, Len_q, self.n_heads, self.n_levels * self.n_points)
+        sampling_offsets = self.sampling_offsets_tiny(query).view(N, Len_q, 16, 1, 2, 2)
+        attention_weights = self.attention_weights_tiny(query).view(N, Len_q, 16, 1 * 2)
         sampling_locations = reference_points[:, :, None, :, None, :2] \
-                                + sampling_offsets / self.n_points * reference_points[:, :, None, :, None, 2:] * 0.5
+                                + sampling_offsets / 2 * reference_points[:, :, None, :, None, 2:] * 0.5
         attention_weights = attention_weights.softmax(-1)
-        value = value.transpose(1, 2).contiguous().view(N, self.n_heads, self.d_model // self.n_heads, Len_in)
+        value = value.transpose(1, 2).contiguous().view(N, 16, 256 // 16, Len_in)
         output = ms_deform_attn_core_pytorch(
             value, input_spatial_shapes, sampling_locations, attention_weights)
         output = to_tiny(output)
@@ -1112,9 +1114,8 @@ class Transformer_tiny():
         pos_embed = pos_embed.flatten(2).transpose(1, 2)  # bs, hw, c
         mask = masks[0].flatten(1) if type(masks) == list else masks.flatten(1)
         level_start_index = Tensor([0])
-
         output_memory, output_proposals = gen_encoder_output_proposals(
-            src, mask, h, unsigmoid=not self.bbox_reparam)
+            src, mask, h, unsigmoid=True)
         
         output_memory_gidx = self.enc_output_norm_tiny(self.enc_output_tiny(output_memory))
         enc_outputs_class_unselected_gidx = output_memory_gidx @ self.enc_out_class_embed_w.T + self.enc_out_class_embed_b
@@ -1130,15 +1131,14 @@ class Transformer_tiny():
         enc_outputs_coord_unselected_gidx = tinyTensor.cat(enc_outputs_coord_cxcy_gidx, enc_outputs_coord_wh_gidx, dim=-1)
 
 
-
-        topk = min(self.num_queries, enc_outputs_class_unselected_gidx.shape[-2])
+        topk = min(300, enc_outputs_class_unselected_gidx.shape[-2])
         x = enc_outputs_class_unselected_gidx.max(-1)
         topk_proposals_gidx = tinyTensor.topk(x, topk, dim=1)[1] # bs, nq
 
         boxes_ts = enc_outputs_coord_unselected_gidx.gather(dim=1, index=topk_proposals_gidx.unsqueeze(-1).repeat(1, 1, 4))
 
         # get memory tgt
-        memory_ts = output_memory_gidx.gather(dim=1, index=topk_proposals_gidx.unsqueeze(-1).repeat(1, 1, self.d_model))
+        memory_ts = output_memory_gidx.gather(dim=1, index=topk_proposals_gidx.unsqueeze(-1).repeat(1, 1, 256))
 
         # concat on dim=1, the nq dimension, (bs, nq, d) --> (bs, nq, d)
         # (bs, nq, d)
@@ -1229,8 +1229,7 @@ class Bottleneck_tiny():
         self.cv2 = b.cv2
         self.add = b.add
 
-    def __call__(self, x):
-        return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
+    def __call__(self, x): return self.cv2(self.cv1(x))
 
 class C2f(nn.Module):
     """Faster Implementation of CSP Bottleneck with 2 convolutions."""
@@ -1245,7 +1244,9 @@ class C2f(nn.Module):
 
 class C2f_tiny():
     def __init__(self, c=None):
-        if c is None: return
+        if c is None:
+          self.c = 128
+          return
         self.cv1 = c.cv1
         self.cv2 = c.cv2
         self.c = c.c
@@ -1283,7 +1284,9 @@ class LayerNorm(nn.Module):
 
 class LayerNorm_tiny():
     def __init__(self, l=None):
-        if l is None: return
+        if l is None:
+          self.eps = 1e-6
+          return
         self.eps = l.eps
         self.weight_tiny = l.weight_tiny
         self.bias_tiny = l.bias_tiny
@@ -1393,7 +1396,12 @@ class PositionEmbeddingSine(nn.Module):
         self._export = False
 
 class PositionEmbeddingSine_tiny():
-    def __init__(self, p):
+    def __init__(self, p=None):
+        if p is None:
+          self.scale = 6.283185307179586
+          self.num_pos_feats = 128
+          self.temperature = 10000
+          return
         self.scale = p.scale
         self.num_pos_feats = p.num_pos_feats
         self.temperature = p.temperature
@@ -1830,7 +1838,9 @@ class MLP_tiny():
 class LWDETR_tiny():
     """ This is the Group DETR v3 module that performs object detection """
     def __init__(self, l=None):
-        if not l: return
+        if l is None:
+          self.num_queries = 300
+          return
         self.backbone = l.backbone
         self.refpoint_embed = l.refpoint_embed
         self.num_queries = l.num_queries
@@ -2309,6 +2319,7 @@ class Model:
 
         if "nano" in args.pretrain_weights:
           new_model = LWDETR_tiny()
+          new_model.position_embedding = PositionEmbeddingSine_tiny()
           new_model.query_feat_tiny = tinyTensor.empty((3900, 256))
           new_model.refpoint_embed_tiny = tinyTensor.empty((3900, 4))
           new_model.class_embed = tinynn.Linear(256, 91)
@@ -2333,7 +2344,6 @@ class Model:
           new_model.transformer.decoder.layers = tiny_seq(3)
           for i in range(2):
             new_model.transformer.decoder.layers[i] = TransformerDecoderLayer_tiny()
-            new_model.transformer.decoder.layers[i] = MultiheadAttention_tiny()
             new_model.transformer.decoder.layers[i].self_attn = MultiheadAttention_tiny()
             new_model.transformer.decoder.layers[i].cross_attn = MSDeformAttn_tiny()
             new_model.transformer.decoder.layers[i].linear1_tiny = tinynn.Linear(256, 2048)
@@ -2357,6 +2367,7 @@ class Model:
           new_model.transformer.enc_out_class_embed = tiny_seq(13)
           for i in range(13):
             new_model.transformer.enc_out_bbox_embed[i] = MLP_tiny()
+            new_model.transformer.enc_out_bbox_embed[i].num_layers = 3
             new_model.transformer.enc_out_bbox_embed[i].layers_tiny = tiny_seq(3)
             new_model.transformer.enc_out_bbox_embed[i].layers_tiny[0] = tinynn.Linear(256, 256)
             new_model.transformer.enc_out_bbox_embed[i].layers_tiny[1] = tinynn.Linear(256, 256)
@@ -2370,6 +2381,7 @@ class Model:
 
           new_model.transformer.decoder.ref_point_head = MLP_tiny()
           new_model.transformer.decoder.ref_point_head.layers_tiny = tiny_seq(size=2)
+          new_model.transformer.decoder.ref_point_head.num_layers = 2
           new_model.transformer.decoder.ref_point_head.layers = tiny_seq(size=2)
           new_model.transformer.decoder.ref_point_head.layers_tiny[0] = tinynn.Linear(512, 256)
           new_model.transformer.decoder.ref_point_head.layers_tiny[1] = tinynn.Linear(256, 256)
@@ -2415,9 +2427,7 @@ class Model:
           new_model.backbone.encoder.patch_size = 16 # todo, not in state_dict?
           new_model.backbone.encoder.num_windows = 2 # todo, not in state_dict?
           new_model.backbone.encoder.encoder = WindowedDinov2WithRegistersBackbone_tiny()
-          new_model.backbone.encoder.encoder.layernorm_tiny = LayerNorm_tiny()
-          new_model.backbone.encoder.encoder.layernorm_tiny.weight = tinyTensor.empty((384))
-          new_model.backbone.encoder.encoder.layernorm_tiny.bias = tinyTensor.empty((384))
+          new_model.backbone.encoder.encoder.layernorm_tiny = tinynn.LayerNorm(384)
           new_model.backbone.encoder.encoder.encoder = WindowedDinov2WithRegistersEncoder_tiny()
           new_model.backbone.encoder.encoder.embeddings = WindowedDinov2WithRegistersEmbeddings_tiny()
           new_model.backbone.encoder.encoder.embeddings.patch_embeddings = Dinov2WithRegistersPatchEmbeddings_tiny()
