@@ -23,7 +23,7 @@ import argparse
 import json
 import collections.abc
 from tinygrad.dtype import dtypes
-from tinygrad.nn.state import get_state_dict, load_state_dict
+from tinygrad.nn.state import get_state_dict, load_state_dict, safe_save, safe_load
 
 from tinygrad import Tensor as tinyTensor, nn as tinynn
 import copy
@@ -2236,7 +2236,7 @@ class Model:
 
           #exit()
 
-          state_dict = pickle.load(open('nano.pkl', 'rb'))
+          state_dict = safe_load("nano.safetensors")
           load_state_dict(new_model, state_dict)
           self.model = new_model
 
@@ -2391,7 +2391,7 @@ class Model:
 
           #exit()
 
-          state_dict = pickle.load(open('small.pkl', 'rb'))
+          state_dict = safe_load("small.safetensors")
           load_state_dict(new_model, state_dict)            
           self.model = new_model
 
@@ -2545,7 +2545,7 @@ class Model:
             new_model.backbone.encoder.encoder.encoder.layer[i].mlp.fc2_tiny = tinynn.Linear(1536, 384)
 
 
-          state_dict = pickle.load(open('medium.pkl', 'rb'))
+          state_dict = safe_load("medium.safetensors")
           load_state_dict(new_model, state_dict)            
           self.model = new_model
 
@@ -2697,7 +2697,7 @@ class Model:
 
           #exit()
 
-          state_dict = pickle.load(open('large.pkl', 'rb'))
+          state_dict = safe_load("large.safetensors")
           load_state_dict(new_model, state_dict)            
           self.model = new_model
 
