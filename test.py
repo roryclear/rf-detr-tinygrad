@@ -223,15 +223,15 @@ class WindowedDinov2WithRegistersEmbeddings_tiny():
         embeddings = embeddings + self.position_embeddings_tiny
 
         # reshape for windows
-        num_h_patches = height // self.config.patch_size
-        num_w_patches = width // self.config.patch_size
+        num_h_patches = height // 16
+        num_w_patches = width // 16
         cls_token_with_pos_embed = embeddings[:, :1]
         pixel_tokens_with_pos_embed = embeddings[:, 1:]
         
         pixel_tokens_with_pos_embed = pixel_tokens_with_pos_embed.view(batch_size, num_h_patches, num_w_patches, -1)
-        num_w_patches_per_window = num_w_patches // self.config.num_windows
-        num_h_patches_per_window = num_h_patches // self.config.num_windows
-        num_windows = self.config.num_windows
+        num_w_patches_per_window = num_w_patches // 2
+        num_h_patches_per_window = num_h_patches // 2
+        num_windows = 2
         windowed_pixel_tokens = pixel_tokens_with_pos_embed.reshape(batch_size * num_windows, num_h_patches_per_window, num_windows, num_h_patches_per_window, -1)
         windowed_pixel_tokens = windowed_pixel_tokens.permute(0, 2, 1, 3, 4)
         windowed_pixel_tokens = windowed_pixel_tokens.reshape(batch_size * num_windows ** 2, num_h_patches_per_window * num_w_patches_per_window, -1)
@@ -495,7 +495,7 @@ class WindowedDinov2WithRegistersEncoder_tiny():
 
         for i, layer_module in enumerate(self.layer):
             all_hidden_states = all_hidden_states + (hidden_states,)
-            run_full_attention = i not in self.config.window_block_indexes
+            run_full_attention = i not in [0, 1, 2, 4, 5, 7, 8, 10, 11]
             layer_head_mask = None
             layer_outputs = layer_module(hidden_states, layer_head_mask, output_attentions, run_full_attention)
             hidden_states = layer_outputs[0]
