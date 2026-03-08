@@ -8,13 +8,10 @@ from transformers.modeling_outputs import BackboneOutput, BaseModelOutput
 from transformers.modeling_utils import PreTrainedModel
 from transformers.configuration_utils import PretrainedConfig
 
-import torch
-from torch import nn
 from typing import List, Literal, Optional, Union, Tuple, Callable, Set, Any
 from pydantic import BaseModel, field_validator
 import os
 import torchvision.transforms.functional as vF
-import torch.nn.functional as F
 from tqdm import tqdm
 import math
 from tinygrad.dtype import dtypes
@@ -842,7 +839,7 @@ class LWDETR_tiny():
 
     def __call__(self, samples, targets=None):
         _, _, h, w = samples.shape
-        mask = torch.zeros((1, h, w), dtype=torch.bool)
+        mask = tinyTensor.zeros((1, h, w), dtype=dtypes.bool)
         feature, mask = self.backbone(samples, mask)
         pos = self.position_embedding(feature, mask)[0]
         refpoint_embed_weight = self.refpoint_embed_tiny[:self.num_queries]
