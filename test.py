@@ -926,12 +926,11 @@ class PostProcess():
         return [{'scores': s, 'labels': l, 'boxes': b} for s, l, b in zip(topk_values.numpy(), labels.numpy(), boxes.numpy())]
 
 class Model:
-    def __init__(self, resolution, weights):
+    def __init__(self, resolution, name):
         self.resolution = resolution
         self.postprocess = PostProcess(num_select=self.resolution)
-        self.weights = weights
 
-        if "nano" in self.weights:
+        if "nano" in name:
           new_model = LWDETR_tiny()
           new_model.position_embedding = PositionEmbeddingSine_tiny()
           new_model.query_feat_tiny = tinyTensor.empty((3900, 256))
@@ -1073,20 +1072,11 @@ class Model:
           state_dict = safe_load("nano.safetensors")
           load_state_dict(new_model, state_dict)
           self.model = new_model
-
-          print("NANO")
-          m = 0
-          new_state_dict = get_state_dict(new_model)
-          for k in state_dict:
-            if k not in new_state_dict:
-              print("missing",k)
-              m+=1
-          print("missing keys =",m)
         
         #exit()
 
 
-        if "small" in self.weights:
+        if "small" in name:
           new_model = LWDETR_tiny()
           new_model.position_embedding = PositionEmbeddingSine_tiny()
           new_model.query_feat_tiny = tinyTensor.empty((3900, 256))
@@ -1229,19 +1219,8 @@ class Model:
           load_state_dict(new_model, state_dict)            
           self.model = new_model
 
-          print("SMALL")
-          m = 0
-          new_state_dict = get_state_dict(new_model)
-          for k in state_dict:
-            if k not in new_state_dict:
-              print("missing",k)
-              m+=1
-          print("missing keys =",m)
 
-
-
-
-        if "medium" in self.weights:
+        if "medium" in name:
           new_model = LWDETR_tiny()
           new_model.position_embedding = PositionEmbeddingSine_tiny()
           new_model.query_feat_tiny = tinyTensor.empty((3900, 256))
@@ -1383,16 +1362,8 @@ class Model:
           load_state_dict(new_model, state_dict)            
           self.model = new_model
 
-          print("medium")
-          m = 0
-          new_state_dict = get_state_dict(new_model)
-          for k in state_dict:
-            if k not in new_state_dict:
-              print("missing",k)
-              m+=1
-          print("missing keys =",m)
 
-        if "large" in self.weights:
+        if "large" in name:
           new_model = LWDETR_tiny()
           new_model.position_embedding = PositionEmbeddingSine_tiny()
           new_model.query_feat_tiny = tinyTensor.empty((3900, 256))
@@ -1536,24 +1507,10 @@ class Model:
           self.model = new_model
 
 class RFDETR:
-    """
-    The base RF-DETR class implements the core methods for training RF-DETR models,
-    running inference on the models, optimising models, and uploading trained
-    models for deployment.
-    """
     means = [0.485, 0.456, 0.406]
     stds = [0.229, 0.224, 0.225]
     size = None
-
-    def __init__(self, resolution, weights):
-        self.model = Model(resolution, weights)
-
-    @property
-    def class_names(self):
-        if hasattr(self.model, 'class_names') and self.model.class_names:
-            return {i+1: name for i, name in enumerate(self.model.class_names)}
-
-        return COCO_CLASSES
+    def __init__(self, resolution, name): self.model = Model(resolution, name)
 
     def predict(self, img, threshold: float = 0.5):
         img_np = np.asarray(img)
@@ -1582,24 +1539,8 @@ class RFDETR:
             scores = scores[keep]
             labels = labels[keep]
             boxes = boxes[keep]
-
-            if "masks" in result:
-                masks = result["masks"]
-                masks = masks[keep]
-
-                detections = sv.Detections(
-                    xyxy=boxes,
-                    confidence=scores,
-                    class_id=labels,
-                    mask=masks.squeeze(1).cpu().numpy(),
-                )
-            else:
-                detections = sv.Detections(
-                    xyxy=boxes,
-                    confidence=scores,
-                    class_id=labels,
-                )
-
+            
+            detections = sv.Detections(xyxy=boxes, confidence=scores,class_id=labels)
             detections_list.append(detections)
 
         return detections_list if len(detections_list) > 1 else detections_list[0]
@@ -1624,7 +1565,7 @@ excepted_xyxys = [
 [2.424996,357.59814,587.4715,1267.9884,]]
 ]
 
-models = [RFDETR(resolution=384, weights='nano'), RFDETR(resolution=512, weights='small'), RFDETR(resolution=576, weights='medium'), RFDETR(resolution=704, weights='large')]
+models = [RFDETR(resolution=384, name='nano'), RFDETR(resolution=512, name='small'), RFDETR(resolution=576, name='medium'), RFDETR(resolution=704, name='large')]
 for i, model in enumerate(models):
   #image = Image.open(requests.get('https://media.roboflow.com/dog.jpg', stream=True).raw)
   image = Image.open('dog.jpg')
