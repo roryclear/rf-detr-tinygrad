@@ -838,42 +838,12 @@ class tiny_seq:
         return x
         
 
-class PostProcess():
-    """ This module converts the model's output into the format expected by the coco api"""
-    def __init__(self, num_select=300) -> None:
-        super().__init__()
-        self.num_select = num_select
-
-    def __call__(self, outputs, target_sizes):
-        """ Perform the computation
-        Parameters:
-            outputs: raw outputs of the model
-            target_sizes: tensor of dimension [batch_size x 2] containing the size of each images of the batch
-                          For evaluation, this must be the original image size (before any data augmentation)
-                          For visualization, this should be the image size after data augment, but before padding
-        """
-        out_logits, out_bbox = outputs['pred_logits'], outputs['pred_boxes']
-        out_logits.realize() # todo, why do we have to do this?
-        prob = out_logits.sigmoid()
-        topk_values, topk_indexes = tinyTensor.topk(prob.view(out_logits.shape[0], -1), self.num_select, dim=1)
-        topk_boxes = topk_indexes // out_logits.shape[2]
-        labels = topk_indexes % out_logits.shape[2]
-        boxes = box_cxcywh_to_xyxy(out_bbox)
-        boxes = tinyTensor.gather(boxes, 1, topk_boxes.unsqueeze(-1).repeat(1,1,4))
-        img_h = target_sizes[:, 0]
-        img_w = target_sizes[:, 1]
-        scale_fct = tinyTensor.stack(img_w, img_h, img_w, img_h, dim=1)
-        boxes = boxes * scale_fct[:, None, :]
-        return [{'scores': s, 'labels': l, 'boxes': b} for s, l, b in zip(topk_values.numpy(), labels.numpy(), boxes.numpy())]
-
 class Model:
     def __init__(self, resolution, name):
         self.resolution = resolution
-        self.postprocess = PostProcess(num_select=self.resolution)
 
         config = {"nano":{"n_layers":2, "size": 577}, "small":{"n_layers":3, "size":1025},
                   "medium":{"n_layers":4, "size":1297}, "large":{"n_layers":4, "size":1937}}
-        
         self.model = LWDETR_tiny()
         self.model.position_embedding = PositionEmbeddingSine_tiny()
         self.model.query_feat_tiny = tinyTensor.empty((3900, 256))
@@ -1013,6 +983,22 @@ class Model:
         state_dict = safe_load(f"{name}.safetensors")
         load_state_dict(self.model, state_dict)
 
+
+def postprocess(outputs, target_sizes):
+    out_logits, out_bbox = outputs['pred_logits'], outputs['pred_boxes']
+    out_logits.realize() # todo, why do we have to do this?
+    prob = out_logits.sigmoid()
+    topk_values, topk_indexes = tinyTensor.topk(prob.view(out_logits.shape[0], -1), 300, dim=1)
+    topk_boxes = topk_indexes // out_logits.shape[2]
+    labels = topk_indexes % out_logits.shape[2]
+    boxes = box_cxcywh_to_xyxy(out_bbox)
+    boxes = tinyTensor.gather(boxes, 1, topk_boxes.unsqueeze(-1).repeat(1,1,4))
+    img_h = target_sizes[:, 0]
+    img_w = target_sizes[:, 1]
+    scale_fct = tinyTensor.stack(img_w, img_h, img_w, img_h, dim=1)
+    boxes = boxes * scale_fct[:, None, :]
+    return [{'scores': s, 'labels': l, 'boxes': b} for s, l, b in zip(topk_values.numpy(), labels.numpy(), boxes.numpy())]
+
 class RFDETR:
     means = [0.485, 0.456, 0.406]
     stds = [0.229, 0.224, 0.225]
@@ -1034,7 +1020,7 @@ class RFDETR:
         batch_tensor = tinyTensor.stack(*processed_images)
         predictions = self.model.model(batch_tensor)
         target_sizes = tinyTensor([[h,w]])
-        results = self.model.postprocess(predictions, target_sizes=target_sizes)
+        results = postprocess(predictions, target_sizes=target_sizes)
 
         detections_list = []
         for result in results:
