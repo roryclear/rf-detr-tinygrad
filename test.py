@@ -10,6 +10,8 @@ from tinygrad.nn.state import get_state_dict, load_state_dict, safe_save, safe_l
 
 from tinygrad import Tensor, nn
 import cv2
+from tinygrad import TinyJit
+import time
 
 COCO_CLASSES = {1: "person", 2: "bicycle", 3: "car", 4: "motorcycle", 5: "airplane", 6: "bus", 7: "train", 8: "truck", 9: "boat",
 10: "traffic light", 11: "fire hydrant", 13: "stop sign", 14: "parking meter", 15: "bench", 16: "bird", 17: "cat", 18: "dog",
@@ -991,6 +993,7 @@ class RFDETR:
         processed_images = Tensor([img_np])
         return processed_images
     
+    #@TinyJit
     def predict(self, processed_images, h, w, threshold: float = 0.5):
         predictions = self.model.model(processed_images)
         out_logits, out_bbox = predictions
@@ -1002,7 +1005,7 @@ class RFDETR:
         boxes = Tensor.gather(boxes, 1, topk_boxes.unsqueeze(-1).repeat(1,1,4))
         boxes = boxes * Tensor([w, h, w, h])
         out_logits.realize() # todo, why do we have to do this?
-        return topk_values.numpy(), labels.numpy(), boxes.numpy()
+        return topk_values, labels, boxes
 
     
     def postprocess(self, scores, labels, boxes, threshold=0.5):
@@ -1033,6 +1036,10 @@ excepted_xyxys = [
 [2.424996,357.59814,587.4715,1267.9884,]]
 ]
 
+def sort_boxes(xyxy):
+    xyxy = np.asarray(xyxy)
+    order = np.lexsort((xyxy[:,3], xyxy[:,2], xyxy[:,1], xyxy[:,0]))
+    return xyxy[order]
 
 if __name__ == "__main__":
   models = [[384, "nano"], [512, "small"], [576, "medium"], [704, "large"]]
@@ -1046,11 +1053,14 @@ if __name__ == "__main__":
 
     processed_images = model.preprocess(img_np)
     scores, labels, boxes = model.predict(processed_images, h, w, threshold=0.5)
+    scores, labels, boxes = scores.numpy(), labels.numpy(), boxes.numpy()
+
+    
     detections = model.postprocess(scores, labels, boxes)
     labels = [f"{COCO_CLASSES[class_id]}" for class_id in detections.class_id]
     annotated_image = sv.BoxAnnotator().annotate(image, detections)
     annotated_image = sv.LabelAnnotator().annotate(annotated_image, detections, labels)
-    np.testing.assert_allclose(detections.xyxy, excepted_xyxys[i], atol=0.5)
+    np.testing.assert_allclose(sort_boxes(detections.xyxy), sort_boxes(excepted_xyxys[i]), atol=0.5)
     annotated_image.save(f"annotated_image_{i}.jpg")
 
   print("PASSED")
