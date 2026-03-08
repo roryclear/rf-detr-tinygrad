@@ -3,23 +3,18 @@ import supervision as sv
 from PIL import Image
 import numpy as np
 from collections import defaultdict
-from transformers.utils.backbone_utils import BackboneMixin, BackboneConfigMixin
 from transformers.modeling_outputs import BackboneOutput, BaseModelOutput
-from transformers.modeling_utils import PreTrainedModel
-from transformers.configuration_utils import PretrainedConfig
 
 from typing import List, Literal, Optional, Union, Tuple, Callable, Set, Any
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel
 import os
-import torchvision.transforms.functional as vF
 from tqdm import tqdm
 import math
 from tinygrad.dtype import dtypes
 from tinygrad.nn.state import get_state_dict, load_state_dict, safe_save, safe_load
 
 from tinygrad import Tensor as tinyTensor, nn as tinynn
-import copy
-import pickle
+import cv2
 
 def to_tiny(x):
     if type(x) in [tuple, list]:
@@ -1581,14 +1576,18 @@ class RFDETR:
 
         return COCO_CLASSES
 
-    def predict(self, img, threshold: float = 0.5,**kwargs):
-        img_tensor = vF.to_tensor(img)
-        h, w = img_tensor.shape[1:]
-        img_tensor = vF.normalize(img_tensor, self.means, self.stds)
-        img_tensor = vF.resize(img_tensor, (self.model.resolution, self.model.resolution))
-        processed_images = [img_tensor]
-
-        processed_images = to_tiny(processed_images)
+    def predict(self, img, threshold: float = 0.5):
+        img_np = np.asarray(img)
+        h, w = img_np.shape[:2]
+        img_np = img_np.astype(np.float32) / 255.0
+        target = self.model.resolution
+        interp = cv2.INTER_AREA if max(h, w) > target else cv2.INTER_LINEAR
+        img_np = cv2.resize(img_np, (target, target), interpolation=interp)
+        means = np.array(self.means, dtype=np.float32).reshape(1,1,3)
+        stds = np.array(self.stds, dtype=np.float32).reshape(1,1,3)
+        img_np = (img_np - means) / stds
+        img_np = np.transpose(img_np, (2,0,1))
+        processed_images = tinyTensor([img_np])
         batch_tensor = tinyTensor.stack(*processed_images)
         predictions = self.model.model(batch_tensor)
         target_sizes = tinyTensor([[h,w]])
@@ -1670,23 +1669,24 @@ class RFDETRLargeConfig(ModelConfig):
     pretrain_weights: Optional[str] = "rf-detr-large-2026.pth"
     resolution: int = 704
 
-excepted_xyxys = [[[61.59328,247.66426,652.32355,928.3689,],
-[1.2408543,361.55093,649.4161,1264.488,],
-[622.7948,720.442,698.4076,787.92175,]],
+excepted_xyxys = [
+[[63.662533,247.56085,649.37244,933.79956,],
+[1.341641,358.99182,652.4267,1263.1971,],
+[622.907,721.52893,698.8878,787.8673,]],
 
-[[68.508965,247.73727,620.56354,930.30994,],
-[0.4297328,661.0969,443.56732,1268.2306,],
-[0.3834057,354.28635,641.4768,1263.6902,],
-[623.1764,715.69305,701.5879,787.0987,]],
+[[68.807434,247.89589,623.2189,930.11993,],
+[0.668149,658.804,443.2135,1268.3124,],
+[-2.485571,349.83823,646.1853,1261.8707,],
+[623.1051,716.02563,701.54877,787.0673,]],
 
-[[68.70639,247.85626,620.48596,927.8142,],
-[626.4464,731.493,696.3892,787.9792,],
-[1.2272072,355.78497,649.1565,1266.314,]],
+[[68.89001,248.13159,622.48975,927.16235,],
+[626.83704,733.20435,696.6672,788.11206,],
+[0.5390167,355.58514,649.50793,1266.9197,]],
 
-[[67.91085,249.38751,633.45123,928.10974,],
-[-0.5587363,660.9967,439.97687,1272.4303,],
-[625.08136,730.78894,695.82074,786.9195,],
-[2.4219275,357.44083,596.1476,1265.3009,]]
+[[68.368454,249.53983,631.3086,928.4662,],
+[625.03973,730.9523,696.16437,786.9667,],
+[-0.46054602,661.33997,440.52988,1272.4196,],
+[2.424996,357.59814,587.4715,1267.9884,]]
 ]
 
 models = [RFDETRNano(), RFDETRSmall(), RFDETRMedium(), RFDETRLarge()]
