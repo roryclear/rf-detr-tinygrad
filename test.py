@@ -926,12 +926,12 @@ class PostProcess():
         return [{'scores': s, 'labels': l, 'boxes': b} for s, l, b in zip(topk_values.numpy(), labels.numpy(), boxes.numpy())]
 
 class Model:
-    def __init__(self, **kwargs):
-        self.resolution = kwargs['resolution']
-        self.postprocess = PostProcess(num_select=kwargs['resolution'])
-        self.stop_early = False
+    def __init__(self, resolution, weights):
+        self.resolution = resolution
+        self.postprocess = PostProcess(num_select=self.resolution)
+        self.weights = weights
 
-        if "nano" in kwargs['pretrain_weights']:
+        if "nano" in self.weights:
           new_model = LWDETR_tiny()
           new_model.position_embedding = PositionEmbeddingSine_tiny()
           new_model.query_feat_tiny = tinyTensor.empty((3900, 256))
@@ -1086,7 +1086,7 @@ class Model:
         #exit()
 
 
-        if "small" in kwargs['pretrain_weights']:
+        if "small" in self.weights:
           new_model = LWDETR_tiny()
           new_model.position_embedding = PositionEmbeddingSine_tiny()
           new_model.query_feat_tiny = tinyTensor.empty((3900, 256))
@@ -1241,7 +1241,7 @@ class Model:
 
 
 
-        if "medium" in kwargs['pretrain_weights']:
+        if "medium" in self.weights:
           new_model = LWDETR_tiny()
           new_model.position_embedding = PositionEmbeddingSine_tiny()
           new_model.query_feat_tiny = tinyTensor.empty((3900, 256))
@@ -1392,7 +1392,7 @@ class Model:
               m+=1
           print("missing keys =",m)
 
-        if "large" in kwargs['pretrain_weights']:
+        if "large" in self.weights:
           new_model = LWDETR_tiny()
           new_model.position_embedding = PositionEmbeddingSine_tiny()
           new_model.query_feat_tiny = tinyTensor.empty((3900, 256))
@@ -1545,12 +1545,8 @@ class RFDETR:
     stds = [0.229, 0.224, 0.225]
     size = None
 
-    def __init__(self, **kwargs):
-        self.model_config = self.get_model_config(**kwargs)
-        self.model = self.get_model(self.model_config)
-
-    def get_model(self, config):
-        return Model(**config.dict())
+    def __init__(self, resolution, weights):
+        self.model = Model(resolution, weights)
 
     @property
     def class_names(self):
@@ -1608,45 +1604,6 @@ class RFDETR:
 
         return detections_list if len(detections_list) > 1 else detections_list[0]
 
-class RFDETRBaseConfig(BaseModel):
-    pretrain_weights: Optional[str] = "rf-detr-base.pth"
-    resolution: int = 560
-    positional_encoding_size: int = 37
-
-class RFDETRNanoConfig(RFDETRBaseConfig):
-    resolution: int = 384
-    pretrain_weights: Optional[str] = "rf-detr-nano.pth"
-
-class ModelConfig(BaseModel):
-    num_classes: int = 90
-    pretrain_weights: Optional[str] = None
-    resolution: int
-
-class RFDETRNano(RFDETR):
-    def get_model_config(self, **kwargs): return RFDETRNanoConfig(**kwargs)
-
-class RFDETRSmallConfig(RFDETRBaseConfig):
-    resolution: int = 512
-    pretrain_weights: Optional[str] = "rf-detr-small.pth"
-
-class RFDETRSmall(RFDETR):
-    def get_model_config(self, **kwargs): return RFDETRSmallConfig(**kwargs)
-    
-class RFDETRMediumConfig(RFDETRBaseConfig):
-    resolution: int = 576
-    pretrain_weights: Optional[str] = "rf-detr-medium.pth"
-
-class RFDETRMedium(RFDETR):
-    def get_model_config(self, **kwargs): return RFDETRMediumConfig(**kwargs)
-
-class RFDETRLarge(RFDETR):
-    def get_model_config(self, **kwargs): return RFDETRLargeConfig(**kwargs)
-
-#res 704, ps 16, 2 windows, 4 dec layers, 300 queries, ViT-S basis
-class RFDETRLargeConfig(ModelConfig):
-    pretrain_weights: Optional[str] = "rf-detr-large-2026.pth"
-    resolution: int = 704
-
 excepted_xyxys = [
 [[63.662533,247.56085,649.37244,933.79956,],
 [1.341641,358.99182,652.4267,1263.1971,],
@@ -1667,7 +1624,7 @@ excepted_xyxys = [
 [2.424996,357.59814,587.4715,1267.9884,]]
 ]
 
-models = [RFDETRNano(), RFDETRSmall(), RFDETRMedium(), RFDETRLarge()]
+models = [RFDETR(resolution=384, weights='nano'), RFDETR(resolution=512, weights='small'), RFDETR(resolution=576, weights='medium'), RFDETR(resolution=704, weights='large')]
 for i, model in enumerate(models):
   #image = Image.open(requests.get('https://media.roboflow.com/dog.jpg', stream=True).raw)
   image = Image.open('dog.jpg')
