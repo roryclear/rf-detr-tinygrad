@@ -1132,10 +1132,10 @@ excepted_xyxys = [
 [2.424996,357.59814,587.4715,1267.9884,]]
 ]
 
-models = [RFDETR(resolution=384, name='nano'), RFDETR(resolution=512, name='small'), RFDETR(resolution=576, name='medium'), RFDETR(resolution=704, name='large')]
-for i, model in enumerate(models):
-  #image = Image.open(requests.get('https://media.roboflow.com/dog.jpg', stream=True).raw)
+models = [[384, "nano"], [512, "small"], [576, "medium"], [704, "large"]]
+for i in range(len(models)):
   image = Image.open('dog.jpg')
+  model = RFDETR(models[i][0], models[i][1])
   detections = model.predict(image, threshold=0.5)
   labels = [f"{COCO_CLASSES[class_id]}" for class_id in detections.class_id]
   annotated_image = sv.BoxAnnotator().annotate(image, detections)
