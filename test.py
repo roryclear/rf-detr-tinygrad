@@ -1535,23 +1535,6 @@ class Model:
           load_state_dict(new_model, state_dict)            
           self.model = new_model
 
-class ModelConfig(BaseModel): pass
-
-
-class RFDETRBaseConfig(ModelConfig):
-    pretrain_weights: Optional[str] = "rf-detr-base.pth"
-    resolution: int = 560
-    positional_encoding_size: int = 37
-
-class RFDETRNanoConfig(RFDETRBaseConfig):
-    resolution: int = 384
-    pretrain_weights: Optional[str] = "rf-detr-nano.pth"
-
-class ModelConfig(BaseModel):
-    num_classes: int = 90
-    pretrain_weights: Optional[str] = None
-    resolution: int
-
 class RFDETR:
     """
     The base RF-DETR class implements the core methods for training RF-DETR models,
@@ -1566,7 +1549,7 @@ class RFDETR:
         self.model_config = self.get_model_config(**kwargs)
         self.model = self.get_model(self.model_config)
 
-    def get_model(self, config: ModelConfig):
+    def get_model(self, config):
         return Model(**config.dict())
 
     @property
@@ -1625,25 +1608,32 @@ class RFDETR:
 
         return detections_list if len(detections_list) > 1 else detections_list[0]
 
+class RFDETRBaseConfig(BaseModel):
+    pretrain_weights: Optional[str] = "rf-detr-base.pth"
+    resolution: int = 560
+    positional_encoding_size: int = 37
+
+class RFDETRNanoConfig(RFDETRBaseConfig):
+    resolution: int = 384
+    pretrain_weights: Optional[str] = "rf-detr-nano.pth"
+
+class ModelConfig(BaseModel):
+    num_classes: int = 90
+    pretrain_weights: Optional[str] = None
+    resolution: int
+
 class RFDETRNano(RFDETR):
     def get_model_config(self, **kwargs): return RFDETRNanoConfig(**kwargs)
 
 class RFDETRSmallConfig(RFDETRBaseConfig):
-    dec_layers: int = 3
-    patch_size: int = 16
     resolution: int = 512
-    positional_encoding_size: int = 32
     pretrain_weights: Optional[str] = "rf-detr-small.pth"
 
 class RFDETRSmall(RFDETR):
     def get_model_config(self, **kwargs): return RFDETRSmallConfig(**kwargs)
     
 class RFDETRMediumConfig(RFDETRBaseConfig):
-    num_windows: int = 2
-    dec_layers: int = 4
-    patch_size: int = 16
     resolution: int = 576
-    positional_encoding_size: int = 36
     pretrain_weights: Optional[str] = "rf-detr-medium.pth"
 
 class RFDETRMedium(RFDETR):
