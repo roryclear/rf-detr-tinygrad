@@ -984,7 +984,7 @@ class Model:
         load_state_dict(self.model, state_dict)
 
 
-def postprocess(outputs, target_sizes):
+def postprocess(outputs, img_w, img_h):
     out_logits, out_bbox = outputs['pred_logits'], outputs['pred_boxes']
     prob = out_logits.sigmoid()
     topk_values, topk_indexes = tinyTensor.topk(prob.view(out_logits.shape[0], -1), 300, dim=1)
@@ -992,10 +992,7 @@ def postprocess(outputs, target_sizes):
     labels = topk_indexes % out_logits.shape[2]
     boxes = box_cxcywh_to_xyxy(out_bbox)
     boxes = tinyTensor.gather(boxes, 1, topk_boxes.unsqueeze(-1).repeat(1,1,4))
-    img_h = target_sizes[:, 0]
-    img_w = target_sizes[:, 1]
-    scale_fct = tinyTensor.stack(img_w, img_h, img_w, img_h, dim=1)
-    boxes = boxes * scale_fct[:, None, :]
+    boxes = boxes * tinyTensor([img_w, img_h, img_w, img_h])
     out_logits.realize() # todo, why do we have to do this?
     return {'scores': topk_values.numpy(), 'labels': labels.numpy(), 'boxes': boxes.numpy()}
 
@@ -1019,8 +1016,7 @@ class RFDETR:
         processed_images = tinyTensor([img_np])
         batch_tensor = tinyTensor.stack(*processed_images)
         predictions = self.model.model(batch_tensor)
-        target_sizes = tinyTensor([[h,w]])
-        result = postprocess(predictions, target_sizes=target_sizes)
+        result = postprocess(predictions, img_w=w, img_h=h)
 
         scores = result["scores"]
         labels = result["labels"]
