@@ -997,7 +997,7 @@ def postprocess(outputs, target_sizes):
     scale_fct = tinyTensor.stack(img_w, img_h, img_w, img_h, dim=1)
     boxes = boxes * scale_fct[:, None, :]
     out_logits.realize() # todo, why do we have to do this?
-    return [{'scores': s, 'labels': l, 'boxes': b} for s, l, b in zip(topk_values.numpy(), labels.numpy(), boxes.numpy())]
+    return {'scores': topk_values.numpy(), 'labels': labels.numpy(), 'boxes': boxes.numpy()}
 
 class RFDETR:
     means = [0.485, 0.456, 0.406]
@@ -1020,23 +1020,19 @@ class RFDETR:
         batch_tensor = tinyTensor.stack(*processed_images)
         predictions = self.model.model(batch_tensor)
         target_sizes = tinyTensor([[h,w]])
-        results = postprocess(predictions, target_sizes=target_sizes)
+        result = postprocess(predictions, target_sizes=target_sizes)
 
-        detections_list = []
-        for result in results:
-            scores = result["scores"]
-            labels = result["labels"]
-            boxes = result["boxes"]
+        scores = result["scores"]
+        labels = result["labels"]
+        boxes = result["boxes"]
 
-            keep = scores > threshold
-            scores = scores[keep]
-            labels = labels[keep]
-            boxes = boxes[keep]
-            
-            detections = sv.Detections(xyxy=boxes, confidence=scores,class_id=labels)
-            detections_list.append(detections)
-
-        return detections_list if len(detections_list) > 1 else detections_list[0]
+        keep = scores > threshold
+        scores = scores[keep]
+        labels = labels[keep]
+        boxes = boxes[keep]
+        
+        detections = sv.Detections(xyxy=boxes, confidence=scores,class_id=labels)
+        return detections
 
 excepted_xyxys = [
 [[63.662533,247.56085,649.37244,933.79956,],
