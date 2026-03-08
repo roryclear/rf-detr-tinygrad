@@ -16,13 +16,6 @@ from tinygrad.nn.state import get_state_dict, load_state_dict, safe_save, safe_l
 from tinygrad import Tensor as tinyTensor, nn as tinynn
 import cv2
 
-def to_tiny(x):
-    if type(x) in [tuple, list]:
-        ret = []
-        for i in range(len(x)): ret.append(to_tiny(x[i]))
-        return tuple(ret) if type(x) is tuple else ret
-    return tinyTensor(x.detach().numpy()) if type(x) != tinyTensor else x
-
 COCO_CLASSES = {1: "person", 2: "bicycle", 3: "car", 4: "motorcycle", 5: "airplane", 6: "bus", 7: "train", 8: "truck", 9: "boat",
 10: "traffic light", 11: "fire hydrant", 13: "stop sign", 14: "parking meter", 15: "bench", 16: "bird", 17: "cat", 18: "dog",
 19: "horse", 20: "sheep", 21: "cow", 22: "elephant", 23: "bear", 24: "zebra", 25: "giraffe", 27: "backpack", 28: "umbrella",
@@ -768,14 +761,8 @@ class MLP_tiny():
         self.layers_tiny = m.layers_tiny
         self.layers = m.layers
 
-    def __call__(self, x):
-        # TODO removing this breaks it
-        for i in range(self.num_layers):
-            self.layers_tiny[i].weight = to_tiny(self.layers[i].weight)
-            self.layers_tiny[i].bias = to_tiny(self.layers[i].bias)
-            
-        for i, layer in enumerate(self.layers_tiny):
-            x = tinyTensor.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
+    def __call__(self, x):            
+        for i, layer in enumerate(self.layers): x = tinyTensor.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
         return x
     
 class LWDETR_tiny():
