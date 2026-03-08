@@ -1045,15 +1045,17 @@ excepted_xyxys = [
 [2.424996,357.59814,587.4715,1267.9884,]]
 ]
 
-models = [[384, "nano"], [512, "small"], [576, "medium"], [704, "large"]]
-for i in range(len(models)):
-  image = Image.open('dog.jpg')
-  model = RFDETR(models[i][0], models[i][1])
-  detections = model.predict(image, threshold=0.5)
-  labels = [f"{COCO_CLASSES[class_id]}" for class_id in detections.class_id]
-  annotated_image = sv.BoxAnnotator().annotate(image, detections)
-  annotated_image = sv.LabelAnnotator().annotate(annotated_image, detections, labels)
-  np.testing.assert_allclose(detections.xyxy, excepted_xyxys[i], atol=0.5)
-  annotated_image.save(f"annotated_image_{i}.jpg")
 
-print("PASSED")
+if __name__ == "__main__":
+  models = [[384, "nano"], [512, "small"], [576, "medium"], [704, "large"]]
+  for i in range(len(models)):
+    image = Image.open('dog.jpg')
+    model = RFDETR(models[i][0], models[i][1])
+    detections = model.predict(image, threshold=0.5)
+    labels = [f"{COCO_CLASSES[class_id]}" for class_id in detections.class_id]
+    annotated_image = sv.BoxAnnotator().annotate(image, detections)
+    annotated_image = sv.LabelAnnotator().annotate(annotated_image, detections, labels)
+    np.testing.assert_allclose(detections.xyxy, excepted_xyxys[i], atol=0.5)
+    annotated_image.save(f"annotated_image_{i}.jpg")
+
+  print("PASSED")
