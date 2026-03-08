@@ -1581,49 +1581,17 @@ class RFDETR:
 
         return COCO_CLASSES
 
-    def predict(
-        self,
-        images: Union[str, Image.Image, np.ndarray, Any, List[Union[str, np.ndarray, Image.Image, Any]]],
-        threshold: float = 0.5,
-        **kwargs,
-    ) -> Union[sv.Detections, List[sv.Detections]]:
-        if not isinstance(images, list):
-            images = [images]
-
-        orig_sizes = []
-        processed_images = []
-
-        for img in images:
-
-            if isinstance(img, str):
-                img = Image.open(img)
-
-            img = vF.to_tensor(img)
-
-            if (img > 1).any():
-                raise ValueError(
-                    "Image has pixel values above 1. Please ensure the image is "
-                    "normalized (scaled to [0, 1])."
-                )
-            if img.shape[0] != 3:
-                raise ValueError(
-                    f"Invalid image shape. Expected 3 channels (RGB), but got "
-                    f"{img.shape[0]} channels."
-                )
-            img_tensor = img
-
-            h, w = img_tensor.shape[1:]
-            orig_sizes.append((h, w))
-
-            img_tensor = vF.normalize(img_tensor, self.means, self.stds)
-            img_tensor = vF.resize(img_tensor, (self.model.resolution, self.model.resolution))
-
-            processed_images.append(img_tensor)
+    def predict(self, img, threshold: float = 0.5,**kwargs):
+        img_tensor = vF.to_tensor(img)
+        h, w = img_tensor.shape[1:]
+        img_tensor = vF.normalize(img_tensor, self.means, self.stds)
+        img_tensor = vF.resize(img_tensor, (self.model.resolution, self.model.resolution))
+        processed_images = [img_tensor]
 
         processed_images = to_tiny(processed_images)
         batch_tensor = tinyTensor.stack(*processed_images)
         predictions = self.model.model(batch_tensor)
-        target_sizes = tinyTensor(orig_sizes)
+        target_sizes = tinyTensor([[h,w]])
         results = self.model.postprocess(predictions, target_sizes=target_sizes)
 
         detections_list = []
