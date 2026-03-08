@@ -1654,18 +1654,6 @@ class RFDETRLarge(RFDETR):
 
 #res 704, ps 16, 2 windows, 4 dec layers, 300 queries, ViT-S basis
 class RFDETRLargeConfig(ModelConfig):
-    encoder: Literal["dinov2_windowed_small"] = "dinov2_windowed_small"
-    hidden_dim: int = 256
-    dec_layers: int = 4
-    sa_nheads: int = 8
-    ca_nheads: int = 16
-    dec_n_points: int = 2
-    num_windows: int = 2
-    patch_size: int = 16
-    projector_scale: List[Literal["P4",]] = ["P4"]
-    out_feature_indexes: List[int] = [3, 6, 9, 12]
-    num_classes: int = 90
-    positional_encoding_size: int = 704 // 16
     pretrain_weights: Optional[str] = "rf-detr-large-2026.pth"
     resolution: int = 704
 
