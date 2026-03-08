@@ -789,12 +789,7 @@ class LWDETR_tiny():
         outputs_coord = Tensor.cat(outputs_coord_cxcy, outputs_coord_wh, dim=-1)
 
         outputs_class = self.class_embed(hs)[-1]
-        out = {'pred_logits': outputs_class, 'pred_boxes': outputs_coord[-1]}
-        hs_enc_list = hs_enc.chunk(1, dim=1)
-        cls_enc = []
-        cls_enc_gidx = self.transformer.enc_out_class_embed[0](hs_enc_list[0])
-        cls_enc.append(cls_enc_gidx)
-        return out
+        return outputs_class, outputs_coord[-1]
 
 def box_cxcywh_to_xyxy(x):
     x_c, y_c, w, h = [t.squeeze(-1) for t in x.split(1, dim=-1)]
@@ -979,7 +974,7 @@ class Model:
         load_state_dict(self.model, state_dict)
 
 def postprocess(outputs, img_w, img_h):
-    out_logits, out_bbox = outputs['pred_logits'], outputs['pred_boxes']
+    out_logits, out_bbox = outputs
     prob = out_logits.sigmoid()
     topk_values, topk_indexes = Tensor.topk(prob.view(out_logits.shape[0], -1), 300, dim=1)
     topk_boxes = topk_indexes // out_logits.shape[2]
@@ -988,7 +983,7 @@ def postprocess(outputs, img_w, img_h):
     boxes = Tensor.gather(boxes, 1, topk_boxes.unsqueeze(-1).repeat(1,1,4))
     boxes = boxes * Tensor([img_w, img_h, img_w, img_h])
     out_logits.realize() # todo, why do we have to do this?
-    return {'scores': topk_values.numpy(), 'labels': labels.numpy(), 'boxes': boxes.numpy()}
+    return topk_values.numpy(), labels.numpy(), boxes.numpy()
 
 class RFDETR:
     means = [0.485, 0.456, 0.406]
@@ -1009,17 +1004,11 @@ class RFDETR:
 
     def predict(self, processed_images, h, w, threshold: float = 0.5):
         predictions = self.model.model(processed_images)
-        result = postprocess(predictions, img_w=w, img_h=h)
-
-        scores = result["scores"]
-        labels = result["labels"]
-        boxes = result["boxes"]
-
+        scores, labels, boxes = postprocess(predictions, img_w=w, img_h=h)
         keep = scores > threshold
         scores = scores[keep]
         labels = labels[keep]
         boxes = boxes[keep]
-        
         detections = sv.Detections(xyxy=boxes, confidence=scores,class_id=labels)
         return detections
 
