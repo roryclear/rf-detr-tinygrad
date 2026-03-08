@@ -978,7 +978,6 @@ class Model:
         state_dict = safe_load(f"{name}.safetensors")
         load_state_dict(self.model, state_dict)
 
-
 def postprocess(outputs, img_w, img_h):
     out_logits, out_bbox = outputs['pred_logits'], outputs['pred_boxes']
     prob = out_logits.sigmoid()
@@ -997,10 +996,7 @@ class RFDETR:
     size = None
     def __init__(self, resolution, name): self.model = Model(resolution, name)
 
-    def predict(self, img, threshold: float = 0.5):
-        img_np = np.asarray(img)
-        h, w = img_np.shape[:2]
-        img_np = img_np.astype(np.float32) / 255.0
+    def preprocess(self, img_np):
         target = self.model.resolution
         interp = cv2.INTER_AREA if max(h, w) > target else cv2.INTER_LINEAR
         img_np = cv2.resize(img_np, (target, target), interpolation=interp)
@@ -1009,6 +1005,9 @@ class RFDETR:
         img_np = (img_np - means) / stds
         img_np = np.transpose(img_np, (2,0,1))
         processed_images = Tensor([img_np])
+        return processed_images
+
+    def predict(self, processed_images, h, w, threshold: float = 0.5):
         predictions = self.model.model(processed_images)
         result = postprocess(predictions, img_w=w, img_h=h)
 
@@ -1050,7 +1049,13 @@ if __name__ == "__main__":
   for i in range(len(models)):
     image = Image.open('dog.jpg')
     model = RFDETR(models[i][0], models[i][1])
-    detections = model.predict(image, threshold=0.5)
+
+    img_np = np.asarray(image)
+    h, w = img_np.shape[:2]
+    img_np = img_np.astype(np.float32) / 255.0
+
+    processed_images = model.preprocess(img_np)
+    detections = model.predict(processed_images, h, w, threshold=0.5)
     labels = [f"{COCO_CLASSES[class_id]}" for class_id in detections.class_id]
     annotated_image = sv.BoxAnnotator().annotate(image, detections)
     annotated_image = sv.LabelAnnotator().annotate(annotated_image, detections, labels)
@@ -1058,3 +1063,5 @@ if __name__ == "__main__":
     annotated_image.save(f"annotated_image_{i}.jpg")
 
   print("PASSED")
+
+
