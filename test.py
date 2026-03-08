@@ -986,7 +986,6 @@ class Model:
 
 def postprocess(outputs, target_sizes):
     out_logits, out_bbox = outputs['pred_logits'], outputs['pred_boxes']
-    out_logits.realize() # todo, why do we have to do this?
     prob = out_logits.sigmoid()
     topk_values, topk_indexes = tinyTensor.topk(prob.view(out_logits.shape[0], -1), 300, dim=1)
     topk_boxes = topk_indexes // out_logits.shape[2]
@@ -997,6 +996,7 @@ def postprocess(outputs, target_sizes):
     img_w = target_sizes[:, 1]
     scale_fct = tinyTensor.stack(img_w, img_h, img_w, img_h, dim=1)
     boxes = boxes * scale_fct[:, None, :]
+    out_logits.realize() # todo, why do we have to do this?
     return [{'scores': s, 'labels': l, 'boxes': b} for s, l, b in zip(topk_values.numpy(), labels.numpy(), boxes.numpy())]
 
 class RFDETR:
