@@ -10,7 +10,6 @@ from transformers.configuration_utils import PretrainedConfig
 
 import torch
 from torch import nn
-from torch import Tensor
 from typing import List, Literal, Optional, Union, Tuple, Callable, Set, Any
 from pydantic import BaseModel, field_validator
 import os
@@ -18,10 +17,6 @@ import torchvision.transforms.functional as vF
 import torch.nn.functional as F
 from tqdm import tqdm
 import math
-import copy
-import argparse
-import json
-import collections.abc
 from tinygrad.dtype import dtypes
 from tinygrad.nn.state import get_state_dict, load_state_dict, safe_save, safe_load
 
@@ -415,12 +410,12 @@ class TransformerDecoderLayer_tiny():
         self.linear2_tiny = t.linear2_tiny
 
     def __call__(self, tgt, memory,
-                     tgt_mask: Optional[Tensor] = None,
-                     memory_mask: Optional[Tensor] = None,
-                     tgt_key_padding_mask: Optional[Tensor] = None,
-                     memory_key_padding_mask: Optional[Tensor] = None,
-                     pos: Optional[Tensor] = None,
-                     query_pos: Optional[Tensor] = None,
+                     tgt_mask: None,
+                     memory_mask: None,
+                     tgt_key_padding_mask: None,
+                     memory_key_padding_mask: None,
+                     pos: None,
+                     query_pos: None,
                      query_sine_embed = None,
                      is_first = False,
                      reference_points = None,
@@ -504,16 +499,16 @@ class TransformerDecoder_tiny():
         self.norm_tiny = t.norm_tiny
 
     def __call__(self, tgt, memory,
-                tgt_mask: Optional[Tensor] = None,
-                memory_mask: Optional[Tensor] = None,
-                tgt_key_padding_mask: Optional[Tensor] = None,
-                memory_key_padding_mask: Optional[Tensor] = None,
-                pos: Optional[Tensor] = None,
-                refpoints_unsigmoid: Optional[Tensor] = None,
+                tgt_mask=None,
+                memory_mask=None,
+                tgt_key_padding_mask=None,
+                memory_key_padding_mask=None,
+                pos=None,
+                refpoints_unsigmoid=None,
                 # for memory
-                level_start_index: Optional[Tensor] = None, # num_levels
-                spatial_shapes: Optional[Tensor] = None, # bs, num_levels, 2
-                valid_ratios: Optional[Tensor] = None):
+                level_start_index=None, # num_levels
+                spatial_shapes=None, # bs, num_levels, 2
+                valid_ratios=None):
         output = tgt
 
         intermediate = []
@@ -644,7 +639,7 @@ class Transformer_tiny():
         src = src.flatten(2).transpose(1, 2)              # bs, hw, c
         pos_embed = pos_embed.flatten(2).transpose(1, 2)  # bs, hw, c
         mask = masks[0].flatten(1) if type(masks) == list else masks.flatten(1)
-        level_start_index = Tensor([0])
+        level_start_index = tinyTensor([0])
         output_memory, output_proposals = gen_encoder_output_proposals(
             src, mask, h, unsigmoid=True)
         
@@ -691,7 +686,7 @@ class Transformer_tiny():
                         pos=pos_embed, refpoints_unsigmoid=refpoint_embed,
                         level_start_index=level_start_index,
                         spatial_shapes=h,
-                        valid_ratios=Tensor([[[1., 1.]]]))
+                        valid_ratios=tinyTensor([[[1., 1.]]]))
 
         return hs, references, memory_ts, boxes_ts
 
