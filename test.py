@@ -973,17 +973,6 @@ class Model:
         state_dict = safe_load(f"{name}.safetensors")
         load_state_dict(self.model, state_dict)
 
-def postprocess(outputs, img_w, img_h):
-    out_logits, out_bbox = outputs
-    prob = out_logits.sigmoid()
-    topk_values, topk_indexes = Tensor.topk(prob.view(out_logits.shape[0], -1), 300, dim=1)
-    topk_boxes = topk_indexes // out_logits.shape[2]
-    labels = topk_indexes % out_logits.shape[2]
-    boxes = box_cxcywh_to_xyxy(out_bbox)
-    boxes = Tensor.gather(boxes, 1, topk_boxes.unsqueeze(-1).repeat(1,1,4))
-    boxes = boxes * Tensor([img_w, img_h, img_w, img_h])
-    out_logits.realize() # todo, why do we have to do this?
-    return topk_values.numpy(), labels.numpy(), boxes.numpy()
 
 class RFDETR:
     means = [0.485, 0.456, 0.406]
@@ -1004,7 +993,16 @@ class RFDETR:
 
     def predict(self, processed_images, h, w, threshold: float = 0.5):
         predictions = self.model.model(processed_images)
-        scores, labels, boxes = postprocess(predictions, img_w=w, img_h=h)
+        out_logits, out_bbox = predictions
+        prob = out_logits.sigmoid()
+        topk_values, topk_indexes = Tensor.topk(prob.view(out_logits.shape[0], -1), 300, dim=1)
+        topk_boxes = topk_indexes // out_logits.shape[2]
+        labels = topk_indexes % out_logits.shape[2]
+        boxes = box_cxcywh_to_xyxy(out_bbox)
+        boxes = Tensor.gather(boxes, 1, topk_boxes.unsqueeze(-1).repeat(1,1,4))
+        boxes = boxes * Tensor([w, h, w, h])
+        out_logits.realize() # todo, why do we have to do this?
+        scores, labels, boxes =  topk_values.numpy(), labels.numpy(), boxes.numpy()
         keep = scores > threshold
         scores = scores[keep]
         labels = labels[keep]
