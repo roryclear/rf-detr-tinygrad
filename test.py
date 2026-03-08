@@ -508,7 +508,6 @@ class TransformerDecoder_tiny():
                            spatial_shapes=spatial_shapes,
                            level_start_index=level_start_index)
 
-            output = to_tiny(output)
             x = self.norm_tiny(output)
             intermediate.append(x)
         
@@ -518,8 +517,7 @@ class TransformerDecoder_tiny():
         return [(tinyTensor.stack(intermediate)), (refpoints_unsigmoid.unsqueeze(0))]
 
 def gen_encoder_output_proposals(memory, memory_padding_mask, spatial_shape, unsigmoid=True):
-    memory = to_tiny(memory)
-    memory_padding_mask = to_tiny(memory_padding_mask).cast(dtype=dtypes.bool)
+    memory_padding_mask = memory_padding_mask.cast(dtype=dtypes.bool)
 
     proposals = []
     H_, W_ = spatial_shape, spatial_shape
@@ -563,11 +561,6 @@ class MSDeformAttn_tiny():
 
     def __call__(self, query, reference_points, input_flatten, input_spatial_shapes,
                 input_level_start_index, input_padding_mask=None):
-        query = to_tiny(query)
-        reference_points = to_tiny(reference_points)
-        input_flatten = to_tiny(input_flatten)
-        input_padding_mask = to_tiny(input_padding_mask)
-
         N, Len_q, _ = query.shape
         N, Len_in, _ = input_flatten.shape
 
@@ -581,7 +574,6 @@ class MSDeformAttn_tiny():
         value = value.transpose(1, 2).contiguous().view(N, 16, 256 // 16, Len_in)
         output = ms_deform_attn_core_pytorch(
             value, input_spatial_shapes, sampling_locations, attention_weights)
-        output = to_tiny(output)
         output = self.output_proj_tiny(output)
         return output
 
@@ -599,10 +591,8 @@ class Transformer_tiny():
 
     def __call__(self, srcs, masks, pos_embeds, refpoint_embed, query_feat):
 
-        self.enc_out_class_embed_w = to_tiny(self.enc_out_class_embed[0].weight)
-        self.enc_out_class_embed_b = to_tiny(self.enc_out_class_embed[0].bias)
-
-        refpoint_embed = to_tiny(refpoint_embed)
+        self.enc_out_class_embed_w = self.enc_out_class_embed[0].weight
+        self.enc_out_class_embed_b = self.enc_out_class_embed[0].bias
 
         src = srcs[0] if type(srcs) == list else srcs
         pos_embed = pos_embeds[0] if type(pos_embeds) == list else pos_embeds
@@ -619,8 +609,6 @@ class Transformer_tiny():
 
         
         enc_outputs_coord_delta_gidx = self.enc_out_bbox_embed[0](output_memory_gidx)
-
-        enc_outputs_coord_delta_gidx = to_tiny(enc_outputs_coord_delta_gidx)
 
         enc_outputs_coord_cxcy_gidx = enc_outputs_coord_delta_gidx[...,
             :2] * output_proposals[..., 2:] + output_proposals[..., :2]
@@ -669,10 +657,8 @@ class ConvX_tiny():
         self.bn = c.bn
 
     def __call__(self, x):
-        x = to_tiny(x)
         x = self.conv_tiny(x)
         x = self.bn(x)
-        if type(x) != tinyTensor: x = to_tiny(x)
         out = tinyTensor.silu(x)
         return out
 
@@ -699,8 +685,7 @@ class C2f_tiny():
     def __call__(self, x):
         """Forward pass using split() instead of chunk()."""
         y = list(self.cv1(x).split((self.c, self.c), 1))
-        y = to_tiny(y)
-        y.extend(to_tiny(m(y[-1])) for m in self.m)
+        y.extend(m(y[-1]) for m in self.m)
         y = tinyTensor.cat(*y, dim=1)
         y = self.cv2(y)
         return y
@@ -715,7 +700,6 @@ class LayerNorm_tiny():
         self.bias_tiny = l.bias_tiny
 
     def __call__(self, x):
-        if type(x) != tinyTensor: x = to_tiny(x)
         x = x.permute(0, 2, 3, 1)
         x -= x.mean(axis=-1, keepdim=True)
         var = (x ** 2).mean(axis=-1, keepdim=True) + self.eps
@@ -733,7 +717,6 @@ class MultiScaleProjector_tiny():
         self.stages = m.stages
 
     def __call__(self, x):
-        x = to_tiny(x)
         feat_fuse = tinyTensor.cat(*x, dim=1)
         stage_output = self.stages[0](feat_fuse)
         return [stage_output]
@@ -750,7 +733,6 @@ class PositionEmbeddingSine_tiny():
         self.temperature = p.temperature
 
     def __call__(self, tensors, mask, align_dim_orders = True):
-        mask = to_tiny(mask)
         not_mask = ~mask
         y_embed = not_mask.cumsum(1)
         x_embed = not_mask.cumsum(2)
@@ -776,7 +758,6 @@ class Backbone_tiny():
         feats = self.encoder(tensors)
         feats = self.projector(feats)
         m = mask
-        m = to_tiny(m)
         mask = ~tinyTensor.interpolate(m.unsqueeze(0), size=feats[0].shape[-2:])[0]
         return feats[0], mask
 
@@ -788,11 +769,11 @@ class MLP_tiny():
         self.layers = m.layers
 
     def __call__(self, x):
+        # TODO removing this breaks it
         for i in range(self.num_layers):
             self.layers_tiny[i].weight = to_tiny(self.layers[i].weight)
             self.layers_tiny[i].bias = to_tiny(self.layers[i].bias)
-
-        x = to_tiny(x)
+            
         for i, layer in enumerate(self.layers_tiny):
             x = tinyTensor.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
         return x
@@ -821,21 +802,15 @@ class LWDETR_tiny():
         hs, ref_unsigmoid, hs_enc, ref_enc = self.transformer(feature, mask, [pos], refpoint_embed_weight, query_feat_weight)
         outputs_coord_delta = self.bbox_embed(hs)
 
-        outputs_coord_delta = to_tiny(outputs_coord_delta)
-        ref_unsigmoid = to_tiny(ref_unsigmoid)
-
         outputs_coord_cxcy = outputs_coord_delta[..., :2] * ref_unsigmoid[..., 2:] + ref_unsigmoid[..., :2]
         outputs_coord_wh = outputs_coord_delta[..., 2:].exp() * ref_unsigmoid[..., 2:]
         outputs_coord = tinyTensor.cat(outputs_coord_cxcy, outputs_coord_wh, dim=-1)
 
-
-        hs = to_tiny(hs)
         outputs_class = self.class_embed(hs)[-1]
         out = {'pred_logits': outputs_class, 'pred_boxes': outputs_coord[-1]}
         hs_enc_list = hs_enc.chunk(1, dim=1)
         cls_enc = []
-        cls_enc_gidx = self.transformer.enc_out_class_embed[0](to_tiny(hs_enc_list[0]))
-        cls_enc_gidx = to_tiny(cls_enc_gidx)
+        cls_enc_gidx = self.transformer.enc_out_class_embed[0](hs_enc_list[0])
         cls_enc.append(cls_enc_gidx)
         return out
 
