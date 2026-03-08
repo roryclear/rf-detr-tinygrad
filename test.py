@@ -1009,8 +1009,7 @@ class RFDETR:
         img_np = (img_np - means) / stds
         img_np = np.transpose(img_np, (2,0,1))
         processed_images = Tensor([img_np])
-        batch_tensor = Tensor.stack(*processed_images)
-        predictions = self.model.model(batch_tensor)
+        predictions = self.model.model(processed_images)
         result = postprocess(predictions, img_w=w, img_h=h)
 
         scores = result["scores"]
