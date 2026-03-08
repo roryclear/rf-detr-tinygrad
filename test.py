@@ -990,7 +990,7 @@ class RFDETR:
         img_np = np.transpose(img_np, (2,0,1))
         processed_images = Tensor([img_np])
         return processed_images
-
+    
     def predict(self, processed_images, h, w, threshold: float = 0.5):
         predictions = self.model.model(processed_images)
         out_logits, out_bbox = predictions
@@ -1002,7 +1002,10 @@ class RFDETR:
         boxes = Tensor.gather(boxes, 1, topk_boxes.unsqueeze(-1).repeat(1,1,4))
         boxes = boxes * Tensor([w, h, w, h])
         out_logits.realize() # todo, why do we have to do this?
-        scores, labels, boxes =  topk_values.numpy(), labels.numpy(), boxes.numpy()
+        return topk_values.numpy(), labels.numpy(), boxes.numpy()
+
+    
+    def postprocess(self, scores, labels, boxes, threshold=0.5):
         keep = scores > threshold
         scores = scores[keep]
         labels = labels[keep]
@@ -1042,7 +1045,8 @@ if __name__ == "__main__":
     img_np = img_np.astype(np.float32) / 255.0
 
     processed_images = model.preprocess(img_np)
-    detections = model.predict(processed_images, h, w, threshold=0.5)
+    scores, labels, boxes = model.predict(processed_images, h, w, threshold=0.5)
+    detections = model.postprocess(scores, labels, boxes)
     labels = [f"{COCO_CLASSES[class_id]}" for class_id in detections.class_id]
     annotated_image = sv.BoxAnnotator().annotate(image, detections)
     annotated_image = sv.LabelAnnotator().annotate(annotated_image, detections, labels)
