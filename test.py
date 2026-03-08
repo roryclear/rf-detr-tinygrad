@@ -41,7 +41,6 @@ class Dinov2WithRegistersPatchEmbeddings_tiny():
         self.projection_tiny = d.projection_tiny
 
     def __call__(self, x):
-        x = to_tiny(x)
         x = self.projection_tiny(x).flatten(2).transpose(1, 2)
         return x
 
@@ -86,7 +85,6 @@ class Dinov2WithRegistersSelfOutput_tiny():
         self.dense_tiny = d.dense_tiny
 
     def __call__(self, x):
-        x = to_tiny(x)
         x = self.dense_tiny(x)
         return x
 
@@ -101,7 +99,6 @@ class Dinov2WithRegistersSdpaSelfAttention_tiny():
         self.all_head_size = d.all_head_size
 
     def transpose_for_scores(self, x):
-        x = to_tiny(x)
         new_x_shape = x.size()[:-1] + (6, 64)
         x = x.view(new_x_shape)
         x = x.permute(0, 2, 1, 3)
@@ -110,18 +107,12 @@ class Dinov2WithRegistersSdpaSelfAttention_tiny():
     def __call__(
         self, hidden_states, head_mask: Optional[Any] = None, output_attentions: bool = False
     ) -> Union[Tuple[Any, Any], Tuple[Any]]:
-
-        hidden_states = to_tiny(hidden_states)
         mixed_query_layer = self.query_tiny(hidden_states)
 
 
         key_layer = self.transpose_for_scores(self.key_tiny(hidden_states))
         value_layer = self.transpose_for_scores(self.value_tiny(hidden_states))
         query_layer = self.transpose_for_scores(mixed_query_layer)
-
-        query_layer = to_tiny(query_layer)
-        key_layer = to_tiny(key_layer)
-        value_layer = to_tiny(value_layer)
 
         d_k = query_layer.size(-1)
         attn_scores = tinyTensor.matmul(query_layer, key_layer.transpose(-2, -1)) / math.sqrt(d_k)
@@ -157,7 +148,6 @@ class Dinov2WithRegistersMLP_tiny():
         self.fc2_tiny = d.fc2_tiny
 
     def __call__(self, hidden_state):
-        hidden_state = to_tiny(hidden_state)
         hidden_state = self.fc1_tiny(hidden_state)
         hidden_state = hidden_state * 0.5 * (1.0 + tinyTensor.erf(hidden_state / math.sqrt(2.0)))
         hidden_state = self.fc2_tiny(hidden_state)
@@ -169,7 +159,6 @@ class Dinov2WithRegistersLayerScale_tiny():
         self.lambda1_tiny = d.lambda1_tiny
 
     def __call__(self, hidden_state):
-        hidden_state = to_tiny(hidden_state)
         x = hidden_state * self.lambda1_tiny
         return x
 
@@ -191,7 +180,6 @@ class WindowedDinov2WithRegistersLayer_tiny():
         output_attentions: bool = False,
         run_full_attention: bool = False,
     ):
-        hidden_states = to_tiny(hidden_states)
         shortcut = hidden_states
         self.num_windows = 2
         if run_full_attention:
@@ -286,7 +274,6 @@ class WindowedDinov2WithRegistersBackbone_tiny():
         feature_maps = ()
         for stage, hidden_state in zip(self.stage_names, hidden_states):
             if stage in self.out_features:
-                hidden_state = to_tiny(hidden_state)
                 hidden_state = self.layernorm_tiny(hidden_state)
                 hidden_state = hidden_state[:, 1 :]
                 # this was actually a bug in the original implementation that we copied here,
@@ -328,9 +315,6 @@ class DinoV2_tiny():
         return list(x[0])
 
 def ms_deform_attn_core_pytorch(value, value_spatial_shapes, sampling_locations, attention_weights):
-    attention_weights = to_tiny(attention_weights)
-    sampling_locations = to_tiny(sampling_locations)
-    value = to_tiny(value)
     B, n_heads, head_dim, _ = value.shape
     _, Len_q, n_heads, L, P, _ = sampling_locations.shape
     sampling_grids = 2 * sampling_locations - 1
@@ -415,8 +399,6 @@ class TransformerDecoderLayer_tiny():
                      level_start_index=None,
                      ):
         
-        tgt = to_tiny(tgt)
-        query_pos = to_tiny(query_pos)
         q = k = tgt + query_pos
         v = tgt
 
@@ -462,7 +444,6 @@ class TransformerDecoderLayer_tiny():
         return tgt
     
 def gen_sineembed_for_position(pos_tensor, dim=128):
-    pos_tensor = to_tiny(pos_tensor)
     scale = 2 * math.pi
     dim_t = tinyTensor.arange(dim)
     dim_t = 10000 ** (2 * (dim_t // 2) / dim)
@@ -504,9 +485,7 @@ class TransformerDecoder_tiny():
         output = tgt
 
         intermediate = []
-        refpoints_unsigmoid = to_tiny(refpoints_unsigmoid)
         def get_reference(refpoints_unsigmoid, valid_ratios):
-            valid_ratios = to_tiny(valid_ratios)
             obj_center = refpoints_unsigmoid[..., :4]
             refpoints_input = obj_center[:, :, None] * tinyTensor.cat(valid_ratios, valid_ratios, dim=-1)[:, None]
             query_sine_embed = gen_sineembed_for_position(
