@@ -314,8 +314,8 @@ def gen_sineembed_for_position(pos_tensor, dim=128):
   return pos
 
 class TransformerDecoder(): # todo remove unused
-    def __call__(self, tgt, memory, tgt_mask=None, memory_mask=None, tgt_key_padding_mask=None, memory_key_padding_mask=None,
-      pos=None, refpoints_unsigmoid=None, level_start_index=None, spatial_shapes=None, valid_ratios=None):
+    def __call__(self, tgt, memory, memory_key_padding_mask=None,
+      refpoints_unsigmoid=None, level_start_index=None, spatial_shapes=None, valid_ratios=None):
         intermediate = []
         def get_reference(refpoints_unsigmoid, valid_ratios):
             obj_center = refpoints_unsigmoid[..., :4]
@@ -391,16 +391,14 @@ class MSDeformAttn():
         return output
 
 class Transformer():
-    def __call__(self, srcs, masks, pos_embeds, refpoint_embed, query_feat):
+    def __call__(self, srcs, masks, refpoint_embed, query_feat):
 
         self.enc_out_class_embed_w = self.enc_out_class_embed[0].weight
         self.enc_out_class_embed_b = self.enc_out_class_embed[0].bias
 
         src = srcs[0] if type(srcs) == list else srcs
-        pos_embed = pos_embeds[0] if type(pos_embeds) == list else pos_embeds
         bs, _, h, w = src.shape
         src = src.flatten(2).transpose(1, 2)              # bs, hw, c
-        pos_embed = pos_embed.flatten(2).transpose(1, 2)  # bs, hw, c
         mask = masks[0].flatten(1) if type(masks) == list else masks.flatten(1)
         level_start_index = Tensor([0])
         output_memory, output_proposals = gen_encoder_output_proposals(
@@ -416,20 +414,10 @@ class Transformer():
             :2] * output_proposals[..., 2:] + output_proposals[..., :2]
         enc_outputs_coord_wh_gidx = enc_outputs_coord_delta_gidx[..., 2:].exp() * output_proposals[..., 2:]
         enc_outputs_coord_unselected_gidx = Tensor.cat(enc_outputs_coord_cxcy_gidx, enc_outputs_coord_wh_gidx, dim=-1)
-
-
         topk = min(300, enc_outputs_class_unselected_gidx.shape[-2])
         x = enc_outputs_class_unselected_gidx.max(-1)
-        topk_proposals_gidx = Tensor.topk(x, topk, dim=1)[1] # bs, nq
-
+        topk_proposals_gidx = Tensor.topk(x, topk, dim=1)[1]
         boxes_ts = enc_outputs_coord_unselected_gidx.gather(dim=1, index=topk_proposals_gidx.unsqueeze(-1).repeat(1, 1, 4))
-
-        # get memory tgt
-        memory_ts = output_memory_gidx.gather(dim=1, index=topk_proposals_gidx.unsqueeze(-1).repeat(1, 1, 256))
-
-        # concat on dim=1, the nq dimension, (bs, nq, d) --> (bs, nq, d)
-        # (bs, nq, d)
-
         tgt = query_feat.unsqueeze(0).repeat(bs, 1, 1)
         refpoint_embed = refpoint_embed.unsqueeze(0).repeat(bs, 1, 1)
 
@@ -444,16 +432,15 @@ class Transformer():
         refpoint_embed_ts_subset = Tensor.cat(refpoint_embed_cxcy, refpoint_embed_wh, dim=-1)
         refpoint_embed = Tensor.cat(refpoint_embed_ts_subset, refpoint_embed_subset, dim=-2)
         hs, references = self.decoder(tgt, src, memory_key_padding_mask=mask,
-                        pos=pos_embed, refpoints_unsigmoid=refpoint_embed,
+                        refpoints_unsigmoid=refpoint_embed,
                         level_start_index=level_start_index,
                         spatial_shapes=h,
                         valid_ratios=Tensor([[[1., 1.]]]))
 
-        return hs, references, memory_ts, boxes_ts
+        return hs, references
 
     
 class ConvX():
-    
     def __call__(self, x):
         x = self.conv(x)
         x = self.bn(x)
@@ -687,10 +674,9 @@ class LWDETR():
         _, _, h, w = samples.shape
         mask = Tensor.zeros((1, h, w), dtype=dtypes.bool)
         feature, mask = self.backbone(samples, mask)
-        pos = self.position_embedding(feature, mask)[0]
         refpoint_embed_weight = self.refpoint_embed[:self.num_queries]
         query_feat_weight = self.query_feat[:self.num_queries]
-        hs, ref_unsigmoid, hs_enc, ref_enc = self.transformer(feature, mask, [pos], refpoint_embed_weight, query_feat_weight)
+        hs, ref_unsigmoid = self.transformer(feature, mask, refpoint_embed_weight, query_feat_weight)
         outputs_coord_delta = self.bbox_embed(hs)
 
         outputs_coord_cxcy = outputs_coord_delta[..., :2] * ref_unsigmoid[..., 2:] + ref_unsigmoid[..., :2]
