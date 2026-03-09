@@ -81,9 +81,6 @@ class Dinov2WithRegistersMLP():
         hidden_state = self.fc2(hidden_state)
         return hidden_state
 
-class Dinov2WithRegistersLayerScale(): # todo remove
-    def __call__(self, hidden_state): return hidden_state * self.lambda1
-
 class WindowedDinov2WithRegistersLayer():
     def __call__(self, hidden_states, head_mask=None, output_attentions= False, run_full_attention= False):
       shortcut = hidden_states
@@ -102,14 +99,14 @@ class WindowedDinov2WithRegistersLayer():
         B, HW, C = hidden_states.shape
         num_windows_squared = self.num_windows ** 2
         attention_output = attention_output.view(B * num_windows_squared, HW // num_windows_squared, C)
-      attention_output = self.layer_scale1(attention_output)
+      attention_output = (attention_output) * self.lambda1
       outputs = self_attention_outputs[1:]
       hidden_states = attention_output + shortcut
 
       # in Dinov2WithRegisters, layernorm is also applied after self-attention
       layer_output = self.norm2(hidden_states)
       layer_output = self.mlp(layer_output)
-      layer_output = self.layer_scale2(layer_output)
+      layer_output = layer_output * self.lambda2
       layer_output = layer_output + hidden_states
       return (layer_output,) + outputs
 
@@ -614,10 +611,8 @@ class LWDETR():
         self.backbone.encoder.encoder.layer[i].attention.attention.key = nn.Linear(384, 384)
         self.backbone.encoder.encoder.layer[i].attention.attention.value = nn.Linear(384, 384)
         self.backbone.encoder.encoder.layer[i].attention.dense = nn.Linear(384, 384)
-        self.backbone.encoder.encoder.layer[i].layer_scale1 = Dinov2WithRegistersLayerScale()
-        self.backbone.encoder.encoder.layer[i].layer_scale2 = Dinov2WithRegistersLayerScale()
-        self.backbone.encoder.encoder.layer[i].layer_scale1.lambda1 = Tensor.empty((384))
-        self.backbone.encoder.encoder.layer[i].layer_scale2.lambda1 = Tensor.empty((384))
+        self.backbone.encoder.encoder.layer[i].lambda1 = Tensor.empty((384))
+        self.backbone.encoder.encoder.layer[i].lambda2 = Tensor.empty((384))
         self.backbone.encoder.encoder.layer[i].mlp = Dinov2WithRegistersMLP()
         self.backbone.encoder.encoder.layer[i].mlp.fc1 = nn.Linear(384, 1536)
         self.backbone.encoder.encoder.layer[i].mlp.fc2 = nn.Linear(1536, 384)
