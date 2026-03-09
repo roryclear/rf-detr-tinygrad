@@ -823,12 +823,9 @@ class Model:
 
 class RFDETR:
     size = None
-    def __init__(self, resolution, name):
+    def __init__(self, name):
         self.model = Model(name)
-        self.resolution = resolution
 
-    
-    #@TinyJit
     def predict(self, processed_images, h, w, threshold: float = 0.5):
         predictions = self.model.model(processed_images)
         out_logits, out_bbox = predictions
@@ -841,14 +838,6 @@ class RFDETR:
         boxes = boxes * Tensor([w, h, w, h])
         out_logits.realize() # todo, why do we have to do this?
         return topk_values, labels, boxes
-
-    
-    def postprocess(self, scores, labels, boxes, threshold=0.5):
-        keep = scores > threshold
-        scores = scores[keep]
-        labels = labels[keep]
-        boxes = boxes[keep]
-        return boxes, scores, labels
 
 excepted_xyxys = [
 [[63.662533,247.56085,649.37244,933.79956,],
@@ -887,18 +876,25 @@ def preprocess(img_np, res):
   processed_images = Tensor([img_np])
   return processed_images
 
+def postprocess(scores, labels, boxes, threshold=0.5):
+    keep = scores > threshold
+    scores = scores[keep]
+    labels = labels[keep]
+    boxes = boxes[keep]
+    return boxes, scores, labels
+
 if __name__ == "__main__":
   models = [[384, "nano"], [512, "small"], [576, "medium"], [704, "large"]]
   image = Image.open('dog.jpg')
   for i in range(len(models)):
-    model = RFDETR(models[i][0], models[i][1])
+    model = RFDETR(models[i][1])
     img_np = np.asarray(image)
     h, w = img_np.shape[:2]
     img_np = img_np.astype(np.float32) / 255.0
     processed_images = preprocess(img_np, models[i][0])
     scores, labels, boxes = model.predict(processed_images, h, w, threshold=0.5)
     scores, labels, boxes = scores.numpy(), labels.numpy(), boxes.numpy()
-    boxes, scores, class_ids = model.postprocess(scores, labels, boxes)
+    boxes, scores, class_ids = postprocess(scores, labels, boxes)
     labels = [f"{COCO_CLASSES[class_id]}" for class_id in class_ids]
     annotated_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
 
