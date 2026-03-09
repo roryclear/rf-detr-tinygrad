@@ -623,7 +623,7 @@ class LWDETR():
       load_state_dict(self, state_dict)
 
 
-    def predict(self, processed_images, h, w, threshold: float = 0.5):
+    def predict(self, processed_images, h, w):
       predictions = self(processed_images)
       out_logits, out_bbox = predictions
       prob = out_logits.sigmoid()
@@ -634,7 +634,7 @@ class LWDETR():
       boxes = Tensor.gather(boxes, 1, topk_boxes.unsqueeze(-1).repeat(1,1,4))
       boxes = boxes * Tensor([w, h, w, h])
       out_logits.realize() # todo, why do we have to do this?
-      return topk_values, labels, boxes
+      return Tensor.cat(boxes.squeeze(0), topk_values.squeeze(0).unsqueeze(1), labels.squeeze(0).unsqueeze(1), dim=1)
 
     def __call__(self, samples, targets=None):
         _, _, h, w = samples.shape
@@ -715,14 +715,8 @@ def preprocess(img_np, res):
   processed_images = Tensor([img_np])
   return processed_images
 
-def postprocess(scores, labels, boxes, threshold=0.5):
-    keep = scores > threshold
-    scores = scores[keep]
-    labels = labels[keep]
-    boxes = boxes[keep]
-    return boxes, scores, labels
-
 if __name__ == "__main__":
+  threshold = 0.5
   models = [[384, "nano"], [512, "small"], [576, "medium"], [704, "large"]]
   image = Image.open('dog.jpg')
   for i in range(len(models)):
@@ -731,9 +725,18 @@ if __name__ == "__main__":
     h, w = img_np.shape[:2]
     img_np = img_np.astype(np.float32) / 255.0
     processed_images = preprocess(img_np, models[i][0])
-    scores, labels, boxes = model.predict(processed_images, h, w, threshold=0.5)
-    scores, labels, boxes = scores.numpy(), labels.numpy(), boxes.numpy()
-    boxes, scores, class_ids = postprocess(scores, labels, boxes)
+    output = model.predict(processed_images, h, w)
+    output = output.numpy()
+
+    boxes = output[:, :4]
+    scores = output[:, 4]
+    class_ids = output[:, 5].astype(int)
+
+    keep = scores > threshold
+    scores = scores[keep]
+    class_ids = class_ids[keep]
+    boxes = boxes[keep]
+
     labels = [f"{COCO_CLASSES[class_id]}" for class_id in class_ids]
     annotated_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
 
