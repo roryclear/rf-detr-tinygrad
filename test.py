@@ -623,7 +623,6 @@ class LWDETR():
       state_dict = safe_load(fetch(f'https://huggingface.co/roryclear/rf-detr/resolve/main/{name}.safetensors'))
       load_state_dict(self, state_dict)
 
-
     def predict(self, processed_images, h, w):
       predictions = self(processed_images)
       out_logits, out_bbox = predictions
@@ -681,61 +680,49 @@ class seq:
         
 excepted_xyxys = [
 [
-[65.891426,248.43918,641.3886,930.272,],
-[1.285615,358.59146,650.6017,1262.4371,],
-[627.37885,727.8264,696.46387,787.7174,]
+[63.98152,247.93846,643.0879,931.84863,],
+[0.9997773,357.19293,650.101,1261.7733,],
+[623.5975,723.0886,698.9821,787.7163,],
 ],
 
 [
-[69.01942,248.45619,627.4433,930.63245,],
-[0.52850246,656.21893,442.0992,1268.4038,],
-[-1.2594151,349.9726,646.67633,1264.0789,],
-[622.61206,716.43256,700.6358,787.1441,]
+[68.54183,247.87341,625.942,930.71606,],
+[0.49844027,657.9232,441.90753,1267.5795,],
+[-1.336813,349.85284,645.86804,1263.5271,],
+[622.811,716.0851,701.54803,787.1113,],
 ],
 
 [
-[69.271996,248.7279,623.0733,926.25134,],
-[626.50977,733.5033,697.62946,787.62646,],
-[0.7745576,356.1507,650.6313,1264.136,],
-[0.059609413,662.2976,443.1223,1271.162,],
+[69.56826,248.08185,620.5264,927.0038,],
+[626.8524,733.55194,696.87067,788.07404,],
+[0.3557253,356.64658,649.5055,1265.8727,],
+[-0.14803648,661.9878,443.29095,1270.992,],
 ],
 
 [
-[68.03176,249.78406,637.8256,929.2932,],
-[625.31464,731.38684,697.2314,786.864,],
-[2.1356392,357.45206,587.4475,1267.9353,],
-[-0.2066803,661.59576,440.47327,1272.5348,],
+[68.09412,249.721,635.6606,928.99536,],
+[2.2342587,356.97098,579.0276,1268.9092,],
+[625.3909,731.5665,697.01495,786.87537,],
+[-0.12702942,662.12537,439.97614,1271.6777,],
 ]
 ]
 
 def sort_boxes(xyxy):
-    xyxy = np.asarray(xyxy)
-    order = np.lexsort((xyxy[:,3], xyxy[:,2], xyxy[:,1], xyxy[:,0]))
-    return xyxy[order]
+  xyxy = np.asarray(xyxy)
+  order = np.lexsort((xyxy[:,3], xyxy[:,2], xyxy[:,1], xyxy[:,0]))
+  return xyxy[order]
 
-def resize_bilinear(img, new_h, new_w):
-    h, w, c = img.shape
-    y = np.linspace(0, h - 1, new_h)
-    x = np.linspace(0, w - 1, new_w)
-    xv, yv = np.meshgrid(x, y)
-    x0 = np.floor(xv).astype(int)
-    x1 = np.clip(x0 + 1, 0, w - 1)
-    y0 = np.floor(yv).astype(int)
-    y1 = np.clip(y0 + 1, 0, h - 1)
-    wa = (x1 - xv) * (y1 - yv)
-    wb = (xv - x0) * (y1 - yv)
-    wc = (x1 - xv) * (yv - y0)
-    wd = (xv - x0) * (yv - y0)
-    Ia = img[y0, x0]
-    Ib = img[y0, x1]
-    Ic = img[y1, x0]
-    Id = img[y1, x1]
-    return (wa[..., None] * Ia + wb[..., None] * Ib + wc[..., None] * Ic + wd[..., None] * Id)
+def resize(img, new_size):
+  img = Tensor(img)
+  img = img.permute(2,0,1)
+  img = Tensor.interpolate(img, size=(new_size[1], new_size[0]), mode='linear', align_corners=False)
+  img = img.permute(1, 2, 0)
+  return img.numpy()
 
 def preprocess(img_np, res):
   means = [0.485, 0.456, 0.406]
   stds = [0.229, 0.224, 0.225]
-  img_np = resize_bilinear(img_np, res, res)
+  img_np = resize(img_np, (res, res))
   means = np.array(means, dtype=np.float32).reshape(1,1,3)
   stds = np.array(stds, dtype=np.float32).reshape(1,1,3)
   img_np = (img_np - means) / stds
