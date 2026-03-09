@@ -719,17 +719,12 @@ def resize(img, new_size):
   return img
 
 def preprocess(img, res):
-  img = Tensor(img)
-  means = [[[0.485, 0.456, 0.406]]]
-  stds = [[[0.229, 0.224, 0.225]]]
+  means = Tensor([[[0.485, 0.456, 0.406]]])
+  stds = Tensor([[[0.229, 0.224, 0.225]]])
   img = resize(img, (res, res))
-  img = img.numpy()
-  means = np.array(means)
-  stds = np.array(stds)
   img = (img - means) / stds
-  img = np.transpose(img, (2,0,1))
-  processed_images = Tensor([img])
-  return processed_images
+  img = img.permute(2, 0, 1).unsqueeze(0)
+  return img
 
 if __name__ == "__main__":
   threshold = 0.5
@@ -739,8 +734,8 @@ if __name__ == "__main__":
     model = LWDETR(models[i][1])
     img_np = np.asarray(image)
     h, w = img_np.shape[:2]
-    img_np = img_np.astype(np.float32) / 255.0
-    processed_images = preprocess(img_np, models[i][0])
+    img = Tensor(img_np) / 255.0
+    processed_images = preprocess(img, models[i][0])
     output = model.predict(processed_images, h, w)
     output = output.numpy()
 
