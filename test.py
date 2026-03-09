@@ -833,11 +833,6 @@ class Model:
       out_logits.realize() # todo, why do we have to do this?
       return topk_values, labels, boxes
 
-class RFDETR:
-    size = None
-    def __init__(self, name):
-        self.model = Model(name)
-
 excepted_xyxys = [
 [[63.662533,247.56085,649.37244,933.79956,],
 [1.341641,358.99182,652.4267,1263.1971,],
@@ -886,12 +881,12 @@ if __name__ == "__main__":
   models = [[384, "nano"], [512, "small"], [576, "medium"], [704, "large"]]
   image = Image.open('dog.jpg')
   for i in range(len(models)):
-    model = RFDETR(models[i][1])
+    model = Model(models[i][1])
     img_np = np.asarray(image)
     h, w = img_np.shape[:2]
     img_np = img_np.astype(np.float32) / 255.0
     processed_images = preprocess(img_np, models[i][0])
-    scores, labels, boxes = model.model.predict(processed_images, h, w, threshold=0.5)
+    scores, labels, boxes = model.predict(processed_images, h, w, threshold=0.5)
     scores, labels, boxes = scores.numpy(), labels.numpy(), boxes.numpy()
     boxes, scores, class_ids = postprocess(scores, labels, boxes)
     labels = [f"{COCO_CLASSES[class_id]}" for class_id in class_ids]
@@ -905,5 +900,3 @@ if __name__ == "__main__":
     cv2.imwrite(f"annotated_image_{i}.jpg", annotated_image)
 
   print("PASSED")
-
-
