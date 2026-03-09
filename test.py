@@ -680,23 +680,32 @@ class seq:
       return x
         
 excepted_xyxys = [
-[[63.662533,247.56085,649.37244,933.79956,],
-[1.341641,358.99182,652.4267,1263.1971,],
-[622.907,721.52893,698.8878,787.8673,]],
+[
+[65.891426,248.43918,641.3886,930.272,],
+[1.285615,358.59146,650.6017,1262.4371,],
+[627.37885,727.8264,696.46387,787.7174,]
+],
 
-[[68.807434,247.89589,623.2189,930.11993,],
-[0.668149,658.804,443.2135,1268.3124,],
-[-2.485571,349.83823,646.1853,1261.8707,],
-[623.1051,716.02563,701.54877,787.0673,]],
+[
+[69.01942,248.45619,627.4433,930.63245,],
+[0.52850246,656.21893,442.0992,1268.4038,],
+[-1.2594151,349.9726,646.67633,1264.0789,],
+[622.61206,716.43256,700.6358,787.1441,]
+],
 
-[[68.89001,248.13159,622.48975,927.16235,],
-[626.83704,733.20435,696.6672,788.11206,],
-[0.5390167,355.58514,649.50793,1266.9197,]],
+[
+[69.271996,248.7279,623.0733,926.25134,],
+[626.50977,733.5033,697.62946,787.62646,],
+[0.7745576,356.1507,650.6313,1264.136,],
+[0.059609413,662.2976,443.1223,1271.162,],
+],
 
-[[68.368454,249.53983,631.3086,928.4662,],
-[625.03973,730.9523,696.16437,786.9667,],
-[-0.46054602,661.33997,440.52988,1272.4196,],
-[2.424996,357.59814,587.4715,1267.9884,]]
+[
+[68.03176,249.78406,637.8256,929.2932,],
+[625.31464,731.38684,697.2314,786.864,],
+[2.1356392,357.45206,587.4475,1267.9353,],
+[-0.2066803,661.59576,440.47327,1272.5348,],
+]
 ]
 
 def sort_boxes(xyxy):
@@ -704,11 +713,29 @@ def sort_boxes(xyxy):
     order = np.lexsort((xyxy[:,3], xyxy[:,2], xyxy[:,1], xyxy[:,0]))
     return xyxy[order]
 
+def resize_bilinear(img, new_h, new_w):
+    h, w, c = img.shape
+    y = np.linspace(0, h - 1, new_h)
+    x = np.linspace(0, w - 1, new_w)
+    xv, yv = np.meshgrid(x, y)
+    x0 = np.floor(xv).astype(int)
+    x1 = np.clip(x0 + 1, 0, w - 1)
+    y0 = np.floor(yv).astype(int)
+    y1 = np.clip(y0 + 1, 0, h - 1)
+    wa = (x1 - xv) * (y1 - yv)
+    wb = (xv - x0) * (y1 - yv)
+    wc = (x1 - xv) * (yv - y0)
+    wd = (xv - x0) * (yv - y0)
+    Ia = img[y0, x0]
+    Ib = img[y0, x1]
+    Ic = img[y1, x0]
+    Id = img[y1, x1]
+    return (wa[..., None] * Ia + wb[..., None] * Ib + wc[..., None] * Ic + wd[..., None] * Id)
+
 def preprocess(img_np, res):
   means = [0.485, 0.456, 0.406]
   stds = [0.229, 0.224, 0.225]
-  interp = cv2.INTER_AREA if max(h, w) > res else cv2.INTER_LINEAR
-  img_np = cv2.resize(img_np, (res, res), interpolation=interp)
+  img_np = resize_bilinear(img_np, res, res)
   means = np.array(means, dtype=np.float32).reshape(1,1,3)
   stds = np.array(stds, dtype=np.float32).reshape(1,1,3)
   img_np = (img_np - means) / stds
@@ -744,7 +771,6 @@ if __name__ == "__main__":
     for box, label, class_id in zip(boxes, labels, class_ids):
       x1, y1, x2, y2 = map(int, box)
       color = ((int(class_id)*37)%255, (int(class_id)*17)%255, (int(class_id)*97)%255); cv2.rectangle(annotated_image, (x1, y1), (x2, y2), color, 2); cv2.rectangle(annotated_image, (x1, y1-18), (x1+len(label)*9, y1), color, -1); cv2.putText(annotated_image, label, (x1, y1 - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1, cv2.LINE_AA)
-
     np.testing.assert_allclose(sort_boxes(boxes), sort_boxes(excepted_xyxys[i]), atol=0.5)
     cv2.imwrite(f"annotated_image_{i}.jpg", annotated_image)
 
