@@ -23,14 +23,12 @@ COCO_CLASSES = {1: "person", 2: "bicycle", 3: "car", 4: "motorcycle", 5: "airpla
 89: "hair drier", 90: "toothbrush",
 }
 
-class Dinov2WithRegistersPatchEmbeddings_tiny():
-    
-
+class Dinov2WithRegistersPatchEmbeddings():
     def __call__(self, x):
         x = self.projection_tiny(x).flatten(2).transpose(1, 2)
         return x
 
-class WindowedDinov2WithRegistersEmbeddings_tiny():
+class WindowedDinov2WithRegistersEmbeddings():
     
     
     def __call__(self, pixel_values, bool_masked_pos: Optional[Any] = None):
@@ -60,14 +58,14 @@ class WindowedDinov2WithRegistersEmbeddings_tiny():
         embeddings = Tensor.cat(windowed_cls_token_with_pos_embed, windowed_pixel_tokens, dim=1)
         return embeddings
 
-class Dinov2WithRegistersSelfOutput_tiny():
+class Dinov2WithRegistersSelfOutput():
     
 
     def __call__(self, x):
         x = self.dense_tiny(x)
         return x
 
-class Dinov2WithRegistersSdpaSelfAttention_tiny():
+class Dinov2WithRegistersSdpaSelfAttention():
     
 
     def transpose_for_scores(self, x):
@@ -93,7 +91,7 @@ class Dinov2WithRegistersSdpaSelfAttention_tiny():
 
         return context_layer, None
 
-class Dinov2WithRegistersSdpaAttention_tiny():
+class Dinov2WithRegistersSdpaAttention():
     
 
     def __call__(
@@ -107,7 +105,7 @@ class Dinov2WithRegistersSdpaAttention_tiny():
         outputs = (attention_output,) + self_outputs[1:]
         return outputs
 
-class Dinov2WithRegistersMLP_tiny():
+class Dinov2WithRegistersMLP():
     
 
     def __call__(self, hidden_state):
@@ -116,14 +114,14 @@ class Dinov2WithRegistersMLP_tiny():
         hidden_state = self.fc2_tiny(hidden_state)
         return hidden_state
 
-class Dinov2WithRegistersLayerScale_tiny():
+class Dinov2WithRegistersLayerScale():
     
 
     def __call__(self, hidden_state):
         x = hidden_state * self.lambda1_tiny
         return x
 
-class WindowedDinov2WithRegistersLayer_tiny():
+class WindowedDinov2WithRegistersLayer():
     
 
     def __call__(
@@ -162,7 +160,7 @@ class WindowedDinov2WithRegistersLayer_tiny():
         outputs = (layer_output,) + outputs
         return outputs
 
-class WindowedDinov2WithRegistersEncoder_tiny():
+class WindowedDinov2WithRegistersEncoder():
     
 
     def __call__(
@@ -186,7 +184,7 @@ class WindowedDinov2WithRegistersEncoder_tiny():
         all_hidden_states = all_hidden_states + (hidden_states,)
         return tuple(v for v in [hidden_states, all_hidden_states, all_self_attentions] if v is not None)
 
-class WindowedDinov2WithRegistersBackbone_tiny():
+class WindowedDinov2WithRegistersBackbone():
     def __init__(self):
         self.config = {}
         self.stage_names = ['stem', 'stage1', 'stage2', 'stage3', 'stage4', 'stage5', 'stage6', 'stage7', 'stage8', 'stage9', 'stage10', 'stage11', 'stage12']
@@ -288,7 +286,7 @@ def ms_deform_attn_core(value, value_spatial_shapes, sampling_locations, attenti
     ret = output.transpose(1, 2).contiguous()
     return ret    
 
-class TransformerDecoderLayer_tiny():
+class TransformerDecoderLayer():
     def __call__(self, tgt, memory,
                      tgt_mask: None,
                      memory_mask: None,
@@ -367,7 +365,7 @@ def gen_sineembed_for_position(pos_tensor, dim=128):
     pos = Tensor.cat(pos_y, pos_x, pos_w, pos_h, dim=2)
     return pos
 
-class TransformerDecoder_tiny():
+class TransformerDecoder():
     
 
     def __call__(self, tgt, memory,
@@ -443,7 +441,7 @@ def gen_encoder_output_proposals(memory, memory_padding_mask, spatial_shape, uns
     output_memory = output_memory.masked_fill(~output_proposals_valid, float(0))
     return output_memory, output_proposals
 
-class MSDeformAttn_tiny():
+class MSDeformAttn():
     def __call__(self, query, reference_points, input_flatten, input_spatial_shapes,
                 input_level_start_index, input_padding_mask=None):
         N, Len_q, _ = query.shape
@@ -462,7 +460,7 @@ class MSDeformAttn_tiny():
         output = self.output_proj_tiny(output)
         return output
 
-class Transformer_tiny():
+class Transformer():
     def __call__(self, srcs, masks, pos_embeds, refpoint_embed, query_feat):
 
         self.enc_out_class_embed_w = self.enc_out_class_embed[0].weight
@@ -524,7 +522,7 @@ class Transformer_tiny():
         return hs, references, memory_ts, boxes_ts
 
     
-class ConvX_tiny():
+class ConvX():
     
     def __call__(self, x):
         x = self.conv_tiny(x)
@@ -532,10 +530,10 @@ class ConvX_tiny():
         out = Tensor.silu(x)
         return out
 
-class Bottleneck_tiny():
+class Bottleneck():
     def __call__(self, x): return self.cv2(self.cv1(x))
 
-class C2f_tiny():
+class C2f():
     def __init__(self): self.c = 128
     def __call__(self, x):
         """Forward pass using split() instead of chunk()."""
@@ -545,7 +543,7 @@ class C2f_tiny():
         y = self.cv2(y)
         return y
 
-class LayerNorm_tiny():
+class LayerNorm():
     def __init__(self): self.eps = 1e-6
     def __call__(self, x):
         x = x.permute(0, 2, 3, 1)
@@ -559,13 +557,13 @@ class LayerNorm_tiny():
         x = x.permute(0, 3, 1, 2)
         return x
 
-class MultiScaleProjector_tiny():
+class MultiScaleProjector():
     def __call__(self, x):
         feat_fuse = Tensor.cat(*x, dim=1)
         stage_output = self.stages[0](feat_fuse)
         return [stage_output]
 
-class PositionEmbeddingSine_tiny():
+class PositionEmbeddingSine():
     def __init__(self):
         self.scale = 6.283185307179586
         self.num_pos_feats = 128
@@ -587,7 +585,7 @@ class PositionEmbeddingSine_tiny():
         pos = Tensor.cat(pos_y, pos_x, dim=3).permute(0, 3, 1, 2)
         return pos
 
-class Backbone_tiny():
+class Backbone():
     def __call__(self, tensors ,mask):
         feats = list(self.encoder(tensors)[0])
         feats = self.projector(feats)
@@ -595,22 +593,22 @@ class Backbone_tiny():
         mask = ~Tensor.interpolate(m.unsqueeze(0), size=feats[0].shape[-2:])[0]
         return feats[0], mask
 
-class MLP_tiny():
+class MLP():
     def __call__(self, x):            
         for i, layer in enumerate(self.layers): x = Tensor.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
         return x
     
-class LWDETR_tiny():
+class LWDETR():
     def __init__(self, name):
       self.num_queries = 300
 
       config = {"nano":{"n_layers":2, "size": 577}, "small":{"n_layers":3, "size":1025},
                   "medium":{"n_layers":4, "size":1297}, "large":{"n_layers":4, "size":1937}}
-      self.position_embedding = PositionEmbeddingSine_tiny()
+      self.position_embedding = PositionEmbeddingSine()
       self.query_feat_tiny = Tensor.empty((3900, 256))
       self.refpoint_embed_tiny = Tensor.empty((3900, 4))
       self.class_embed = nn.Linear(256, 91)
-      self.bbox_embed = MLP_tiny()
+      self.bbox_embed = MLP()
       self.bbox_embed.num_layers = 3
       self.bbox_embed.layers_tiny = tiny_seq(size=3)
       self.bbox_embed.layers_tiny[0] = nn.Linear(256, 256)
@@ -623,15 +621,15 @@ class LWDETR_tiny():
       self.bbox_embed.layers[2] = nn.Linear(256, 4)
 
 
-      self.transformer = Transformer_tiny()
+      self.transformer = Transformer()
       self.transformer.enc_output_tiny = nn.Linear(256, 256)
       self.transformer.enc_output_norm_tiny = nn.LayerNorm(256)
-      self.transformer.decoder = TransformerDecoder_tiny()
+      self.transformer.decoder = TransformerDecoder()
       self.transformer.decoder.norm_tiny = nn.LayerNorm(256)
       self.transformer.decoder.layers = tiny_seq(config[name]["n_layers"])
       for i in range(config[name]["n_layers"]):
-        self.transformer.decoder.layers[i] = TransformerDecoderLayer_tiny()
-        self.transformer.decoder.layers[i].cross_attn = MSDeformAttn_tiny()
+        self.transformer.decoder.layers[i] = TransformerDecoderLayer()
+        self.transformer.decoder.layers[i].cross_attn = MSDeformAttn()
         self.transformer.decoder.layers[i].linear1_tiny = nn.Linear(256, 2048)
         self.transformer.decoder.layers[i].linear2_tiny = nn.Linear(2048, 256)
 
@@ -652,7 +650,7 @@ class LWDETR_tiny():
       self.transformer.enc_out_bbox_embed = tiny_seq(13)
       self.transformer.enc_out_class_embed = tiny_seq(13)
       for i in range(13):
-        self.transformer.enc_out_bbox_embed[i] = MLP_tiny()
+        self.transformer.enc_out_bbox_embed[i] = MLP()
         self.transformer.enc_out_bbox_embed[i].num_layers = 3
         self.transformer.enc_out_bbox_embed[i].layers_tiny = tiny_seq(3)
         self.transformer.enc_out_bbox_embed[i].layers_tiny[0] = nn.Linear(256, 256)
@@ -665,7 +663,7 @@ class LWDETR_tiny():
 
         self.transformer.enc_out_class_embed[i] = nn.Linear(256, 91)         
 
-      self.transformer.decoder.ref_point_head = MLP_tiny()
+      self.transformer.decoder.ref_point_head = MLP()
       self.transformer.decoder.ref_point_head.layers_tiny = tiny_seq(size=2)
       self.transformer.decoder.ref_point_head.num_layers = 2
       self.transformer.decoder.ref_point_head.layers = tiny_seq(size=2)
@@ -674,68 +672,68 @@ class LWDETR_tiny():
       self.transformer.decoder.ref_point_head.layers[0] = nn.Linear(512, 256) # todo remove
       self.transformer.decoder.ref_point_head.layers[1] = nn.Linear(256, 256)
 
-      self.backbone = Backbone_tiny()
-      self.backbone.projector = MultiScaleProjector_tiny()
+      self.backbone = Backbone()
+      self.backbone.projector = MultiScaleProjector()
       self.backbone.projector.stages = tiny_seq(1) # todo, this is dumb
       self.backbone.projector.stages[0] = tiny_seq(2)
-      self.backbone.projector.stages[0][0] = C2f_tiny()
-      self.backbone.projector.stages[0][1] = LayerNorm_tiny()
+      self.backbone.projector.stages[0][0] = C2f()
+      self.backbone.projector.stages[0][1] = LayerNorm()
       self.backbone.projector.stages[0][1].weight_tiny = Tensor.empty((256))
       self.backbone.projector.stages[0][1].bias_tiny = Tensor.empty((256))
-      self.backbone.projector.stages[0][0].cv1 = ConvX_tiny()
-      self.backbone.projector.stages[0][0].cv2 = ConvX_tiny()          
+      self.backbone.projector.stages[0][0].cv1 = ConvX()
+      self.backbone.projector.stages[0][0].cv2 = ConvX()          
       self.backbone.projector.stages[0][0].cv1.conv_tiny = nn.Conv2d(in_channels=1536, out_channels=256, kernel_size=1, bias=False, padding=(0, 0))
       self.backbone.projector.stages[0][0].cv2.conv_tiny = nn.Conv2d(in_channels=640, out_channels=256, kernel_size=1, bias=False, padding=(0, 0))
 
-      self.backbone.projector.stages[0][0].cv1.bn = LayerNorm_tiny()
+      self.backbone.projector.stages[0][0].cv1.bn = LayerNorm()
       self.backbone.projector.stages[0][0].cv1.bn.weight_tiny = Tensor.empty((256))
       self.backbone.projector.stages[0][0].cv1.bn.bias_tiny = Tensor.empty((256))
-      self.backbone.projector.stages[0][0].cv2.bn = LayerNorm_tiny()
+      self.backbone.projector.stages[0][0].cv2.bn = LayerNorm()
       self.backbone.projector.stages[0][0].cv2.bn.weight_tiny = Tensor.empty((256))
       self.backbone.projector.stages[0][0].cv2.bn.bias_tiny = Tensor.empty((256))
     
       self.backbone.projector.stages[0][0].m = tiny_seq(size=3)
       for i in range(3):
-        self.backbone.projector.stages[0][0].m[i] = Bottleneck_tiny()
-        self.backbone.projector.stages[0][0].m[i].cv1 = ConvX_tiny()
+        self.backbone.projector.stages[0][0].m[i] = Bottleneck()
+        self.backbone.projector.stages[0][0].m[i].cv1 = ConvX()
         self.backbone.projector.stages[0][0].m[i].cv1.conv_tiny = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, bias=False, padding=(1, 1))
-        self.backbone.projector.stages[0][0].m[i].cv2 = ConvX_tiny()
+        self.backbone.projector.stages[0][0].m[i].cv2 = ConvX()
         self.backbone.projector.stages[0][0].m[i].cv2.conv_tiny = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, bias=False, padding=(1, 1))            
-        self.backbone.projector.stages[0][0].m[i].cv1.bn = LayerNorm_tiny()
+        self.backbone.projector.stages[0][0].m[i].cv1.bn = LayerNorm()
         self.backbone.projector.stages[0][0].m[i].cv1.bn.weight_tiny = Tensor.empty((128))
         self.backbone.projector.stages[0][0].m[i].cv1.bn.bias_tiny = Tensor.empty((128))
-        self.backbone.projector.stages[0][0].m[i].cv2.bn = LayerNorm_tiny()
+        self.backbone.projector.stages[0][0].m[i].cv2.bn = LayerNorm()
         self.backbone.projector.stages[0][0].m[i].cv2.bn.weight_tiny = Tensor.empty((128))
         self.backbone.projector.stages[0][0].m[i].cv2.bn.bias_tiny = Tensor.empty((128))
       
 
       self.backbone.patch_size = 16 # todo, not in state_dict?
       self.backbone.num_windows = 2 # todo, not in state_dict?
-      self.backbone.encoder = WindowedDinov2WithRegistersBackbone_tiny()
+      self.backbone.encoder = WindowedDinov2WithRegistersBackbone()
       self.backbone.encoder.layernorm_tiny = nn.LayerNorm(384)
-      self.backbone.encoder.encoder = WindowedDinov2WithRegistersEncoder_tiny()
-      self.backbone.encoder.embeddings = WindowedDinov2WithRegistersEmbeddings_tiny()
-      self.backbone.encoder.embeddings.patch_embeddings = Dinov2WithRegistersPatchEmbeddings_tiny()
+      self.backbone.encoder.encoder = WindowedDinov2WithRegistersEncoder()
+      self.backbone.encoder.embeddings = WindowedDinov2WithRegistersEmbeddings()
+      self.backbone.encoder.embeddings.patch_embeddings = Dinov2WithRegistersPatchEmbeddings()
       self.backbone.encoder.embeddings.patch_embeddings.projection_tiny = nn.Conv2d(in_channels=3, out_channels=384, kernel_size=16, stride=(16, 16))
       self.backbone.encoder.embeddings.cls_token_tiny = Tensor.empty((1, 1, 384))
       self.backbone.encoder.embeddings.position_embeddings_tiny = Tensor.empty((1, config[name]["size"], 384))
       self.backbone.encoder.encoder.layer = tiny_seq(size=13)
       for i in range(12):
-        self.backbone.encoder.encoder.layer[i] = WindowedDinov2WithRegistersLayer_tiny()
+        self.backbone.encoder.encoder.layer[i] = WindowedDinov2WithRegistersLayer()
         self.backbone.encoder.encoder.layer[i].norm1_tiny = nn.LayerNorm(384)
         self.backbone.encoder.encoder.layer[i].norm2_tiny = nn.LayerNorm(384)
-        self.backbone.encoder.encoder.layer[i].attention = Dinov2WithRegistersSdpaAttention_tiny()
-        self.backbone.encoder.encoder.layer[i].attention.attention = Dinov2WithRegistersSdpaSelfAttention_tiny()
+        self.backbone.encoder.encoder.layer[i].attention = Dinov2WithRegistersSdpaAttention()
+        self.backbone.encoder.encoder.layer[i].attention.attention = Dinov2WithRegistersSdpaSelfAttention()
         self.backbone.encoder.encoder.layer[i].attention.attention.query_tiny = nn.Linear(384, 384)
         self.backbone.encoder.encoder.layer[i].attention.attention.key_tiny = nn.Linear(384, 384)
         self.backbone.encoder.encoder.layer[i].attention.attention.value_tiny = nn.Linear(384, 384)
-        self.backbone.encoder.encoder.layer[i].attention.output = Dinov2WithRegistersSelfOutput_tiny()
+        self.backbone.encoder.encoder.layer[i].attention.output = Dinov2WithRegistersSelfOutput()
         self.backbone.encoder.encoder.layer[i].attention.output.dense_tiny = nn.Linear(384, 384)
-        self.backbone.encoder.encoder.layer[i].layer_scale1 = Dinov2WithRegistersLayerScale_tiny()
-        self.backbone.encoder.encoder.layer[i].layer_scale2 = Dinov2WithRegistersLayerScale_tiny()
+        self.backbone.encoder.encoder.layer[i].layer_scale1 = Dinov2WithRegistersLayerScale()
+        self.backbone.encoder.encoder.layer[i].layer_scale2 = Dinov2WithRegistersLayerScale()
         self.backbone.encoder.encoder.layer[i].layer_scale1.lambda1_tiny = Tensor.empty((384))
         self.backbone.encoder.encoder.layer[i].layer_scale2.lambda1_tiny = Tensor.empty((384))
-        self.backbone.encoder.encoder.layer[i].mlp = Dinov2WithRegistersMLP_tiny()
+        self.backbone.encoder.encoder.layer[i].mlp = Dinov2WithRegistersMLP()
         self.backbone.encoder.encoder.layer[i].mlp.fc1_tiny = nn.Linear(384, 1536)
         self.backbone.encoder.encoder.layer[i].mlp.fc2_tiny = nn.Linear(1536, 384)
       state_dict = safe_load(f"{name}.safetensors")
@@ -856,7 +854,7 @@ if __name__ == "__main__":
   models = [[384, "nano"], [512, "small"], [576, "medium"], [704, "large"]]
   image = Image.open('dog.jpg')
   for i in range(len(models)):
-    model = LWDETR_tiny(models[i][1])
+    model = LWDETR(models[i][1])
     img_np = np.asarray(image)
     h, w = img_np.shape[:2]
     img_np = img_np.astype(np.float32) / 255.0
