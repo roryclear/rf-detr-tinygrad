@@ -23,28 +23,21 @@ COCO_CLASSES = {1: "person", 2: "bicycle", 3: "car", 4: "motorcycle", 5: "airpla
 89: "hair drier", 90: "toothbrush",
 }
 
+# todo remove
 class Dinov2WithRegistersPatchEmbeddings():
-    def __call__(self, x):
-        x = self.projection(x).flatten(2).transpose(1, 2)
-        return x
+    def __call__(self, x): return self.projection(x).flatten(2).transpose(1, 2)
 
 class WindowedDinov2WithRegistersEmbeddings():
-    def __call__(self, pixel_values, bool_masked_pos=None):
+    def __call__(self, pixel_values):
       batch_size, _, height, width = pixel_values.shape
       embeddings = self.patch_embeddings(pixel_values)
-
-      # add the [CLS] token to the embedded patch tokens
       cls_tokens = self.cls_token.expand(batch_size, -1, -1)
       embeddings = Tensor.cat(cls_tokens, embeddings, dim=1)
-      # add positional encoding to each token
       embeddings = embeddings + self.position_embeddings
-
-      # reshape for windows
       num_h_patches = height // 16
       num_w_patches = width // 16
       cls_token_with_pos_embed = embeddings[:, :1]
       pixel_tokens_with_pos_embed = embeddings[:, 1:]
-      
       pixel_tokens_with_pos_embed = pixel_tokens_with_pos_embed.view(batch_size, num_h_patches, num_w_patches, -1)
       num_w_patches_per_window = num_w_patches // 2
       num_h_patches_per_window = num_h_patches // 2
