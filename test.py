@@ -236,8 +236,6 @@ class WindowedDinov2WithRegistersBackbone_tiny():
         return output
 
 class DinoV2_tiny():
-    
-
     def __call__(self, x):
         block_size = self.patch_size * self.num_windows
         assert x.shape[2] % block_size == 0 and x.shape[3] % block_size == 0, f"Backbone requires input shape to be divisible by {block_size}, but got {x.shape}"
@@ -295,10 +293,7 @@ def ms_deform_attn_core_pytorch(value, value_spatial_shapes, sampling_locations,
     attention_weights = attention_weights.transpose(1, 2).reshape(B * n_heads, 1, Len_q, L * P)
     output = (sampling_value_l_ * attention_weights).sum(-1).view(B, n_heads * head_dim, Len_q)
     ret = output.transpose(1, 2).contiguous()
-    return ret
-
-class MultiheadAttention_tiny(): pass # todo, remove
-    
+    return ret    
 
 class TransformerDecoderLayer_tiny():
     def __call__(self, tgt, memory,
@@ -322,10 +317,10 @@ class TransformerDecoderLayer_tiny():
         B, T, C = q.shape
         H = 8
         D = C // H
-        w = self.self_attn.in_proj_weight
-        b = self.self_attn.in_proj_bias
-        wo = self.self_attn.out_proj_weight
-        bo = self.self_attn.out_proj_bias
+        w = self.in_proj_weight
+        b = self.in_proj_bias
+        wo = self.out_proj_weight
+        bo = self.out_proj_bias
         wq, wk, wv = w.chunk(3, dim=0)
         bq, bk, bv = b.chunk(3, dim=0)
 
@@ -649,15 +644,14 @@ class LWDETR_tiny():
       self.transformer.decoder.layers = tiny_seq(config[name]["n_layers"])
       for i in range(config[name]["n_layers"]):
         self.transformer.decoder.layers[i] = TransformerDecoderLayer_tiny()
-        self.transformer.decoder.layers[i].self_attn = MultiheadAttention_tiny()
         self.transformer.decoder.layers[i].cross_attn = MSDeformAttn_tiny()
         self.transformer.decoder.layers[i].linear1_tiny = nn.Linear(256, 2048)
         self.transformer.decoder.layers[i].linear2_tiny = nn.Linear(2048, 256)
 
-        self.transformer.decoder.layers[i].self_attn.in_proj_weight = Tensor.empty(768, 256)
-        self.transformer.decoder.layers[i].self_attn.in_proj_bias = Tensor.empty(768)
-        self.transformer.decoder.layers[i].self_attn.out_proj_weight = Tensor.empty(256, 256)
-        self.transformer.decoder.layers[i].self_attn.out_proj_bias = Tensor.empty(256)
+        self.transformer.decoder.layers[i].in_proj_weight = Tensor.empty(768, 256)
+        self.transformer.decoder.layers[i].in_proj_bias = Tensor.empty(768)
+        self.transformer.decoder.layers[i].out_proj_weight = Tensor.empty(256, 256)
+        self.transformer.decoder.layers[i].out_proj_bias = Tensor.empty(256)
 
         self.transformer.decoder.layers[i].norm1_tiny = nn.LayerNorm(256)
         self.transformer.decoder.layers[i].norm2_tiny = nn.LayerNorm(256)
