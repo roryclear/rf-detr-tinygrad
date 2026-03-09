@@ -29,68 +29,62 @@ class Dinov2WithRegistersPatchEmbeddings():
         return x
 
 class WindowedDinov2WithRegistersEmbeddings():
-    
-    
     def __call__(self, pixel_values, bool_masked_pos=None):
-        batch_size, _, height, width = pixel_values.shape
-        embeddings = self.patch_embeddings(pixel_values)
+      batch_size, _, height, width = pixel_values.shape
+      embeddings = self.patch_embeddings(pixel_values)
 
-        # add the [CLS] token to the embedded patch tokens
-        cls_tokens = self.cls_token.expand(batch_size, -1, -1)
-        embeddings = Tensor.cat(cls_tokens, embeddings, dim=1)
-        # add positional encoding to each token
-        embeddings = embeddings + self.position_embeddings
+      # add the [CLS] token to the embedded patch tokens
+      cls_tokens = self.cls_token.expand(batch_size, -1, -1)
+      embeddings = Tensor.cat(cls_tokens, embeddings, dim=1)
+      # add positional encoding to each token
+      embeddings = embeddings + self.position_embeddings
 
-        # reshape for windows
-        num_h_patches = height // 16
-        num_w_patches = width // 16
-        cls_token_with_pos_embed = embeddings[:, :1]
-        pixel_tokens_with_pos_embed = embeddings[:, 1:]
-        
-        pixel_tokens_with_pos_embed = pixel_tokens_with_pos_embed.view(batch_size, num_h_patches, num_w_patches, -1)
-        num_w_patches_per_window = num_w_patches // 2
-        num_h_patches_per_window = num_h_patches // 2
-        num_windows = 2
-        windowed_pixel_tokens = pixel_tokens_with_pos_embed.reshape(batch_size * num_windows, num_h_patches_per_window, num_windows, num_h_patches_per_window, -1)
-        windowed_pixel_tokens = windowed_pixel_tokens.permute(0, 2, 1, 3, 4)
-        windowed_pixel_tokens = windowed_pixel_tokens.reshape(batch_size * num_windows ** 2, num_h_patches_per_window * num_w_patches_per_window, -1)
-        windowed_cls_token_with_pos_embed = cls_token_with_pos_embed.repeat(num_windows ** 2, 1, 1)
-        embeddings = Tensor.cat(windowed_cls_token_with_pos_embed, windowed_pixel_tokens, dim=1)
-        return embeddings
+      # reshape for windows
+      num_h_patches = height // 16
+      num_w_patches = width // 16
+      cls_token_with_pos_embed = embeddings[:, :1]
+      pixel_tokens_with_pos_embed = embeddings[:, 1:]
+      
+      pixel_tokens_with_pos_embed = pixel_tokens_with_pos_embed.view(batch_size, num_h_patches, num_w_patches, -1)
+      num_w_patches_per_window = num_w_patches // 2
+      num_h_patches_per_window = num_h_patches // 2
+      num_windows = 2
+      windowed_pixel_tokens = pixel_tokens_with_pos_embed.reshape(batch_size * num_windows, num_h_patches_per_window, num_windows, num_h_patches_per_window, -1)
+      windowed_pixel_tokens = windowed_pixel_tokens.permute(0, 2, 1, 3, 4)
+      windowed_pixel_tokens = windowed_pixel_tokens.reshape(batch_size * num_windows ** 2, num_h_patches_per_window * num_w_patches_per_window, -1)
+      windowed_cls_token_with_pos_embed = cls_token_with_pos_embed.repeat(num_windows ** 2, 1, 1)
+      embeddings = Tensor.cat(windowed_cls_token_with_pos_embed, windowed_pixel_tokens, dim=1)
+      return embeddings
 
-class Dinov2WithRegistersSelfOutput():
-    def __call__(self, x):
-        x = self.dense(x)
-        return x
+class Dinov2WithRegistersSelfOutput(): # todo remove
+    def __call__(self, x): return self.dense(x)
 
 class Dinov2WithRegistersSdpaSelfAttention():
     def transpose_for_scores(self, x):
-        new_x_shape = x.size()[:-1] + (6, 64)
-        x = x.view(new_x_shape)
-        x = x.permute(0, 2, 1, 3)
-        return x
+      new_x_shape = x.size()[:-1] + (6, 64)
+      x = x.view(new_x_shape)
+      return x.permute(0, 2, 1, 3)
 
     def __call__(self, hidden_states, head_mask, output_attentions):
-        mixed_query_layer = self.query(hidden_states)
-        key_layer = self.transpose_for_scores(self.key(hidden_states))
-        value_layer = self.transpose_for_scores(self.value(hidden_states))
-        query_layer = self.transpose_for_scores(mixed_query_layer)
+      mixed_query_layer = self.query(hidden_states)
+      key_layer = self.transpose_for_scores(self.key(hidden_states))
+      value_layer = self.transpose_for_scores(self.value(hidden_states))
+      query_layer = self.transpose_for_scores(mixed_query_layer)
 
-        d_k = query_layer.size(-1)
-        attn_scores = Tensor.matmul(query_layer, key_layer.transpose(-2, -1)) / math.sqrt(d_k)
-        attn_probs = Tensor.softmax(attn_scores, axis=-1)
-        context_layer = Tensor.matmul(attn_probs, value_layer)
-        context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
-        new_context_layer_shape = context_layer.size()[:-2] + (384,)
-        context_layer = context_layer.view(new_context_layer_shape)
-        return context_layer, None
+      d_k = query_layer.size(-1)
+      attn_scores = Tensor.matmul(query_layer, key_layer.transpose(-2, -1)) / math.sqrt(d_k)
+      attn_probs = Tensor.softmax(attn_scores, axis=-1)
+      context_layer = Tensor.matmul(attn_probs, value_layer)
+      context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
+      new_context_layer_shape = context_layer.size()[:-2] + (384,)
+      context_layer = context_layer.view(new_context_layer_shape)
+      return context_layer, None
 
 class Dinov2WithRegistersSdpaAttention():
     def __call__(self, hidden_states, head_mask=None, output_attentions= False):
-        self_outputs = self.attention(hidden_states, head_mask, output_attentions)
-        attention_output = self.output(self_outputs[0])
-        outputs = (attention_output,) + self_outputs[1:]
-        return outputs
+      self_outputs = self.attention(hidden_states, head_mask, output_attentions)
+      attention_output = self.output(self_outputs[0])
+      return (attention_output,) + self_outputs[1:]
 
 class Dinov2WithRegistersMLP():
     def __call__(self, hidden_state):
@@ -99,62 +93,58 @@ class Dinov2WithRegistersMLP():
         hidden_state = self.fc2(hidden_state)
         return hidden_state
 
-class Dinov2WithRegistersLayerScale():
-    def __call__(self, hidden_state):
-        x = hidden_state * self.lambda1
-        return x
+class Dinov2WithRegistersLayerScale(): # todo remove
+    def __call__(self, hidden_state): return hidden_state * self.lambda1
 
 class WindowedDinov2WithRegistersLayer():
     def __call__(self, hidden_states, head_mask=None, output_attentions= False, run_full_attention= False):
-        shortcut = hidden_states
-        self.num_windows = 2
-        if run_full_attention:
-            # reshape x to remove windows
-            B, HW, C = hidden_states.shape
-            num_windows_squared = self.num_windows ** 2
-            hidden_states = hidden_states.view(B // num_windows_squared, num_windows_squared * HW, C)
-        x = self.norm1(hidden_states)
+      shortcut = hidden_states
+      self.num_windows = 2
+      if run_full_attention:
+        B, HW, C = hidden_states.shape
+        num_windows_squared = self.num_windows ** 2
+        hidden_states = hidden_states.view(B // num_windows_squared, num_windows_squared * HW, C)
+      x = self.norm1(hidden_states)
 
-        # todo
-        self_attention_outputs = self.attention(x, head_mask, output_attentions=output_attentions,)
-        attention_output = self_attention_outputs[0]
+      # todo
+      self_attention_outputs = self.attention(x, head_mask, output_attentions=output_attentions,)
+      attention_output = self_attention_outputs[0]
 
-        if run_full_attention:
-            B, HW, C = hidden_states.shape
-            num_windows_squared = self.num_windows ** 2
-            attention_output = attention_output.view(B * num_windows_squared, HW // num_windows_squared, C)
-        attention_output = self.layer_scale1(attention_output)
-        outputs = self_attention_outputs[1:]
-        hidden_states = attention_output + shortcut
+      if run_full_attention:
+        B, HW, C = hidden_states.shape
+        num_windows_squared = self.num_windows ** 2
+        attention_output = attention_output.view(B * num_windows_squared, HW // num_windows_squared, C)
+      attention_output = self.layer_scale1(attention_output)
+      outputs = self_attention_outputs[1:]
+      hidden_states = attention_output + shortcut
 
-        # in Dinov2WithRegisters, layernorm is also applied after self-attention
-        layer_output = self.norm2(hidden_states)
-        layer_output = self.mlp(layer_output)
-        layer_output = self.layer_scale2(layer_output)
-        layer_output = layer_output + hidden_states
-        outputs = (layer_output,) + outputs
-        return outputs
+      # in Dinov2WithRegisters, layernorm is also applied after self-attention
+      layer_output = self.norm2(hidden_states)
+      layer_output = self.mlp(layer_output)
+      layer_output = self.layer_scale2(layer_output)
+      layer_output = layer_output + hidden_states
+      return (layer_output,) + outputs
 
 class WindowedDinov2WithRegistersEncoder():
     def __call__(self, hidden_states, head_mask=None, output_attentions=False, output_hidden_states=False, return_dict=True,):
-        all_hidden_states = () if output_hidden_states else None
-        all_self_attentions = () if output_attentions else None
+      all_hidden_states = () if output_hidden_states else None
+      all_self_attentions = () if output_attentions else None
 
-        for i, layer_module in enumerate(self.layer):
-            all_hidden_states = all_hidden_states + (hidden_states,)
-            run_full_attention = i not in [0, 1, 2, 4, 5, 7, 8, 10, 11]
-            layer_head_mask = None
-            layer_outputs = layer_module(hidden_states, layer_head_mask, output_attentions, run_full_attention)
-            hidden_states = layer_outputs[0]
-
+      for i, layer_module in enumerate(self.layer):
         all_hidden_states = all_hidden_states + (hidden_states,)
-        return tuple(v for v in [hidden_states, all_hidden_states, all_self_attentions] if v is not None)
+        run_full_attention = i not in [0, 1, 2, 4, 5, 7, 8, 10, 11]
+        layer_head_mask = None
+        layer_outputs = layer_module(hidden_states, layer_head_mask, output_attentions, run_full_attention)
+        hidden_states = layer_outputs[0]
+
+      all_hidden_states = all_hidden_states + (hidden_states,)
+      return tuple(v for v in [hidden_states, all_hidden_states, all_self_attentions] if v is not None)
 
 class WindowedDinov2WithRegistersBackbone():
     def __init__(self):
-        self.config = {}
-        self.stage_names = ['stem', 'stage1', 'stage2', 'stage3', 'stage4', 'stage5', 'stage6', 'stage7', 'stage8', 'stage9', 'stage10', 'stage11', 'stage12']
-        self.out_features = ['stage3', 'stage6', 'stage9', 'stage12']
+      self.config = {}
+      self.stage_names = ['stem', 'stage1', 'stage2', 'stage3', 'stage4', 'stage5', 'stage6', 'stage7', 'stage8', 'stage9', 'stage10', 'stage11', 'stage12']
+      self.out_features = ['stage3', 'stage6', 'stage9', 'stage12']
 
     def __call__(self, pixel_values, output_hidden_states=None, output_attentions=None, return_dict=None,):
         embedding_output = self.embeddings(pixel_values)
@@ -165,30 +155,30 @@ class WindowedDinov2WithRegistersBackbone():
 
         feature_maps = ()
         for stage, hidden_state in zip(self.stage_names, hidden_states):
-            if stage in self.out_features:
-                hidden_state = self.layernorm(hidden_state)
-                hidden_state = hidden_state[:, 1 :]
-                # this was actually a bug in the original implementation that we copied here,
-                # cause normally the order is height, width
-                batch_size, _, height, width = pixel_values.shape
-                patch_size = 16
+          if stage in self.out_features:
+            hidden_state = self.layernorm(hidden_state)
+            hidden_state = hidden_state[:, 1 :]
+            # this was actually a bug in the original implementation that we copied here,
+            # cause normally the order is height, width
+            batch_size, _, height, width = pixel_values.shape
+            patch_size = 16
 
 
-                num_h_patches = height // patch_size
-                num_w_patches = width // patch_size
+            num_h_patches = height // patch_size
+            num_w_patches = width // patch_size
 
-                # undo windowing
-                num_windows_squared = 4
-                B, HW, C = hidden_state.shape
-                num_h_patches_per_window = num_h_patches // 2
-                num_w_patches_per_window = num_w_patches // 2
-                hidden_state = hidden_state.reshape(B // num_windows_squared, num_windows_squared * HW, C)
-                hidden_state = hidden_state.reshape((B // num_windows_squared) * 2, 2, num_h_patches_per_window, num_w_patches_per_window, C)
-                hidden_state = hidden_state.permute(0, 2, 1, 3, 4)
+            # undo windowing
+            num_windows_squared = 4
+            B, HW, C = hidden_state.shape
+            num_h_patches_per_window = num_h_patches // 2
+            num_w_patches_per_window = num_w_patches // 2
+            hidden_state = hidden_state.reshape(B // num_windows_squared, num_windows_squared * HW, C)
+            hidden_state = hidden_state.reshape((B // num_windows_squared) * 2, 2, num_h_patches_per_window, num_w_patches_per_window, C)
+            hidden_state = hidden_state.permute(0, 2, 1, 3, 4)
 
-                hidden_state = hidden_state.reshape(batch_size, num_h_patches, num_w_patches, -1)
-                hidden_state = hidden_state.permute(0, 3, 1, 2).contiguous()
-                feature_maps += (hidden_state,)
+            hidden_state = hidden_state.reshape(batch_size, num_h_patches, num_w_patches, -1)
+            hidden_state = hidden_state.permute(0, 3, 1, 2).contiguous()
+            feature_maps += (hidden_state,)
 
         output = (feature_maps,) + outputs[2:]
         return output
@@ -318,14 +308,14 @@ class TransformerDecoder(): # todo remove unused
       refpoints_unsigmoid=None, level_start_index=None, spatial_shapes=None, valid_ratios=None):
         intermediate = []
         def get_reference(refpoints_unsigmoid, valid_ratios):
-            obj_center = refpoints_unsigmoid[..., :4]
-            refpoints_input = obj_center[:, :, None] * Tensor.cat(valid_ratios, valid_ratios, dim=-1)[:, None]
-            query_sine_embed = gen_sineembed_for_position(
-                refpoints_input[:, :, 0, :], 256 / 2) # bs, nq, 256*2
-            query_pos = self.ref_point_head(query_sine_embed)
-            return refpoints_input, query_pos
+          obj_center = refpoints_unsigmoid[..., :4]
+          refpoints_input = obj_center[:, :, None] * Tensor.cat(valid_ratios, valid_ratios, dim=-1)[:, None]
+          query_sine_embed = gen_sineembed_for_position(
+              refpoints_input[:, :, 0, :], 256 / 2) # bs, nq, 256*2
+          query_pos = self.ref_point_head(query_sine_embed)
+          return refpoints_input, query_pos
 
-        for layer_id, layer in enumerate(self.layers):
+        for _, layer in enumerate(self.layers):
           refpoints_input, query_pos = get_reference(refpoints_unsigmoid, valid_ratios) #todo
 
           tgt = layer(tgt, memory,
@@ -688,39 +678,29 @@ class LWDETR():
 
 def box_cxcywh_to_xyxy(x):
     x_c, y_c, w, h = [t.squeeze(-1) for t in x.split(1, dim=-1)]
-
     w_pos = w.clip(0.0, float("inf"))
     h_pos = h.clip(0.0, float("inf"))
-
-    b = [
-        x_c - 0.5 * w_pos,
-        y_c - 0.5 * h_pos,
-        x_c + 0.5 * w_pos,
-        y_c + 0.5 * h_pos,
-    ]
+    b = [x_c - 0.5 * w_pos, y_c - 0.5 * h_pos, x_c + 0.5 * w_pos, y_c + 0.5 * h_pos]
     return Tensor.stack(b, dim=-1)
 
 class seq:
-    def __init__(self, size=0):
-        self.size = size
+    def __init__(self, size=0): self.size = size
 
-    def __setitem__(self, key, value):
-        setattr(self, str(key), value)
+    def __setitem__(self, key, value): setattr(self, str(key), value)
 
     def __getitem__(self, idx):
-        try:
-            return getattr(self, str(idx))
-        except AttributeError:
-            raise IndexError(idx)
+      try:
+        return getattr(self, str(idx))
+      except AttributeError:
+        raise IndexError(idx)
 
-    def __len__(self):
-        return self.size
+    def __len__(self): return self.size
 
     def __call__(self, x):
-        for i in range(self.size):
-            layer = getattr(self, str(i))
-            x = layer(x)
-        return x
+      for i in range(self.size):
+        layer = getattr(self, str(i))
+        x = layer(x)
+      return x
         
 excepted_xyxys = [
 [[63.662533,247.56085,649.37244,933.79956,],
