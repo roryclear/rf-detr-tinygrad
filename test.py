@@ -23,7 +23,6 @@ COCO_CLASSES = {1: "person", 2: "bicycle", 3: "car", 4: "motorcycle", 5: "airpla
 89: "hair drier", 90: "toothbrush",
 }
 
-
 class WindowedDinov2WithRegistersEmbeddings():
     def __call__(self, pixel_values):
       batch_size, _, height, width = pixel_values.shape
@@ -37,9 +36,9 @@ class WindowedDinov2WithRegistersEmbeddings():
       cls_token_with_pos_embed = embeddings[:, :1]
       pixel_tokens_with_pos_embed = embeddings[:, 1:]
       pixel_tokens_with_pos_embed = pixel_tokens_with_pos_embed.view(batch_size, num_h_patches, num_w_patches, -1)
-      num_w_patches_per_window = num_w_patches // 2
-      num_h_patches_per_window = num_h_patches // 2
       num_windows = 2
+      num_w_patches_per_window = num_w_patches // num_windows
+      num_h_patches_per_window = num_h_patches // num_windows
       windowed_pixel_tokens = pixel_tokens_with_pos_embed.reshape(batch_size * num_windows, num_h_patches_per_window, num_windows, num_h_patches_per_window, -1)
       windowed_pixel_tokens = windowed_pixel_tokens.permute(0, 2, 1, 3, 4)
       windowed_pixel_tokens = windowed_pixel_tokens.reshape(batch_size * num_windows ** 2, num_h_patches_per_window * num_w_patches_per_window, -1)
@@ -127,6 +126,7 @@ class WindowedDinov2WithRegistersEncoder():
 
 class WindowedDinov2WithRegistersBackbone():
     def __init__(self):
+      self.num_windows = 2
       self.config = {}
       self.stage_names = ['stem', 'stage1', 'stage2', 'stage3', 'stage4', 'stage5', 'stage6', 'stage7', 'stage8', 'stage9', 'stage10', 'stage11', 'stage12']
       self.out_features = ['stage3', 'stage6', 'stage9', 'stage12']
@@ -153,7 +153,7 @@ class WindowedDinov2WithRegistersBackbone():
             num_w_patches = width // patch_size
 
             # undo windowing
-            num_windows_squared = 4
+            num_windows_squared = self.num_windows ** 2
             B, HW, C = hidden_state.shape
             num_h_patches_per_window = num_h_patches // 2
             num_w_patches_per_window = num_w_patches // 2
