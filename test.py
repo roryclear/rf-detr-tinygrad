@@ -247,8 +247,8 @@ def ms_deform_attn_core(value, value_spatial_shapes, sampling_locations, attenti
     return ret    
 
 class TransformerDecoderLayer(): # todo, remove unused
-    def __call__(self, tgt, memory, tgt_mask, memory_mask, tgt_key_padding_mask, memory_key_padding_mask, pos, query_pos,
-      query_sine_embed=None, is_first=False, reference_points=None, spatial_shapes=None, level_start_index=None):  
+    def __call__(self, tgt, memory, memory_key_padding_mask, query_pos,
+      reference_points=None, spatial_shapes=None, level_start_index=None):  
         q = k = tgt + query_pos
         v = tgt
 
@@ -313,7 +313,7 @@ def gen_sineembed_for_position(pos_tensor, dim=128):
   pos = Tensor.cat(pos_y, pos_x, pos_w, pos_h, dim=2)
   return pos
 
-class TransformerDecoder():
+class TransformerDecoder(): # todo remove unused
     def __call__(self, tgt, memory, tgt_mask=None, memory_mask=None, tgt_key_padding_mask=None, memory_key_padding_mask=None,
       pos=None, refpoints_unsigmoid=None, level_start_index=None, spatial_shapes=None, valid_ratios=None):
         intermediate = []
@@ -323,19 +323,14 @@ class TransformerDecoder():
             query_sine_embed = gen_sineembed_for_position(
                 refpoints_input[:, :, 0, :], 256 / 2) # bs, nq, 256*2
             query_pos = self.ref_point_head(query_sine_embed)
-            return refpoints_input, query_pos, query_sine_embed
+            return refpoints_input, query_pos
 
         for layer_id, layer in enumerate(self.layers):
-          refpoints_input, query_pos, query_sine_embed = get_reference(refpoints_unsigmoid, valid_ratios) #todo
-          pos_transformation = 1
+          refpoints_input, query_pos = get_reference(refpoints_unsigmoid, valid_ratios) #todo
 
-          query_pos = query_pos * pos_transformation
-          tgt = layer(tgt, memory, tgt_mask=tgt_mask,
-            memory_mask=memory_mask,
-            tgt_key_padding_mask=tgt_key_padding_mask,
+          tgt = layer(tgt, memory,
             memory_key_padding_mask=memory_key_padding_mask,
-            pos=pos, query_pos=query_pos, query_sine_embed=query_sine_embed,
-            is_first=(layer_id == 0),
+            query_pos=query_pos,
             reference_points=refpoints_input,
             spatial_shapes=spatial_shapes,
             level_start_index=level_start_index)
