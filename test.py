@@ -266,14 +266,7 @@ class TransformerDecoderLayer(): # todo, remove unused
         tgt2 = attn @ wo.T + bo
         tgt = tgt + tgt2
         tgt = self.norm1(tgt)
-        tgt2 = self.cross_attn(
-            tgt+query_pos,
-            reference_points,
-            memory,
-            spatial_shapes,
-            level_start_index,
-            memory_key_padding_mask
-        )
+        tgt2 = self.cross_attn(tgt+query_pos, reference_points, memory, spatial_shapes, memory_key_padding_mask)
         tgt = tgt + tgt2
         tgt = self.norm2(tgt)
         x = self.linear1(tgt)
@@ -362,8 +355,7 @@ def gen_encoder_output_proposals(memory, memory_padding_mask, spatial_shape, uns
     return output_memory, output_proposals
 
 class MSDeformAttn():
-    def __call__(self, query, reference_points, input_flatten, input_spatial_shapes,
-                input_level_start_index, input_padding_mask=None):
+    def __call__(self, query, reference_points, input_flatten, input_spatial_shapes, input_padding_mask=None):
         N, Len_q, _ = query.shape
         N, Len_in, _ = input_flatten.shape
 
