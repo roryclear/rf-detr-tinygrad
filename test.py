@@ -6,6 +6,7 @@ from tqdm import tqdm
 import math
 from tinygrad.dtype import dtypes
 from tinygrad.nn.state import get_state_dict, load_state_dict, safe_save, safe_load
+from tinygrad.helpers import fetch
 
 from tinygrad import Tensor, nn
 import cv2
@@ -619,7 +620,7 @@ class LWDETR():
         self.backbone.encoder.encoder.layer[i].mlp = Dinov2WithRegistersMLP()
         self.backbone.encoder.encoder.layer[i].mlp.fc1 = nn.Linear(384, 1536)
         self.backbone.encoder.encoder.layer[i].mlp.fc2 = nn.Linear(1536, 384)
-      state_dict = safe_load(f"{name}.safetensors")
+      state_dict = safe_load(fetch(f'https://huggingface.co/roryclear/rf-detr/resolve/main/{name}.safetensors'))
       load_state_dict(self, state_dict)
 
 
