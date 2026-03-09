@@ -713,21 +713,22 @@ def sort_boxes(xyxy):
   return xyxy[order]
 
 def resize(img, new_size):
-  img = Tensor(img)
   img = img.permute(2,0,1)
   img = Tensor.interpolate(img, size=(new_size[1], new_size[0]), mode='linear', align_corners=False)
   img = img.permute(1, 2, 0)
-  return img.numpy()
+  return img
 
-def preprocess(img_np, res):
-  means = [0.485, 0.456, 0.406]
-  stds = [0.229, 0.224, 0.225]
-  img_np = resize(img_np, (res, res))
-  means = np.array(means, dtype=np.float32).reshape(1,1,3)
-  stds = np.array(stds, dtype=np.float32).reshape(1,1,3)
-  img_np = (img_np - means) / stds
-  img_np = np.transpose(img_np, (2,0,1))
-  processed_images = Tensor([img_np])
+def preprocess(img, res):
+  img = Tensor(img)
+  means = [[[0.485, 0.456, 0.406]]]
+  stds = [[[0.229, 0.224, 0.225]]]
+  img = resize(img, (res, res))
+  img = img.numpy()
+  means = np.array(means)
+  stds = np.array(stds)
+  img = (img - means) / stds
+  img = np.transpose(img, (2,0,1))
+  processed_images = Tensor([img])
   return processed_images
 
 if __name__ == "__main__":
