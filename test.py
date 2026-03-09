@@ -31,7 +31,7 @@ class Dinov2WithRegistersPatchEmbeddings():
 class WindowedDinov2WithRegistersEmbeddings():
     
     
-    def __call__(self, pixel_values, bool_masked_pos: Optional[Any] = None):
+    def __call__(self, pixel_values, bool_masked_pos=None):
         batch_size, _, height, width = pixel_values.shape
         embeddings = self.patch_embeddings(pixel_values)
 
@@ -89,8 +89,8 @@ class Dinov2WithRegistersSdpaAttention():
     def __call__(
         self,
         hidden_states: Any,
-        head_mask: Optional[Any] = None,
-        output_attentions: bool = False,
+        head_mask=None,
+        output_attentions= False,
     ) -> Union[Tuple[Any, Any], Tuple[Any]]:
         self_outputs = self.attention(hidden_states, head_mask, output_attentions)
         attention_output = self.output(self_outputs[0])
@@ -115,9 +115,9 @@ class WindowedDinov2WithRegistersLayer():
     def __call__(
         self,
         hidden_states: Any,
-        head_mask: Optional[Any] = None,
-        output_attentions: bool = False,
-        run_full_attention: bool = False,
+        head_mask=None,
+        output_attentions= False,
+        run_full_attention= False,
     ):
         shortcut = hidden_states
         self.num_windows = 2
@@ -149,16 +149,7 @@ class WindowedDinov2WithRegistersLayer():
         return outputs
 
 class WindowedDinov2WithRegistersEncoder():
-    
-
-    def __call__(
-        self,
-        hidden_states: Any,
-        head_mask: Optional[Any] = None,
-        output_attentions: bool = False,
-        output_hidden_states: bool = False,
-        return_dict: bool = True,
-    ):
+    def __call__(self, hidden_states, head_mask=None, output_attentions=False, output_hidden_states=False, return_dict=True,):
         all_hidden_states = () if output_hidden_states else None
         all_self_attentions = () if output_attentions else None
 
@@ -178,13 +169,7 @@ class WindowedDinov2WithRegistersBackbone():
         self.stage_names = ['stem', 'stage1', 'stage2', 'stage3', 'stage4', 'stage5', 'stage6', 'stage7', 'stage8', 'stage9', 'stage10', 'stage11', 'stage12']
         self.out_features = ['stage3', 'stage6', 'stage9', 'stage12']
 
-    def __call__(
-        self,
-        pixel_values,
-        output_hidden_states: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-    ):
+    def __call__(self, pixel_values, output_hidden_states=None, output_attentions=None, return_dict=None,):
         embedding_output = self.embeddings(pixel_values)
 
         outputs = self.encoder(embedding_output, output_hidden_states=True, output_attentions=output_attentions, return_dict=return_dict)
@@ -276,12 +261,12 @@ def ms_deform_attn_core(value, value_spatial_shapes, sampling_locations, attenti
 
 class TransformerDecoderLayer():
     def __call__(self, tgt, memory,
-                     tgt_mask: None,
-                     memory_mask: None,
-                     tgt_key_padding_mask: None,
-                     memory_key_padding_mask: None,
-                     pos: None,
-                     query_pos: None,
+                     tgt_mask,
+                     memory_mask,
+                     tgt_key_padding_mask,
+                     memory_key_padding_mask,
+                     pos,
+                     query_pos,
                      query_sine_embed = None,
                      is_first = False,
                      reference_points = None,
