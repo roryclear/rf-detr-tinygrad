@@ -36,13 +36,13 @@ class WindowedDinov2WithRegistersEmbeddings():
       cls_token_with_pos_embed = embeddings[:, :1]
       pixel_tokens_with_pos_embed = embeddings[:, 1:]
       pixel_tokens_with_pos_embed = pixel_tokens_with_pos_embed.view(batch_size, num_h_patches, num_w_patches, -1)
-      num_windows = 2
-      num_w_patches_per_window = num_w_patches // num_windows
-      num_h_patches_per_window = num_h_patches // num_windows
-      windowed_pixel_tokens = pixel_tokens_with_pos_embed.reshape(batch_size * num_windows, num_h_patches_per_window, num_windows, num_h_patches_per_window, -1)
+  
+      num_w_patches_per_window = num_w_patches // self.num_windows
+      num_h_patches_per_window = num_h_patches // self.num_windows
+      windowed_pixel_tokens = pixel_tokens_with_pos_embed.reshape(batch_size * self.num_windows, num_h_patches_per_window, self.num_windows, num_h_patches_per_window, -1)
       windowed_pixel_tokens = windowed_pixel_tokens.permute(0, 2, 1, 3, 4)
-      windowed_pixel_tokens = windowed_pixel_tokens.reshape(batch_size * num_windows ** 2, num_h_patches_per_window * num_w_patches_per_window, -1)
-      windowed_cls_token_with_pos_embed = cls_token_with_pos_embed.repeat(num_windows ** 2, 1, 1)
+      windowed_pixel_tokens = windowed_pixel_tokens.reshape(batch_size * self.num_windows ** 2, num_h_patches_per_window * num_w_patches_per_window, -1)
+      windowed_cls_token_with_pos_embed = cls_token_with_pos_embed.repeat(self.num_windows ** 2, 1, 1)
       embeddings = Tensor.cat(windowed_cls_token_with_pos_embed, windowed_pixel_tokens, dim=1)
       return embeddings
 
@@ -83,7 +83,6 @@ class Dinov2WithRegistersMLP():
 class WindowedDinov2WithRegistersLayer():
     def __call__(self, hidden_states, head_mask=None, output_attentions= False, run_full_attention= False):
       shortcut = hidden_states
-      self.num_windows = 2
       if run_full_attention:
         B, HW, C = hidden_states.shape
         num_windows_squared = self.num_windows ** 2
@@ -126,7 +125,6 @@ class WindowedDinov2WithRegistersEncoder():
 
 class WindowedDinov2WithRegistersBackbone():
     def __init__(self):
-      self.num_windows = 2
       self.config = {}
       self.stage_names = ['stem', 'stage1', 'stage2', 'stage3', 'stage4', 'stage5', 'stage6', 'stage7', 'stage8', 'stage9', 'stage10', 'stage11', 'stage12']
       self.out_features = ['stage3', 'stage6', 'stage9', 'stage12']
@@ -488,6 +486,7 @@ class LWDETR():
 
       config = {"nano":{"n_layers":2, "size": 577}, "small":{"n_layers":3, "size":1025},
                   "medium":{"n_layers":4, "size":1297}, "large":{"n_layers":4, "size":1937}}
+      num_windows = 2
       self.position_embedding = PositionEmbeddingSine()
       self.query_feat = Tensor.empty((3900, 256))
       self.refpoint_embed = Tensor.empty((3900, 4))
@@ -592,17 +591,20 @@ class LWDETR():
       
 
       self.backbone.patch_size = 16 # todo, not in state_dict?
-      self.backbone.num_windows = 2 # todo, not in state_dict?
+      self.backbone.num_windows = num_windows # todo, not in state_dict?
       self.backbone.encoder = WindowedDinov2WithRegistersBackbone()
+      self.backbone.encoder.num_windows = num_windows
       self.backbone.encoder.layernorm = nn.LayerNorm(384)
       self.backbone.encoder.encoder = WindowedDinov2WithRegistersEncoder()
       self.backbone.encoder.embeddings = WindowedDinov2WithRegistersEmbeddings()
+      self.backbone.encoder.embeddings.num_windows = num_windows
       self.backbone.encoder.embeddings.projection = nn.Conv2d(in_channels=3, out_channels=384, kernel_size=16, stride=(16, 16))
       self.backbone.encoder.embeddings.cls_token = Tensor.empty((1, 1, 384))
       self.backbone.encoder.embeddings.position_embeddings = Tensor.empty((1, config[name]["size"], 384))
       self.backbone.encoder.encoder.layer = seq(size=13)
       for i in range(12):
         self.backbone.encoder.encoder.layer[i] = WindowedDinov2WithRegistersLayer()
+        self.backbone.encoder.encoder.layer[i].num_windows = num_windows
         self.backbone.encoder.encoder.layer[i].norm1 = nn.LayerNorm(384)
         self.backbone.encoder.encoder.layer[i].norm2 = nn.LayerNorm(384)
         self.backbone.encoder.encoder.layer[i].attention = Dinov2WithRegistersSdpaAttention()
