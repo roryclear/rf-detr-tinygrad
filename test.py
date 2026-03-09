@@ -39,9 +39,10 @@ class WindowedDinov2WithRegistersEmbeddings():
   
       num_w_patches_per_window = num_w_patches // self.num_windows
       num_h_patches_per_window = num_h_patches // self.num_windows
-      windowed_pixel_tokens = pixel_tokens_with_pos_embed.reshape(batch_size * self.num_windows, num_h_patches_per_window, self.num_windows, num_h_patches_per_window, -1)
-      windowed_pixel_tokens = windowed_pixel_tokens.permute(0, 2, 1, 3, 4)
-      windowed_pixel_tokens = windowed_pixel_tokens.reshape(batch_size * self.num_windows ** 2, num_h_patches_per_window * num_w_patches_per_window, -1)
+      windowed_pixel_tokens = pixel_tokens_with_pos_embed.reshape(batch_size, self.num_windows, num_h_patches_per_window, self.num_windows, num_w_patches_per_window, -1)
+      windowed_pixel_tokens = windowed_pixel_tokens.permute(0,1,3,2,4,5)
+      windowed_pixel_tokens = windowed_pixel_tokens.reshape(batch_size * self.num_windows**2, num_h_patches_per_window * num_w_patches_per_window, -1)
+
       windowed_cls_token_with_pos_embed = cls_token_with_pos_embed.repeat(self.num_windows ** 2, 1, 1)
       embeddings = Tensor.cat(windowed_cls_token_with_pos_embed, windowed_pixel_tokens, dim=1)
       return embeddings
@@ -153,14 +154,14 @@ class WindowedDinov2WithRegistersBackbone():
             # undo windowing
             num_windows_squared = self.num_windows ** 2
             B, HW, C = hidden_state.shape
+
             num_h_patches_per_window = num_h_patches // self.num_windows
             num_w_patches_per_window = num_w_patches // self.num_windows
-            hidden_state = hidden_state.reshape(B // num_windows_squared, num_windows_squared * HW, C)
-            hidden_state = hidden_state.reshape((B // num_windows_squared) * 2, self.num_windows, num_h_patches_per_window, num_w_patches_per_window, C)
-            hidden_state = hidden_state.permute(0, 2, 1, 3, 4)
 
-            hidden_state = hidden_state.reshape(batch_size, num_h_patches, num_w_patches, -1)
-            hidden_state = hidden_state.permute(0, 3, 1, 2).contiguous()
+            hidden_state = hidden_state.reshape(B // num_windows_squared, self.num_windows, self.num_windows, num_h_patches_per_window, num_w_patches_per_window, C)
+            hidden_state = hidden_state.permute(0,1,3,2,4,5)
+            hidden_state = hidden_state.reshape(batch_size, num_h_patches, num_w_patches, C)
+            hidden_state = hidden_state.permute(0,3,1,2).contiguous()
             feature_maps += (hidden_state,)
 
         output = (feature_maps,) + outputs[2:]
