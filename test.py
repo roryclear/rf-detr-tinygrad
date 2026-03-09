@@ -1,5 +1,3 @@
-
-from PIL import Image
 import numpy as np
 from typing import List, Literal, Optional, Union, Tuple, Callable, Set, Any
 from tqdm import tqdm
@@ -729,7 +727,9 @@ def preprocess(img, res):
 if __name__ == "__main__":
   threshold = 0.5
   models = [[384, "nano"], [512, "small"], [576, "medium"], [704, "large"]]
-  image = Image.open('dog.jpg')
+  image = cv2.imread("dog.jpg")
+  image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
   for i in range(len(models)):
     model = LWDETR(models[i][1])
     img_np = np.asarray(image)
