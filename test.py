@@ -1,5 +1,4 @@
 
-import supervision as sv
 from PIL import Image
 import numpy as np
 from typing import List, Literal, Optional, Union, Tuple, Callable, Set, Any
@@ -11,7 +10,6 @@ from tinygrad.nn.state import get_state_dict, load_state_dict, safe_save, safe_l
 from tinygrad import Tensor, nn
 import cv2
 from tinygrad import TinyJit
-import time
 
 COCO_CLASSES = {1: "person", 2: "bicycle", 3: "car", 4: "motorcycle", 5: "airplane", 6: "bus", 7: "train", 8: "truck", 9: "boat",
 10: "traffic light", 11: "fire hydrant", 13: "stop sign", 14: "parking meter", 15: "bench", 16: "bird", 17: "cat", 18: "dog",
@@ -1013,8 +1011,7 @@ class RFDETR:
         scores = scores[keep]
         labels = labels[keep]
         boxes = boxes[keep]
-        detections = sv.Detections(xyxy=boxes, confidence=scores,class_id=labels)
-        return detections
+        return boxes, scores, labels
 
 excepted_xyxys = [
 [[63.662533,247.56085,649.37244,933.79956,],
@@ -1043,25 +1040,25 @@ def sort_boxes(xyxy):
 
 if __name__ == "__main__":
   models = [[384, "nano"], [512, "small"], [576, "medium"], [704, "large"]]
+  image = Image.open('dog.jpg')
   for i in range(len(models)):
-    image = Image.open('dog.jpg')
     model = RFDETR(models[i][0], models[i][1])
-
     img_np = np.asarray(image)
     h, w = img_np.shape[:2]
     img_np = img_np.astype(np.float32) / 255.0
-
     processed_images = model.preprocess(img_np)
     scores, labels, boxes = model.predict(processed_images, h, w, threshold=0.5)
     scores, labels, boxes = scores.numpy(), labels.numpy(), boxes.numpy()
+    boxes, scores, class_ids = model.postprocess(scores, labels, boxes)
+    labels = [f"{COCO_CLASSES[class_id]}" for class_id in class_ids]
+    annotated_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
 
-    
-    detections = model.postprocess(scores, labels, boxes)
-    labels = [f"{COCO_CLASSES[class_id]}" for class_id in detections.class_id]
-    annotated_image = sv.BoxAnnotator().annotate(image, detections)
-    annotated_image = sv.LabelAnnotator().annotate(annotated_image, detections, labels)
-    np.testing.assert_allclose(sort_boxes(detections.xyxy), sort_boxes(excepted_xyxys[i]), atol=0.5)
-    annotated_image.save(f"annotated_image_{i}.jpg")
+    for box, label, class_id in zip(boxes, labels, class_ids):
+      x1, y1, x2, y2 = map(int, box)
+      color = ((int(class_id)*37)%255, (int(class_id)*17)%255, (int(class_id)*97)%255); cv2.rectangle(annotated_image, (x1, y1), (x2, y2), color, 2); cv2.rectangle(annotated_image, (x1, y1-18), (x1+len(label)*9, y1), color, -1); cv2.putText(annotated_image, label, (x1, y1 - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1, cv2.LINE_AA)
+
+    np.testing.assert_allclose(sort_boxes(boxes), sort_boxes(excepted_xyxys[i]), atol=0.5)
+    cv2.imwrite(f"annotated_image_{i}.jpg", annotated_image)
 
   print("PASSED")
 
