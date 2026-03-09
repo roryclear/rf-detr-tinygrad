@@ -86,12 +86,7 @@ class Dinov2WithRegistersSdpaSelfAttention():
         return context_layer, None
 
 class Dinov2WithRegistersSdpaAttention():
-    def __call__(
-        self,
-        hidden_states: Any,
-        head_mask=None,
-        output_attentions= False,
-    ) -> Union[Tuple[Any, Any], Tuple[Any]]:
+    def __call__(self, hidden_states, head_mask=None, output_attentions= False):
         self_outputs = self.attention(hidden_states, head_mask, output_attentions)
         attention_output = self.output(self_outputs[0])
         outputs = (attention_output,) + self_outputs[1:]
@@ -110,15 +105,7 @@ class Dinov2WithRegistersLayerScale():
         return x
 
 class WindowedDinov2WithRegistersLayer():
-    
-
-    def __call__(
-        self,
-        hidden_states: Any,
-        head_mask=None,
-        output_attentions= False,
-        run_full_attention= False,
-    ):
+    def __call__(self, hidden_states, head_mask=None, output_attentions= False, run_full_attention= False):
         shortcut = hidden_states
         self.num_windows = 2
         if run_full_attention:
@@ -259,21 +246,9 @@ def ms_deform_attn_core(value, value_spatial_shapes, sampling_locations, attenti
     ret = output.transpose(1, 2).contiguous()
     return ret    
 
-class TransformerDecoderLayer():
-    def __call__(self, tgt, memory,
-                     tgt_mask,
-                     memory_mask,
-                     tgt_key_padding_mask,
-                     memory_key_padding_mask,
-                     pos,
-                     query_pos,
-                     query_sine_embed = None,
-                     is_first = False,
-                     reference_points = None,
-                     spatial_shapes=None,
-                     level_start_index=None,
-                     ):
-        
+class TransformerDecoderLayer(): # todo, remove unused
+    def __call__(self, tgt, memory, tgt_mask, memory_mask, tgt_key_padding_mask, memory_key_padding_mask, pos, query_pos,
+      query_sine_embed=None, is_first=False, reference_points=None, spatial_shapes=None, level_start_index=None):  
         q = k = tgt + query_pos
         v = tgt
 
@@ -319,41 +294,28 @@ class TransformerDecoderLayer():
         return tgt
     
 def gen_sineembed_for_position(pos_tensor, dim=128):
-    scale = 2 * math.pi
-    dim_t = Tensor.arange(dim)
-    dim_t = 10000 ** (2 * (dim_t // 2) / dim)
-    x_embed = pos_tensor[:, :, 0] * scale
-    y_embed = pos_tensor[:, :, 1] * scale
-    pos_x = x_embed[:, :, None] / dim_t
-    pos_y = y_embed[:, :, None] / dim_t
-    pos_x = Tensor.stack(pos_x[:, :, 0::2].sin(), pos_x[:, :, 1::2].cos(), dim=3).flatten(2)
-    pos_y = Tensor.stack(pos_y[:, :, 0::2].sin(), pos_y[:, :, 1::2].cos(), dim=3).flatten(2)
-    w_embed = pos_tensor[:, :, 2] * scale
-    pos_w = w_embed[:, :, None] / dim_t
-    pos_w = Tensor.stack(pos_w[:, :, 0::2].sin(), pos_w[:, :, 1::2].cos(), dim=3).flatten(2)
+  scale = 2 * math.pi
+  dim_t = Tensor.arange(dim)
+  dim_t = 10000 ** (2 * (dim_t // 2) / dim)
+  x_embed = pos_tensor[:, :, 0] * scale
+  y_embed = pos_tensor[:, :, 1] * scale
+  pos_x = x_embed[:, :, None] / dim_t
+  pos_y = y_embed[:, :, None] / dim_t
+  pos_x = Tensor.stack(pos_x[:, :, 0::2].sin(), pos_x[:, :, 1::2].cos(), dim=3).flatten(2)
+  pos_y = Tensor.stack(pos_y[:, :, 0::2].sin(), pos_y[:, :, 1::2].cos(), dim=3).flatten(2)
+  w_embed = pos_tensor[:, :, 2] * scale
+  pos_w = w_embed[:, :, None] / dim_t
+  pos_w = Tensor.stack(pos_w[:, :, 0::2].sin(), pos_w[:, :, 1::2].cos(), dim=3).flatten(2)
 
-    h_embed = pos_tensor[:, :, 3] * scale
-    pos_h = h_embed[:, :, None] / dim_t
-    pos_h = Tensor.stack(pos_h[:, :, 0::2].sin(), pos_h[:, :, 1::2].cos(), dim=3).flatten(2)
-    pos = Tensor.cat(pos_y, pos_x, pos_w, pos_h, dim=2)
-    return pos
+  h_embed = pos_tensor[:, :, 3] * scale
+  pos_h = h_embed[:, :, None] / dim_t
+  pos_h = Tensor.stack(pos_h[:, :, 0::2].sin(), pos_h[:, :, 1::2].cos(), dim=3).flatten(2)
+  pos = Tensor.cat(pos_y, pos_x, pos_w, pos_h, dim=2)
+  return pos
 
 class TransformerDecoder():
-    
-
-    def __call__(self, tgt, memory,
-                tgt_mask=None,
-                memory_mask=None,
-                tgt_key_padding_mask=None,
-                memory_key_padding_mask=None,
-                pos=None,
-                refpoints_unsigmoid=None,
-                # for memory
-                level_start_index=None, # num_levels
-                spatial_shapes=None, # bs, num_levels, 2
-                valid_ratios=None):
-        output = tgt
-
+    def __call__(self, tgt, memory, tgt_mask=None, memory_mask=None, tgt_key_padding_mask=None, memory_key_padding_mask=None,
+      pos=None, refpoints_unsigmoid=None, level_start_index=None, spatial_shapes=None, valid_ratios=None):
         intermediate = []
         def get_reference(refpoints_unsigmoid, valid_ratios):
             obj_center = refpoints_unsigmoid[..., :4]
@@ -364,26 +326,26 @@ class TransformerDecoder():
             return refpoints_input, query_pos, query_sine_embed
 
         for layer_id, layer in enumerate(self.layers):
-            refpoints_input, query_pos, query_sine_embed = get_reference(refpoints_unsigmoid, valid_ratios) #todo
-            pos_transformation = 1
+          refpoints_input, query_pos, query_sine_embed = get_reference(refpoints_unsigmoid, valid_ratios) #todo
+          pos_transformation = 1
 
-            query_pos = query_pos * pos_transformation
-            output = layer(output, memory, tgt_mask=tgt_mask,
-                           memory_mask=memory_mask,
-                           tgt_key_padding_mask=tgt_key_padding_mask,
-                           memory_key_padding_mask=memory_key_padding_mask,
-                           pos=pos, query_pos=query_pos, query_sine_embed=query_sine_embed,
-                           is_first=(layer_id == 0),
-                           reference_points=refpoints_input,
-                           spatial_shapes=spatial_shapes,
-                           level_start_index=level_start_index)
+          query_pos = query_pos * pos_transformation
+          tgt = layer(tgt, memory, tgt_mask=tgt_mask,
+            memory_mask=memory_mask,
+            tgt_key_padding_mask=tgt_key_padding_mask,
+            memory_key_padding_mask=memory_key_padding_mask,
+            pos=pos, query_pos=query_pos, query_sine_embed=query_sine_embed,
+            is_first=(layer_id == 0),
+            reference_points=refpoints_input,
+            spatial_shapes=spatial_shapes,
+            level_start_index=level_start_index)
 
-            x = self.norm(output)
-            intermediate.append(x)
+          x = self.norm(tgt)
+          intermediate.append(x)
         
-        output = self.norm(output)
+        tgt = self.norm(tgt)
         intermediate.pop()
-        intermediate.append(output)
+        intermediate.append(tgt)
         return [(Tensor.stack(intermediate)), (refpoints_unsigmoid.unsqueeze(0))]
 
 def gen_encoder_output_proposals(memory, memory_padding_mask, spatial_shape, unsigmoid=True):
