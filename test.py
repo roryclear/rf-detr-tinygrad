@@ -64,8 +64,6 @@ class Dinov2WithRegistersSelfOutput():
         return x
 
 class Dinov2WithRegistersSdpaSelfAttention():
-    
-
     def transpose_for_scores(self, x):
         new_x_shape = x.size()[:-1] + (6, 64)
         x = x.view(new_x_shape)
@@ -74,7 +72,6 @@ class Dinov2WithRegistersSdpaSelfAttention():
 
     def __call__(self, hidden_states, head_mask, output_attentions):
         mixed_query_layer = self.query(hidden_states)
-
         key_layer = self.transpose_for_scores(self.key(hidden_states))
         value_layer = self.transpose_for_scores(self.value(hidden_states))
         query_layer = self.transpose_for_scores(mixed_query_layer)
@@ -86,12 +83,9 @@ class Dinov2WithRegistersSdpaSelfAttention():
         context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
         new_context_layer_shape = context_layer.size()[:-2] + (384,)
         context_layer = context_layer.view(new_context_layer_shape)
-
         return context_layer, None
 
 class Dinov2WithRegistersSdpaAttention():
-    
-
     def __call__(
         self,
         hidden_states: Any,
@@ -104,8 +98,6 @@ class Dinov2WithRegistersSdpaAttention():
         return outputs
 
 class Dinov2WithRegistersMLP():
-    
-
     def __call__(self, hidden_state):
         hidden_state = self.fc1(hidden_state)
         hidden_state = hidden_state * 0.5 * (1.0 + Tensor.erf(hidden_state / math.sqrt(2.0)))
@@ -113,8 +105,6 @@ class Dinov2WithRegistersMLP():
         return hidden_state
 
 class Dinov2WithRegistersLayerScale():
-    
-
     def __call__(self, hidden_state):
         x = hidden_state * self.lambda1
         return x
@@ -608,12 +598,12 @@ class LWDETR():
       self.class_embed = nn.Linear(256, 91)
       self.bbox_embed = MLP()
       self.bbox_embed.num_layers = 3
-      self.bbox_embed.layers = tiny_seq(size=3)
+      self.bbox_embed.layers = seq(size=3)
       self.bbox_embed.layers[0] = nn.Linear(256, 256)
       self.bbox_embed.layers[1] = nn.Linear(256, 256)
       self.bbox_embed.layers[2] = nn.Linear(256, 4)
 
-      self.bbox_embed.layers = tiny_seq(size=3)
+      self.bbox_embed.layers = seq(size=3)
       self.bbox_embed.layers[0] = nn.Linear(256, 256)
       self.bbox_embed.layers[1] = nn.Linear(256, 256)
       self.bbox_embed.layers[2] = nn.Linear(256, 4)
@@ -624,7 +614,7 @@ class LWDETR():
       self.transformer.enc_output_norm = nn.LayerNorm(256)
       self.transformer.decoder = TransformerDecoder()
       self.transformer.decoder.norm = nn.LayerNorm(256)
-      self.transformer.decoder.layers = tiny_seq(config[name]["n_layers"])
+      self.transformer.decoder.layers = seq(config[name]["n_layers"])
       for i in range(config[name]["n_layers"]):
         self.transformer.decoder.layers[i] = TransformerDecoderLayer()
         self.transformer.decoder.layers[i].cross_attn = MSDeformAttn()
@@ -645,16 +635,16 @@ class LWDETR():
         self.transformer.decoder.layers[i].cross_attn.sampling_offsets = nn.Linear(256, 64)
         self.transformer.decoder.layers[i].cross_attn.attention_weights = nn.Linear(256, 32)
 
-      self.transformer.enc_out_bbox_embed = tiny_seq(13)
-      self.transformer.enc_out_class_embed = tiny_seq(13)
+      self.transformer.enc_out_bbox_embed = seq(13)
+      self.transformer.enc_out_class_embed = seq(13)
       for i in range(13):
         self.transformer.enc_out_bbox_embed[i] = MLP()
         self.transformer.enc_out_bbox_embed[i].num_layers = 3
-        self.transformer.enc_out_bbox_embed[i].layers = tiny_seq(3)
+        self.transformer.enc_out_bbox_embed[i].layers = seq(3)
         self.transformer.enc_out_bbox_embed[i].layers[0] = nn.Linear(256, 256)
         self.transformer.enc_out_bbox_embed[i].layers[1] = nn.Linear(256, 256)
         self.transformer.enc_out_bbox_embed[i].layers[2] = nn.Linear(256, 4)
-        self.transformer.enc_out_bbox_embed[i].layers = tiny_seq(3)
+        self.transformer.enc_out_bbox_embed[i].layers = seq(3)
         self.transformer.enc_out_bbox_embed[i].layers[0] = nn.Linear(256, 256)
         self.transformer.enc_out_bbox_embed[i].layers[1] = nn.Linear(256, 256)
         self.transformer.enc_out_bbox_embed[i].layers[2] = nn.Linear(256, 4)
@@ -662,9 +652,9 @@ class LWDETR():
         self.transformer.enc_out_class_embed[i] = nn.Linear(256, 91)         
 
       self.transformer.decoder.ref_point_head = MLP()
-      self.transformer.decoder.ref_point_head.layers = tiny_seq(size=2)
+      self.transformer.decoder.ref_point_head.layers = seq(size=2)
       self.transformer.decoder.ref_point_head.num_layers = 2
-      self.transformer.decoder.ref_point_head.layers = tiny_seq(size=2)
+      self.transformer.decoder.ref_point_head.layers = seq(size=2)
       self.transformer.decoder.ref_point_head.layers[0] = nn.Linear(512, 256)
       self.transformer.decoder.ref_point_head.layers[1] = nn.Linear(256, 256)
       self.transformer.decoder.ref_point_head.layers[0] = nn.Linear(512, 256) # todo remove
@@ -672,8 +662,8 @@ class LWDETR():
 
       self.backbone = Backbone()
       self.backbone.projector = MultiScaleProjector()
-      self.backbone.projector.stages = tiny_seq(1) # todo, this is dumb
-      self.backbone.projector.stages[0] = tiny_seq(2)
+      self.backbone.projector.stages = seq(1) # todo, this is dumb
+      self.backbone.projector.stages[0] = seq(2)
       self.backbone.projector.stages[0][0] = C2f()
       self.backbone.projector.stages[0][1] = LayerNorm()
       self.backbone.projector.stages[0][1].weight = Tensor.empty((256))
@@ -690,7 +680,7 @@ class LWDETR():
       self.backbone.projector.stages[0][0].cv2.bn.weight = Tensor.empty((256))
       self.backbone.projector.stages[0][0].cv2.bn.bias = Tensor.empty((256))
     
-      self.backbone.projector.stages[0][0].m = tiny_seq(size=3)
+      self.backbone.projector.stages[0][0].m = seq(size=3)
       for i in range(3):
         self.backbone.projector.stages[0][0].m[i] = Bottleneck()
         self.backbone.projector.stages[0][0].m[i].cv1 = ConvX()
@@ -715,7 +705,7 @@ class LWDETR():
       self.backbone.encoder.embeddings.patch_embeddings.projection = nn.Conv2d(in_channels=3, out_channels=384, kernel_size=16, stride=(16, 16))
       self.backbone.encoder.embeddings.cls_token = Tensor.empty((1, 1, 384))
       self.backbone.encoder.embeddings.position_embeddings = Tensor.empty((1, config[name]["size"], 384))
-      self.backbone.encoder.encoder.layer = tiny_seq(size=13)
+      self.backbone.encoder.encoder.layer = seq(size=13)
       for i in range(12):
         self.backbone.encoder.encoder.layer[i] = WindowedDinov2WithRegistersLayer()
         self.backbone.encoder.encoder.layer[i].norm1 = nn.LayerNorm(384)
@@ -782,7 +772,7 @@ def box_cxcywh_to_xyxy(x):
     ]
     return Tensor.stack(b, dim=-1)
 
-class tiny_seq:
+class seq:
     def __init__(self, size=0):
         self.size = size
 
