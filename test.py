@@ -234,15 +234,8 @@ class WindowedDinov2WithRegistersBackbone_tiny():
 
         output = (feature_maps,) + outputs[2:]
         return output
-
-class DinoV2_tiny():
-    def __call__(self, x):
-        block_size = self.patch_size * self.num_windows
-        assert x.shape[2] % block_size == 0 and x.shape[3] % block_size == 0, f"Backbone requires input shape to be divisible by {block_size}, but got {x.shape}"
-        x = self.encoder(x)
-        return list(x[0])
-
-def ms_deform_attn_core_pytorch(value, value_spatial_shapes, sampling_locations, attention_weights):
+    
+def ms_deform_attn_core(value, value_spatial_shapes, sampling_locations, attention_weights):
     B, n_heads, head_dim, _ = value.shape
     _, Len_q, n_heads, L, P, _ = sampling_locations.shape
     sampling_grids = 2 * sampling_locations - 1
@@ -451,10 +444,6 @@ def gen_encoder_output_proposals(memory, memory_padding_mask, spatial_shape, uns
     return output_memory, output_proposals
 
 class MSDeformAttn_tiny():
-    """Multi-Scale Deformable Attention Module
-    """
-    
-
     def __call__(self, query, reference_points, input_flatten, input_spatial_shapes,
                 input_level_start_index, input_padding_mask=None):
         N, Len_q, _ = query.shape
@@ -468,14 +457,12 @@ class MSDeformAttn_tiny():
                                 + sampling_offsets / 2 * reference_points[:, :, None, :, None, 2:] * 0.5
         attention_weights = attention_weights.softmax(-1)
         value = value.transpose(1, 2).contiguous().view(N, 16, 256 // 16, Len_in)
-        output = ms_deform_attn_core_pytorch(
+        output = ms_deform_attn_core(
             value, input_spatial_shapes, sampling_locations, attention_weights)
         output = self.output_proj_tiny(output)
         return output
 
 class Transformer_tiny():
-    
-
     def __call__(self, srcs, masks, pos_embeds, refpoint_embed, query_feat):
 
         self.enc_out_class_embed_w = self.enc_out_class_embed[0].weight
@@ -599,10 +586,10 @@ class PositionEmbeddingSine_tiny():
         pos_y = Tensor.stack((pos_y[:, :, :, 0::2].sin(), pos_y[:, :, :, 1::2].cos()), dim=4).flatten(3)
         pos = Tensor.cat(pos_y, pos_x, dim=3).permute(0, 3, 1, 2)
         return pos
-    
+
 class Backbone_tiny():
     def __call__(self, tensors ,mask):
-        feats = self.encoder(tensors)
+        feats = list(self.encoder(tensors)[0])
         feats = self.projector(feats)
         m = mask
         mask = ~Tensor.interpolate(m.unsqueeze(0), size=feats[0].shape[-2:])[0]
@@ -722,36 +709,35 @@ class LWDETR_tiny():
         self.backbone.projector.stages[0][0].m[i].cv2.bn.bias_tiny = Tensor.empty((128))
       
 
-      self.backbone.encoder = DinoV2_tiny()
-      self.backbone.encoder.patch_size = 16 # todo, not in state_dict?
-      self.backbone.encoder.num_windows = 2 # todo, not in state_dict?
-      self.backbone.encoder.encoder = WindowedDinov2WithRegistersBackbone_tiny()
-      self.backbone.encoder.encoder.layernorm_tiny = nn.LayerNorm(384)
-      self.backbone.encoder.encoder.encoder = WindowedDinov2WithRegistersEncoder_tiny()
-      self.backbone.encoder.encoder.embeddings = WindowedDinov2WithRegistersEmbeddings_tiny()
-      self.backbone.encoder.encoder.embeddings.patch_embeddings = Dinov2WithRegistersPatchEmbeddings_tiny()
-      self.backbone.encoder.encoder.embeddings.patch_embeddings.projection_tiny = nn.Conv2d(in_channels=3, out_channels=384, kernel_size=16, stride=(16, 16))
-      self.backbone.encoder.encoder.embeddings.cls_token_tiny = Tensor.empty((1, 1, 384))
-      self.backbone.encoder.encoder.embeddings.position_embeddings_tiny = Tensor.empty((1, config[name]["size"], 384))
-      self.backbone.encoder.encoder.encoder.layer = tiny_seq(size=13)
+      self.backbone.patch_size = 16 # todo, not in state_dict?
+      self.backbone.num_windows = 2 # todo, not in state_dict?
+      self.backbone.encoder = WindowedDinov2WithRegistersBackbone_tiny()
+      self.backbone.encoder.layernorm_tiny = nn.LayerNorm(384)
+      self.backbone.encoder.encoder = WindowedDinov2WithRegistersEncoder_tiny()
+      self.backbone.encoder.embeddings = WindowedDinov2WithRegistersEmbeddings_tiny()
+      self.backbone.encoder.embeddings.patch_embeddings = Dinov2WithRegistersPatchEmbeddings_tiny()
+      self.backbone.encoder.embeddings.patch_embeddings.projection_tiny = nn.Conv2d(in_channels=3, out_channels=384, kernel_size=16, stride=(16, 16))
+      self.backbone.encoder.embeddings.cls_token_tiny = Tensor.empty((1, 1, 384))
+      self.backbone.encoder.embeddings.position_embeddings_tiny = Tensor.empty((1, config[name]["size"], 384))
+      self.backbone.encoder.encoder.layer = tiny_seq(size=13)
       for i in range(12):
-        self.backbone.encoder.encoder.encoder.layer[i] = WindowedDinov2WithRegistersLayer_tiny()
-        self.backbone.encoder.encoder.encoder.layer[i].norm1_tiny = nn.LayerNorm(384)
-        self.backbone.encoder.encoder.encoder.layer[i].norm2_tiny = nn.LayerNorm(384)
-        self.backbone.encoder.encoder.encoder.layer[i].attention = Dinov2WithRegistersSdpaAttention_tiny()
-        self.backbone.encoder.encoder.encoder.layer[i].attention.attention = Dinov2WithRegistersSdpaSelfAttention_tiny()
-        self.backbone.encoder.encoder.encoder.layer[i].attention.attention.query_tiny = nn.Linear(384, 384)
-        self.backbone.encoder.encoder.encoder.layer[i].attention.attention.key_tiny = nn.Linear(384, 384)
-        self.backbone.encoder.encoder.encoder.layer[i].attention.attention.value_tiny = nn.Linear(384, 384)
-        self.backbone.encoder.encoder.encoder.layer[i].attention.output = Dinov2WithRegistersSelfOutput_tiny()
-        self.backbone.encoder.encoder.encoder.layer[i].attention.output.dense_tiny = nn.Linear(384, 384)
-        self.backbone.encoder.encoder.encoder.layer[i].layer_scale1 = Dinov2WithRegistersLayerScale_tiny()
-        self.backbone.encoder.encoder.encoder.layer[i].layer_scale2 = Dinov2WithRegistersLayerScale_tiny()
-        self.backbone.encoder.encoder.encoder.layer[i].layer_scale1.lambda1_tiny = Tensor.empty((384))
-        self.backbone.encoder.encoder.encoder.layer[i].layer_scale2.lambda1_tiny = Tensor.empty((384))
-        self.backbone.encoder.encoder.encoder.layer[i].mlp = Dinov2WithRegistersMLP_tiny()
-        self.backbone.encoder.encoder.encoder.layer[i].mlp.fc1_tiny = nn.Linear(384, 1536)
-        self.backbone.encoder.encoder.encoder.layer[i].mlp.fc2_tiny = nn.Linear(1536, 384)
+        self.backbone.encoder.encoder.layer[i] = WindowedDinov2WithRegistersLayer_tiny()
+        self.backbone.encoder.encoder.layer[i].norm1_tiny = nn.LayerNorm(384)
+        self.backbone.encoder.encoder.layer[i].norm2_tiny = nn.LayerNorm(384)
+        self.backbone.encoder.encoder.layer[i].attention = Dinov2WithRegistersSdpaAttention_tiny()
+        self.backbone.encoder.encoder.layer[i].attention.attention = Dinov2WithRegistersSdpaSelfAttention_tiny()
+        self.backbone.encoder.encoder.layer[i].attention.attention.query_tiny = nn.Linear(384, 384)
+        self.backbone.encoder.encoder.layer[i].attention.attention.key_tiny = nn.Linear(384, 384)
+        self.backbone.encoder.encoder.layer[i].attention.attention.value_tiny = nn.Linear(384, 384)
+        self.backbone.encoder.encoder.layer[i].attention.output = Dinov2WithRegistersSelfOutput_tiny()
+        self.backbone.encoder.encoder.layer[i].attention.output.dense_tiny = nn.Linear(384, 384)
+        self.backbone.encoder.encoder.layer[i].layer_scale1 = Dinov2WithRegistersLayerScale_tiny()
+        self.backbone.encoder.encoder.layer[i].layer_scale2 = Dinov2WithRegistersLayerScale_tiny()
+        self.backbone.encoder.encoder.layer[i].layer_scale1.lambda1_tiny = Tensor.empty((384))
+        self.backbone.encoder.encoder.layer[i].layer_scale2.lambda1_tiny = Tensor.empty((384))
+        self.backbone.encoder.encoder.layer[i].mlp = Dinov2WithRegistersMLP_tiny()
+        self.backbone.encoder.encoder.layer[i].mlp.fc1_tiny = nn.Linear(384, 1536)
+        self.backbone.encoder.encoder.layer[i].mlp.fc2_tiny = nn.Linear(1536, 384)
       state_dict = safe_load(f"{name}.safetensors")
       load_state_dict(self, state_dict)
 
