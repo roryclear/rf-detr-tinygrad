@@ -23,14 +23,12 @@ COCO_CLASSES = {1: "person", 2: "bicycle", 3: "car", 4: "motorcycle", 5: "airpla
 89: "hair drier", 90: "toothbrush",
 }
 
-# todo remove
-class Dinov2WithRegistersPatchEmbeddings():
-    def __call__(self, x): return self.projection(x).flatten(2).transpose(1, 2)
 
 class WindowedDinov2WithRegistersEmbeddings():
     def __call__(self, pixel_values):
       batch_size, _, height, width = pixel_values.shape
-      embeddings = self.patch_embeddings(pixel_values)
+      embeddings = self.projection(pixel_values).flatten(2).transpose(1, 2)
+
       cls_tokens = self.cls_token.expand(batch_size, -1, -1)
       embeddings = Tensor.cat(cls_tokens, embeddings, dim=1)
       embeddings = embeddings + self.position_embeddings
@@ -48,9 +46,6 @@ class WindowedDinov2WithRegistersEmbeddings():
       windowed_cls_token_with_pos_embed = cls_token_with_pos_embed.repeat(num_windows ** 2, 1, 1)
       embeddings = Tensor.cat(windowed_cls_token_with_pos_embed, windowed_pixel_tokens, dim=1)
       return embeddings
-
-class Dinov2WithRegistersSelfOutput(): # todo remove
-    def __call__(self, x): return self.dense(x)
 
 class Dinov2WithRegistersSdpaSelfAttention():
     def transpose_for_scores(self, x):
@@ -76,7 +71,7 @@ class Dinov2WithRegistersSdpaSelfAttention():
 class Dinov2WithRegistersSdpaAttention():
     def __call__(self, hidden_states, head_mask=None, output_attentions= False):
       self_outputs = self.attention(hidden_states, head_mask, output_attentions)
-      attention_output = self.output(self_outputs[0])
+      attention_output = self.dense(self_outputs[0])
       return (attention_output,) + self_outputs[1:]
 
 class Dinov2WithRegistersMLP():
@@ -479,16 +474,16 @@ class PositionEmbeddingSine():
 
 class Backbone():
     def __call__(self, tensors ,mask):
-        feats = list(self.encoder(tensors)[0])
-        feats = self.projector(feats)
-        m = mask
-        mask = ~Tensor.interpolate(m.unsqueeze(0), size=feats[0].shape[-2:])[0]
-        return feats[0], mask
+      feats = list(self.encoder(tensors)[0])
+      feats = self.projector(feats)
+      m = mask
+      mask = ~Tensor.interpolate(m.unsqueeze(0), size=feats[0].shape[-2:])[0]
+      return feats[0], mask
 
 class MLP():
     def __call__(self, x):            
-        for i, layer in enumerate(self.layers): x = Tensor.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
-        return x
+      for i, layer in enumerate(self.layers): x = Tensor.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
+      return x
     
 class LWDETR():
     def __init__(self, name):
@@ -605,8 +600,7 @@ class LWDETR():
       self.backbone.encoder.layernorm = nn.LayerNorm(384)
       self.backbone.encoder.encoder = WindowedDinov2WithRegistersEncoder()
       self.backbone.encoder.embeddings = WindowedDinov2WithRegistersEmbeddings()
-      self.backbone.encoder.embeddings.patch_embeddings = Dinov2WithRegistersPatchEmbeddings()
-      self.backbone.encoder.embeddings.patch_embeddings.projection = nn.Conv2d(in_channels=3, out_channels=384, kernel_size=16, stride=(16, 16))
+      self.backbone.encoder.embeddings.projection = nn.Conv2d(in_channels=3, out_channels=384, kernel_size=16, stride=(16, 16))
       self.backbone.encoder.embeddings.cls_token = Tensor.empty((1, 1, 384))
       self.backbone.encoder.embeddings.position_embeddings = Tensor.empty((1, config[name]["size"], 384))
       self.backbone.encoder.encoder.layer = seq(size=13)
@@ -619,8 +613,7 @@ class LWDETR():
         self.backbone.encoder.encoder.layer[i].attention.attention.query = nn.Linear(384, 384)
         self.backbone.encoder.encoder.layer[i].attention.attention.key = nn.Linear(384, 384)
         self.backbone.encoder.encoder.layer[i].attention.attention.value = nn.Linear(384, 384)
-        self.backbone.encoder.encoder.layer[i].attention.output = Dinov2WithRegistersSelfOutput()
-        self.backbone.encoder.encoder.layer[i].attention.output.dense = nn.Linear(384, 384)
+        self.backbone.encoder.encoder.layer[i].attention.dense = nn.Linear(384, 384)
         self.backbone.encoder.encoder.layer[i].layer_scale1 = Dinov2WithRegistersLayerScale()
         self.backbone.encoder.encoder.layer[i].layer_scale2 = Dinov2WithRegistersLayerScale()
         self.backbone.encoder.encoder.layer[i].layer_scale1.lambda1 = Tensor.empty((384))
