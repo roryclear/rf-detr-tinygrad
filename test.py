@@ -820,24 +820,23 @@ class Model:
         state_dict = safe_load(f"{name}.safetensors")
         load_state_dict(self.model, state_dict)
 
+    def predict(self, processed_images, h, w, threshold: float = 0.5):
+      predictions = self.model(processed_images)
+      out_logits, out_bbox = predictions
+      prob = out_logits.sigmoid()
+      topk_values, topk_indexes = Tensor.topk(prob.view(out_logits.shape[0], -1), 300, dim=1)
+      topk_boxes = topk_indexes // out_logits.shape[2]
+      labels = topk_indexes % out_logits.shape[2]
+      boxes = box_cxcywh_to_xyxy(out_bbox)
+      boxes = Tensor.gather(boxes, 1, topk_boxes.unsqueeze(-1).repeat(1,1,4))
+      boxes = boxes * Tensor([w, h, w, h])
+      out_logits.realize() # todo, why do we have to do this?
+      return topk_values, labels, boxes
 
 class RFDETR:
     size = None
     def __init__(self, name):
         self.model = Model(name)
-
-    def predict(self, processed_images, h, w, threshold: float = 0.5):
-        predictions = self.model.model(processed_images)
-        out_logits, out_bbox = predictions
-        prob = out_logits.sigmoid()
-        topk_values, topk_indexes = Tensor.topk(prob.view(out_logits.shape[0], -1), 300, dim=1)
-        topk_boxes = topk_indexes // out_logits.shape[2]
-        labels = topk_indexes % out_logits.shape[2]
-        boxes = box_cxcywh_to_xyxy(out_bbox)
-        boxes = Tensor.gather(boxes, 1, topk_boxes.unsqueeze(-1).repeat(1,1,4))
-        boxes = boxes * Tensor([w, h, w, h])
-        out_logits.realize() # todo, why do we have to do this?
-        return topk_values, labels, boxes
 
 excepted_xyxys = [
 [[63.662533,247.56085,649.37244,933.79956,],
@@ -892,7 +891,7 @@ if __name__ == "__main__":
     h, w = img_np.shape[:2]
     img_np = img_np.astype(np.float32) / 255.0
     processed_images = preprocess(img_np, models[i][0])
-    scores, labels, boxes = model.predict(processed_images, h, w, threshold=0.5)
+    scores, labels, boxes = model.model.predict(processed_images, h, w, threshold=0.5)
     scores, labels, boxes = scores.numpy(), labels.numpy(), boxes.numpy()
     boxes, scores, class_ids = postprocess(scores, labels, boxes)
     labels = [f"{COCO_CLASSES[class_id]}" for class_id in class_ids]
