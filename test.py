@@ -677,8 +677,7 @@ class tiny_seq:
         
 
 class Model:
-    def __init__(self, resolution, name):
-        self.resolution = resolution
+    def __init__(self, name):
 
         config = {"nano":{"n_layers":2, "size": 577}, "small":{"n_layers":3, "size":1025},
                   "medium":{"n_layers":4, "size":1297}, "large":{"n_layers":4, "size":1937}}
@@ -823,21 +822,11 @@ class Model:
 
 
 class RFDETR:
-    means = [0.485, 0.456, 0.406]
-    stds = [0.229, 0.224, 0.225]
     size = None
-    def __init__(self, resolution, name): self.model = Model(resolution, name)
+    def __init__(self, resolution, name):
+        self.model = Model(name)
+        self.resolution = resolution
 
-    def preprocess(self, img_np):
-        target = self.model.resolution
-        interp = cv2.INTER_AREA if max(h, w) > target else cv2.INTER_LINEAR
-        img_np = cv2.resize(img_np, (target, target), interpolation=interp)
-        means = np.array(self.means, dtype=np.float32).reshape(1,1,3)
-        stds = np.array(self.stds, dtype=np.float32).reshape(1,1,3)
-        img_np = (img_np - means) / stds
-        img_np = np.transpose(img_np, (2,0,1))
-        processed_images = Tensor([img_np])
-        return processed_images
     
     #@TinyJit
     def predict(self, processed_images, h, w, threshold: float = 0.5):
@@ -886,6 +875,18 @@ def sort_boxes(xyxy):
     order = np.lexsort((xyxy[:,3], xyxy[:,2], xyxy[:,1], xyxy[:,0]))
     return xyxy[order]
 
+def preprocess(img_np, res):
+  means = [0.485, 0.456, 0.406]
+  stds = [0.229, 0.224, 0.225]
+  interp = cv2.INTER_AREA if max(h, w) > res else cv2.INTER_LINEAR
+  img_np = cv2.resize(img_np, (res, res), interpolation=interp)
+  means = np.array(means, dtype=np.float32).reshape(1,1,3)
+  stds = np.array(stds, dtype=np.float32).reshape(1,1,3)
+  img_np = (img_np - means) / stds
+  img_np = np.transpose(img_np, (2,0,1))
+  processed_images = Tensor([img_np])
+  return processed_images
+
 if __name__ == "__main__":
   models = [[384, "nano"], [512, "small"], [576, "medium"], [704, "large"]]
   image = Image.open('dog.jpg')
@@ -894,7 +895,7 @@ if __name__ == "__main__":
     img_np = np.asarray(image)
     h, w = img_np.shape[:2]
     img_np = img_np.astype(np.float32) / 255.0
-    processed_images = model.preprocess(img_np)
+    processed_images = preprocess(img_np, models[i][0])
     scores, labels, boxes = model.predict(processed_images, h, w, threshold=0.5)
     scores, labels, boxes = scores.numpy(), labels.numpy(), boxes.numpy()
     boxes, scores, class_ids = model.postprocess(scores, labels, boxes)
