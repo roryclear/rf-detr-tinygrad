@@ -155,8 +155,8 @@ class WindowedDinov2WithRegistersBackbone():
             # undo windowing
             num_windows_squared = self.num_windows ** 2
             B, HW, C = hidden_state.shape
-            num_h_patches_per_window = num_h_patches // 2
-            num_w_patches_per_window = num_w_patches // 2
+            num_h_patches_per_window = num_h_patches // self.num_windows
+            num_w_patches_per_window = num_w_patches // self.num_windows
             hidden_state = hidden_state.reshape(B // num_windows_squared, num_windows_squared * HW, C)
             hidden_state = hidden_state.reshape((B // num_windows_squared) * 2, 2, num_h_patches_per_window, num_w_patches_per_window, C)
             hidden_state = hidden_state.permute(0, 2, 1, 3, 4)
