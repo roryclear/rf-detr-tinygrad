@@ -24,21 +24,14 @@ COCO_CLASSES = {1: "person", 2: "bicycle", 3: "car", 4: "motorcycle", 5: "airpla
 }
 
 class Dinov2WithRegistersPatchEmbeddings_tiny():
-    def __init__(self, d=None):
-        if d is None: return
-        self.projection_tiny = d.projection_tiny
+    
 
     def __call__(self, x):
         x = self.projection_tiny(x).flatten(2).transpose(1, 2)
         return x
 
 class WindowedDinov2WithRegistersEmbeddings_tiny():
-    def __init__(self, w=None):
-        if w is None: return
-        self.patch_embeddings = w.patch_embeddings
-        self.position_embeddings_tiny = w.position_embeddings_tiny
-        self.config = w.config
-        self.cls_token_tiny = w.cls_token_tiny
+    
     
     def __call__(self, pixel_values, bool_masked_pos: Optional[Any] = None):
         batch_size, _, height, width = pixel_values.shape
@@ -68,23 +61,14 @@ class WindowedDinov2WithRegistersEmbeddings_tiny():
         return embeddings
 
 class Dinov2WithRegistersSelfOutput_tiny():
-    def __init__(self, d=None):
-        if d is None: return
-        self.dense_tiny = d.dense_tiny
+    
 
     def __call__(self, x):
         x = self.dense_tiny(x)
         return x
 
 class Dinov2WithRegistersSdpaSelfAttention_tiny():
-    def __init__(self, d=None):
-        if d is None: return
-        self.query_tiny = d.query_tiny
-        self.key_tiny = d.key_tiny
-        self.value_tiny = d.value_tiny
-        self.num_attention_heads = d.num_attention_heads
-        self.attention_head_size = d.attention_head_size
-        self.all_head_size = d.all_head_size
+    
 
     def transpose_for_scores(self, x):
         new_x_shape = x.size()[:-1] + (6, 64)
@@ -92,11 +76,8 @@ class Dinov2WithRegistersSdpaSelfAttention_tiny():
         x = x.permute(0, 2, 1, 3)
         return x
 
-    def __call__(
-        self, hidden_states, head_mask: Optional[Any] = None, output_attentions: bool = False
-    ) -> Union[Tuple[Any, Any], Tuple[Any]]:
+    def __call__(self, hidden_states, head_mask, output_attentions):
         mixed_query_layer = self.query_tiny(hidden_states)
-
 
         key_layer = self.transpose_for_scores(self.key_tiny(hidden_states))
         value_layer = self.transpose_for_scores(self.value_tiny(hidden_states))
@@ -113,10 +94,7 @@ class Dinov2WithRegistersSdpaSelfAttention_tiny():
         return context_layer, None
 
 class Dinov2WithRegistersSdpaAttention_tiny():
-    def __init__(self, d=None):
-        if d is None: return
-        self.attention = d.attention
-        self.output = d.output
+    
 
     def __call__(
         self,
@@ -130,10 +108,7 @@ class Dinov2WithRegistersSdpaAttention_tiny():
         return outputs
 
 class Dinov2WithRegistersMLP_tiny():
-    def __init__(self, d=None):
-        if d is None: return
-        self.fc1_tiny = d.fc1_tiny
-        self.fc2_tiny = d.fc2_tiny
+    
 
     def __call__(self, hidden_state):
         hidden_state = self.fc1_tiny(hidden_state)
@@ -142,24 +117,14 @@ class Dinov2WithRegistersMLP_tiny():
         return hidden_state
 
 class Dinov2WithRegistersLayerScale_tiny():
-    def __init__(self, d=None):
-        if d is None: return
-        self.lambda1_tiny = d.lambda1_tiny
+    
 
     def __call__(self, hidden_state):
         x = hidden_state * self.lambda1_tiny
         return x
 
 class WindowedDinov2WithRegistersLayer_tiny():
-    def __init__(self, w=None):
-        if w is None: return
-        self.norm1_tiny = w.norm1_tiny
-        self.norm2_tiny = w.norm2_tiny
-        self.attention = w.attention
-        self.layer_scale1 = w.layer_scale1
-        self.layer_scale2 = w.layer_scale2
-        self.mlp = w.mlp
-        self.num_windows = w.num_windows
+    
 
     def __call__(
         self,
@@ -178,11 +143,7 @@ class WindowedDinov2WithRegistersLayer_tiny():
         x = self.norm1_tiny(hidden_states)
 
         # todo
-        self_attention_outputs = self.attention(
-            x,
-            head_mask,
-            output_attentions=output_attentions,
-        )
+        self_attention_outputs = self.attention(x, head_mask, output_attentions=output_attentions,)
         attention_output = self_attention_outputs[0]
 
         if run_full_attention:
@@ -198,15 +159,11 @@ class WindowedDinov2WithRegistersLayer_tiny():
         layer_output = self.mlp(layer_output)
         layer_output = self.layer_scale2(layer_output)
         layer_output = layer_output + hidden_states
-
         outputs = (layer_output,) + outputs
         return outputs
 
 class WindowedDinov2WithRegistersEncoder_tiny():
-    def __init__(self, w=None):
-        if w is None: return
-        self.layer = w.layer
-        self.config = w.config
+    
 
     def __call__(
         self,
@@ -230,19 +187,10 @@ class WindowedDinov2WithRegistersEncoder_tiny():
         return tuple(v for v in [hidden_states, all_hidden_states, all_self_attentions] if v is not None)
 
 class WindowedDinov2WithRegistersBackbone_tiny():
-    def __init__(self, w=None):
-        if w is None:
-          self.config = {}
-          self.stage_names = ['stem', 'stage1', 'stage2', 'stage3', 'stage4', 'stage5', 'stage6', 'stage7', 'stage8', 'stage9', 'stage10', 'stage11', 'stage12']
-          self.out_features = ['stage3', 'stage6', 'stage9', 'stage12']
-          return None
-        self.embeddings = w.embeddings
-        self.encoder = w.encoder
-        self.stage_names = w.stage_names
-        self.layernorm_tiny = w.layernorm_tiny
-        self.num_register_tokens = w.num_register_tokens
-        self.config = w.config
-        self.out_features = w.out_features
+    def __init__(self):
+        self.config = {}
+        self.stage_names = ['stem', 'stage1', 'stage2', 'stage3', 'stage4', 'stage5', 'stage6', 'stage7', 'stage8', 'stage9', 'stage10', 'stage11', 'stage12']
+        self.out_features = ['stage3', 'stage6', 'stage9', 'stage12']
 
     def __call__(
         self,
@@ -253,9 +201,7 @@ class WindowedDinov2WithRegistersBackbone_tiny():
     ):
         embedding_output = self.embeddings(pixel_values)
 
-        outputs = self.encoder(
-            embedding_output, output_hidden_states=True, output_attentions=output_attentions, return_dict=return_dict
-        )
+        outputs = self.encoder(embedding_output, output_hidden_states=True, output_attentions=output_attentions, return_dict=return_dict)
 
         hidden_states = outputs[1]
 
@@ -290,11 +236,7 @@ class WindowedDinov2WithRegistersBackbone_tiny():
         return output
 
 class DinoV2_tiny():
-    def __init__(self, d=None):
-        if d is None: return
-        self.patch_size = d.patch_size
-        self.num_windows = d.num_windows
-        self.encoder = d.encoder
+    
 
     def __call__(self, x):
         block_size = self.patch_size * self.num_windows
@@ -355,24 +297,10 @@ def ms_deform_attn_core_pytorch(value, value_spatial_shapes, sampling_locations,
     ret = output.transpose(1, 2).contiguous()
     return ret
 
-class MultiheadAttention_tiny():
-    def __init__(self, m=None):
-        if m is None: return
-        self.out_proj = m.out_proj
-        self.in_proj_weight = m.in_proj_weight
-        self.in_proj_bias = m.in_proj_bias
+class MultiheadAttention_tiny(): pass # todo, remove
+    
 
 class TransformerDecoderLayer_tiny():
-    def __init__(self, t=None):
-        if t is None: return
-        self.self_attn = t.self_attn
-        self.norm1_tiny = t.norm1_tiny
-        self.norm2_tiny = t.norm2_tiny
-        self.norm3_tiny = t.norm3_tiny
-        self.cross_attn = t.cross_attn
-        self.linear1_tiny = t.linear1_tiny
-        self.linear2_tiny = t.linear2_tiny
-
     def __call__(self, tgt, memory,
                      tgt_mask: None,
                      memory_mask: None,
@@ -452,12 +380,7 @@ def gen_sineembed_for_position(pos_tensor, dim=128):
     return pos
 
 class TransformerDecoder_tiny():
-    def __init__(self, t=None):
-        if t is None: return
-        self.d_model = t.d_model
-        self.ref_point_head = t.ref_point_head
-        self.layers = t.layers
-        self.norm_tiny = t.norm_tiny
+    
 
     def __call__(self, tgt, memory,
                 tgt_mask=None,
@@ -507,7 +430,6 @@ class TransformerDecoder_tiny():
 def gen_encoder_output_proposals(memory, memory_padding_mask, spatial_shape, unsigmoid=True):
     memory_padding_mask = memory_padding_mask.cast(dtype=dtypes.bool)
 
-    proposals = []
     H_, W_ = spatial_shape, spatial_shape
     mask = memory_padding_mask.reshape(1, H_, W_)
 
@@ -536,16 +458,7 @@ def gen_encoder_output_proposals(memory, memory_padding_mask, spatial_shape, uns
 class MSDeformAttn_tiny():
     """Multi-Scale Deformable Attention Module
     """
-    def __init__(self, m=None):
-        if m is None: return
-        self.value_proj_tiny = m.value_proj_tiny
-        self.n_heads = m.n_heads
-        self.n_levels = m.n_levels
-        self.n_points = m.n_points
-        self.sampling_offsets_tiny = m.sampling_offsets_tiny
-        self.attention_weights_tiny = m.attention_weights_tiny
-        self.d_model = m.d_model
-        self.output_proj_tiny = m.output_proj_tiny
+    
 
     def __call__(self, query, reference_points, input_flatten, input_spatial_shapes,
                 input_level_start_index, input_padding_mask=None):
@@ -566,16 +479,7 @@ class MSDeformAttn_tiny():
         return output
 
 class Transformer_tiny():
-    def __init__(self, t=None):
-        if not t: return
-        self.enc_out_class_embed = t.enc_out_class_embed
-        self.bbox_reparam = t.bbox_reparam
-        self.enc_output_norm_tiny = t.enc_output_norm_tiny
-        self.enc_output_tiny = t.enc_output_tiny
-        self.enc_out_bbox_embed = t.enc_out_bbox_embed
-        self.num_queries = t.num_queries
-        self.d_model = t.d_model
-        self.decoder = t.decoder
+    
 
     def __call__(self, srcs, masks, pos_embeds, refpoint_embed, query_feat):
 
@@ -639,11 +543,7 @@ class Transformer_tiny():
 
     
 class ConvX_tiny():
-    def __init__(self, c=None):
-        if c is None: return
-        self.conv_tiny = c.conv_tiny
-        self.bn = c.bn
-
+    
     def __call__(self, x):
         x = self.conv_tiny(x)
         x = self.bn(x)
@@ -651,25 +551,10 @@ class ConvX_tiny():
         return out
 
 class Bottleneck_tiny():
-    def __init__(self, b=None):
-        if b is None: return
-        self.cv1 = b.cv1
-        self.cv2 = b.cv2
-        self.add = b.add
-
     def __call__(self, x): return self.cv2(self.cv1(x))
 
 class C2f_tiny():
-    def __init__(self, c=None):
-        if c is None:
-          self.c = 128
-          return
-        self.cv1 = c.cv1
-        self.cv2 = c.cv2
-        self.c = c.c
-        self.m = c.m
-        pass
-
+    def __init__(self): self.c = 128
     def __call__(self, x):
         """Forward pass using split() instead of chunk()."""
         y = list(self.cv1(x).split((self.c, self.c), 1))
@@ -679,14 +564,7 @@ class C2f_tiny():
         return y
 
 class LayerNorm_tiny():
-    def __init__(self, l=None):
-        if l is None:
-          self.eps = 1e-6
-          return
-        self.eps = l.eps
-        self.weight_tiny = l.weight_tiny
-        self.bias_tiny = l.bias_tiny
-
+    def __init__(self): self.eps = 1e-6
     def __call__(self, x):
         x = x.permute(0, 2, 3, 1)
         x -= x.mean(axis=-1, keepdim=True)
@@ -700,25 +578,16 @@ class LayerNorm_tiny():
         return x
 
 class MultiScaleProjector_tiny():
-    def __init__(self, m=None):
-        if m is None: return
-        self.stages = m.stages
-
     def __call__(self, x):
         feat_fuse = Tensor.cat(*x, dim=1)
         stage_output = self.stages[0](feat_fuse)
         return [stage_output]
 
 class PositionEmbeddingSine_tiny():
-    def __init__(self, p=None):
-        if p is None:
-          self.scale = 6.283185307179586
-          self.num_pos_feats = 128
-          self.temperature = 10000
-          return
-        self.scale = p.scale
-        self.num_pos_feats = p.num_pos_feats
-        self.temperature = p.temperature
+    def __init__(self):
+        self.scale = 6.283185307179586
+        self.num_pos_feats = 128
+        self.temperature = 10000
 
     def __call__(self, tensors, mask, align_dim_orders = True):
         not_mask = ~mask
@@ -737,11 +606,6 @@ class PositionEmbeddingSine_tiny():
         return pos
     
 class Backbone_tiny():
-    def __init__(self, b=None):
-        if b is None: return
-        self.encoder = b.encoder
-        self.projector = b.projector
-
     def __call__(self, tensors ,mask):
         feats = self.encoder(tensors)
         feats = self.projector(feats)
@@ -750,29 +614,13 @@ class Backbone_tiny():
         return feats[0], mask
 
 class MLP_tiny():
-    def __init__(self, m=None):
-        if not m: return
-        self.num_layers = m.num_layers
-        self.layers_tiny = m.layers_tiny
-        self.layers = m.layers
-
     def __call__(self, x):            
         for i, layer in enumerate(self.layers): x = Tensor.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
         return x
     
 class LWDETR_tiny():
     """ This is the Group DETR v3 module that performs object detection """
-    def __init__(self, l=None):
-        if l is None:
-          self.num_queries = 300
-          return
-        self.backbone = l.backbone
-        self.refpoint_embed = l.refpoint_embed
-        self.num_queries = l.num_queries
-        self.query_feat = l.query_feat
-        self.transformer = l.transformer
-        self.bbox_embed = l.bbox_embed
-        self.class_embed = l.class_embed
+    def __init__(self): self.num_queries = 300
 
     def __call__(self, samples, targets=None):
         _, _, h, w = samples.shape
