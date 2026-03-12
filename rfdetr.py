@@ -685,7 +685,7 @@ if __name__ == '__main__':
     sys.exit(1)
   sizes = {'n': 'nano', 's': 'small', 'm': 'medium', 'l': 'large'}
   img_path = sys.argv[1]
-  size = sys.argv[2] if len(sys.argv) >= 3 else (print("No variant given, so choosing 't' as the default. Yolov9 has different variants, you can choose from ['n', 's', 'm', 'l']") or 'n')
+  size = sys.argv[2] if len(sys.argv) >= 3 else (print("No variant given, so choosing 'n' as the default. Yolov9 has different variants, you can choose from ['n', 's', 'm', 'l']") or 'n')
   size = sizes[size]
   print(f'running inference for rfdetr version {size}')
 
