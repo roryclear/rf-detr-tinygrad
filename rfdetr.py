@@ -617,7 +617,6 @@ class RFDETR():
     boxes = box_cxcywh_to_xyxy(out_bbox)
     boxes = Tensor.gather(boxes, 1, topk_boxes.unsqueeze(-1).repeat(1,1,4))
     ret = Tensor.cat(boxes.squeeze(0), topk_values.squeeze(0).unsqueeze(1), labels.squeeze(0).unsqueeze(1), dim=1)
-    ret = postprocess(ret)[0]
     return ret
 
   def predict(self, samples, targets=None):
@@ -648,32 +647,6 @@ class RFDETR():
   def scale_boxes(self, img1_shape, predictions, img0_shape):
     predictions[:,:4] *= [img0_shape[1], img0_shape[0], img0_shape[1], img0_shape[0]]
     return predictions
-
-def postprocess(boxes, iou_threshold=0.45): # todo fix shape or unify with yolo's
-  boxes = boxes.unsqueeze(0)
-  ious = compute_iou_matrix(boxes[:, :, :4])
-  ious = Tensor.triu(ious, diagonal=1)
-  class_ids = boxes[:, :, -1]
-  same_class_mask = class_ids[:, :, None] == class_ids[:, None, :]
-  high_iou_mask = (ious > iou_threshold) & same_class_mask
-  no_overlap_mask = high_iou_mask.sum(axis=1) == 0
-  return boxes * no_overlap_mask.unsqueeze(-1)
-
-def compute_iou_matrix(boxes):
-  x1s = boxes[:, :, 0]
-  y1s = boxes[:, :, 1]
-  x2s = boxes[:, :, 2]
-  y2s = boxes[:, :, 3]
-  areas = (x2s - x1s) * (y2s - y1s)
-  x1 = Tensor.maximum(x1s[:, :, None], x1s[:, None, :])
-  y1 = Tensor.maximum(y1s[:, :, None], y1s[:, None, :])
-  x2 = Tensor.minimum(x2s[:, :, None], x2s[:, None, :])
-  y2 = Tensor.minimum(y2s[:, :, None], y2s[:, None, :])
-  w = Tensor.maximum(Tensor(0), x2 - x1)
-  h = Tensor.maximum(Tensor(0), y2 - y1)
-  intersection = w * h
-  union = areas[:, :, None] + areas[:, None, :] - intersection
-  return intersection / union
 
 def box_cxcywh_to_xyxy(x):
   x_c, y_c, w, h = [t.squeeze(-1) for t in x.split(1, dim=-1)]
