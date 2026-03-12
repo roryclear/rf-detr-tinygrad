@@ -619,7 +619,6 @@ class RFDETR():
     ret = Tensor.cat(boxes.squeeze(0), topk_values.squeeze(0).unsqueeze(1), labels.squeeze(0).unsqueeze(1), dim=1)
     ret = postprocess(ret)[0]
     return ret
-  
 
   def predict(self, samples, targets=None):
     _, _, h, w = samples.shape
@@ -703,3 +702,40 @@ def resize(img, new_size):
   img = Tensor.interpolate(img, size=(new_size[1], new_size[0]), mode='linear', align_corners=False)
   img = img.permute(1, 2, 0)
   return img
+
+if __name__ == '__main__':
+  threshold = 0.5
+  import sys
+  import cv2
+  if len(sys.argv) < 2:
+    print("Error: Image URL or path not provided.")
+    sys.exit(1)
+  sizes = {'n': 'nano', 's': 'small', 'm': 'medium', 'l': 'large'}
+  img_path = sys.argv[1]
+  size = sys.argv[2] if len(sys.argv) >= 3 else (print("No variant given, so choosing 't' as the default. Yolov9 has different variants, you can choose from ['n', 's', 'm', 'l']") or 'n')
+  size = sizes[size]
+  print(f'running inference for rfdetr version {size}')
+
+  model = RFDETR(size)
+
+  image_location = np.frombuffer(fetch(img_path).read_bytes(), np.uint8)
+  image = cv2.imdecode(image_location, 1)
+  img_np = np.asarray(image)
+  h, w = img_np.shape[:2]
+  img = Tensor(img_np)
+  processed_images = model.preprocess(img)
+  output = model(processed_images)
+  output = output.numpy()
+  output = model.scale_boxes(img.shape[:2], output, image.shape)
+  boxes = output[:, :4]
+  scores = output[:, 4]
+  class_ids = output[:, 5].astype(int)
+  keep = scores > threshold
+  scores = scores[keep]
+  class_ids = class_ids[keep]
+  boxes = boxes[keep]
+  labels = [f"{COCO_CLASSES[class_id]}" for class_id in class_ids]
+  for box, label, class_id in zip(boxes, labels, class_ids):
+    x1, y1, x2, y2 = map(int, box)
+    color = ((int(class_id)*37)%255, (int(class_id)*17)%255, (int(class_id)*97)%255); cv2.rectangle(image, (x1, y1), (x2, y2), color, 2); cv2.rectangle(image, (x1, y1-18), (x1+len(label)*9, y1), color, -1); cv2.putText(image, label, (x1, y1 - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1, cv2.LINE_AA)
+  cv2.imwrite(f"annotated_image.jpg", image)
