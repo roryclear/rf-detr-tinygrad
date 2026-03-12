@@ -677,7 +677,7 @@ def resize(img, new_size):
   return img
 
 if __name__ == '__main__':
-  threshold = 0.5
+  threshold = 0.25
   import sys
   import cv2
   if len(sys.argv) < 2:
@@ -708,7 +708,14 @@ if __name__ == '__main__':
   class_ids = class_ids[keep]
   boxes = boxes[keep]
   labels = [f"{COCO_CLASSES[class_id]}" for class_id in class_ids]
+
+  scale = min(h, w) / 640
+  th = max(1, int(2*scale))
+  fs = 0.5*scale
+  ft = max(1, int(scale))
+  tb = int(18*scale)
+
   for box, label, class_id in zip(boxes, labels, class_ids):
     x1, y1, x2, y2 = map(int, box)
-    color = ((int(class_id)*37)%255, (int(class_id)*17)%255, (int(class_id)*97)%255); cv2.rectangle(image, (x1, y1), (x2, y2), color, 2); cv2.rectangle(image, (x1, y1-18), (x1+len(label)*9, y1), color, -1); cv2.putText(image, label, (x1, y1 - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1, cv2.LINE_AA)
+    color = ((int(class_id)*37)%255, (int(class_id)*17)%255, (int(class_id)*97)%255); cv2.rectangle(image, (x1, y1), (x2, y2), color, th); cv2.rectangle(image, (x1, y1-tb), (x1+len(label)*int(9*scale), y1), color, -1); cv2.putText(image, label, (x1, y1 - int(4*scale)), cv2.FONT_HERSHEY_SIMPLEX, fs, (255,255,255), ft, cv2.LINE_AA)
   cv2.imwrite(f"annotated_image.jpg", image)
