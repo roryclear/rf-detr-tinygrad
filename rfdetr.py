@@ -4,7 +4,6 @@ from tinygrad.dtype import dtypes
 from tinygrad.nn.state import get_state_dict, load_state_dict, safe_save, safe_load
 from tinygrad.helpers import fetch
 from tinygrad import Tensor, nn
-from tinygrad import TinyJit
 
 COCO_CLASSES = ["","person","bicycle","car","motorcycle","airplane","bus","train","truck","boat","traffic light","fire hydrant","","stop sign","parking meter","bench","bird","cat","dog","horse","sheep","cow","elephant","bear","zebra","giraffe","","backpack","umbrella","","","handbag","tie","suitcase","frisbee","skis","snowboard","sports ball","kite","baseball bat","baseball glove","skateboard","surfboard","tennis racket","bottle","","wine glass","cup","fork","knife","spoon","bowl","banana","apple","sandwich","orange","broccoli","carrot","hot dog","pizza","donut","cake","chair","couch","potted plant","bed","","dining table","","","toilet","","tv","laptop","mouse","remote","keyboard","cell phone","microwave","oven","toaster","sink","refrigerator","","book","clock","vase","scissors","teddy bear","hair drier"]
 detr_to_yolo = [80, 0, 1, 2, -1, -1, 5, 6, 7, 8, 9, 10, 80, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 80, 24, 25, 80, 80, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 80, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, -1, -1, 59, 80, -1, 80, 80, 61, 80, -1, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 80, 73, 74, 75, 76, 77, 78]
@@ -608,7 +607,6 @@ class RFDETR():
     state_dict = safe_load(fetch(f'https://huggingface.co/roryclear/rf-detr/resolve/main/{name}.safetensors'))
     load_state_dict(self, state_dict)
 
-  @TinyJit
   def __call__(self, processed_images):
     predictions = self.predict(processed_images)
     out_logits, out_bbox = predictions
@@ -638,7 +636,6 @@ class RFDETR():
     outputs_class = self.class_embed(hs)[-1]
     return outputs_class, outputs_coord[-1]
 
-  @TinyJit
   def preprocess(self, img):
     img = img.cast(dtypes.float32)
     img /= 255.0
