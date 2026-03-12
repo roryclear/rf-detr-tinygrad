@@ -618,7 +618,6 @@ class RFDETR():
     boxes = box_cxcywh_to_xyxy(out_bbox)
     boxes = Tensor.gather(boxes, 1, topk_boxes.unsqueeze(-1).repeat(1,1,4))
     ret = Tensor.cat(boxes.squeeze(0), topk_values.squeeze(0).unsqueeze(1), labels.squeeze(0).unsqueeze(1), dim=1)
-    print(boxes.dtype, topk_values.dtype)
     return ret
 
   def predict(self, samples, targets=None):
