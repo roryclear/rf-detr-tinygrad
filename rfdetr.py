@@ -633,7 +633,7 @@ class RFDETR():
     outputs_coord = Tensor.cat(outputs_coord_cxcy, outputs_coord_wh, dim=-1)
     outputs_class = self.class_embed(hs)[-1]
     return outputs_class, outputs_coord[-1]
-
+  
   def preprocess(self, img):
     img = img.cast(dtypes.float32)
     img /= 255.0
