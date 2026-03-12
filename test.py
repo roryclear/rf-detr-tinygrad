@@ -1,75 +1,70 @@
-from rfdetr import RFDETR, COCO_CLASSES
+import numpy as np
 from tinygrad import Tensor
 import cv2
-from tinygrad import Tensor, dtypes
-import numpy as np
-from pathlib import Path
+from rfdetr import RFDETR, COCO_CLASSES
+        
+excepted_xyxys = [
+[
+[63.98152,247.93846,643.0879,931.84863,],
+[0.9997773,357.19293,650.101,1261.7733,],
+[623.5975,723.0886,698.9821,787.7163,],
+],
 
-def draw_bounding_boxes(orig_img_path, predictions, class_labels):
-  color_dict = {label: tuple((((i+1) * 50) % 256, ((i+1) * 100) % 256, ((i+1) * 150) % 256)) for i, label in enumerate(class_labels)}
-  font = cv2.FONT_HERSHEY_SIMPLEX
+[
+[68.54183,247.87341,625.942,930.71606,],
+[0.49844027,657.9232,441.90753,1267.5795,],
+[-1.336813,349.85284,645.86804,1263.5271,],
+[622.811,716.0851,701.54803,787.1113,],
+],
 
-  def is_bright_color(color):
-    r, g, b = color
-    brightness = (r * 299 + g * 587 + b * 114) / 1000
-    return brightness > 127
+[
+[69.56826,248.08185,620.5264,927.0038,],
+[626.8524,733.55194,696.87067,788.07404,],
+[0.3557253,356.64658,649.5055,1265.8727,],
+[-0.14803648,661.9878,443.29095,1270.992,],
+],
 
-  orig_img = (cv2.imread(orig_img_path) if not isinstance(orig_img_path, np.ndarray) else cv2.imdecode(orig_img_path, 1))
-  height, width, _ = orig_img.shape
-  box_thickness = int((height + width) / 400)
-  font_scale = (height + width) / 2500
-  
-  for pred in predictions:
-    x1, y1, x2, y2, conf, class_id = pred
-    if conf == 0: continue
+[
+[68.09412,249.721,635.6606,928.99536,],
+[2.2342587,356.97098,579.0276,1268.9092,],
+[625.3909,731.5665,697.01495,786.87537,],
+[-0.12702942,662.12537,439.97614,1271.6777,],
+]
+]
 
-    x1, y1, x2, y2, class_id = map(int, (x1, y1, x2, y2, class_id))
-    color = color_dict[class_labels[class_id]]
-
-    cv2.rectangle(orig_img, (x1, y1), (x2, y2), color, box_thickness)
-
-    label = f"{class_labels[class_id]} {conf:.2f}"
-    text_size, _ = cv2.getTextSize(label, font, font_scale, 1)
-    label_y, bg_y = ((y1 - 4, y1 - text_size[1] - 4) if y1 - text_size[1] - 4 > 0 else (y1 + text_size[1], y1))
-
-    cv2.rectangle(orig_img,
-        (x1, bg_y),
-        (x1 + text_size[0], bg_y + text_size[1]),
-        color,
-        -1,
-    )
-
-    font_color = (0, 0, 0) if is_bright_color(color) else (255, 255, 255)
-    cv2.putText(
-        orig_img,
-        label,
-        (x1, label_y),
-        font,
-        font_scale,
-        font_color,
-        1,
-        cv2.LINE_AA,
-    )
-  return orig_img
+def sort_boxes(xyxy):
+  xyxy = np.asarray(xyxy)
+  order = np.lexsort((xyxy[:,3], xyxy[:,2], xyxy[:,1], xyxy[:,0]))
+  return xyxy[order]
 
 if __name__ == "__main__":
-  sizes = ["nano", "small", "medium", "large"]
-  im0 = cv2.imread("dog.jpg")
+  threshold = 0.5
+  models = [[384, "nano"], [512, "small"], [576, "medium"], [704, "large"]]
+  image = cv2.imread("dog.jpg")
+  image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-  for i in range(len(sizes)):
-    model = RFDETR(sizes[i])
-    im = Tensor(im0).cast(dtypes.float32)
-    im = model.preprocess(im)
-    pred = model(im).numpy()
-    pred = pred[pred[:, 4] >= 0.5]
-    pred = model.scale_boxes(im.shape[:2], pred, im0.shape)
-    preds = []
-    for x in pred:
-        x1, y1, x2, y2, score, class_id = x
-        preds.append(np.array([x1, y1, x2, y2, score, class_id]))
-    _, buffer = cv2.imencode(".jpg", im0)
-    output = draw_bounding_boxes(buffer, preds, COCO_CLASSES)
-    Path("./outputs").mkdir(parents=True, exist_ok=True)
-    cv2.imwrite(f"outputs/output_{i}.jpg", output)
+  for i in range(len(models)):
+    model = RFDETR(models[i][1])
+    img_np = np.asarray(image)
+    h, w = img_np.shape[:2]
+    img = Tensor(img_np)
+    processed_images = model.preprocess(img)
+    output = model(processed_images)
+    output = output.numpy()
+    output = model.scale_boxes(img.shape[:2], output, image.shape)
+    boxes = output[:, :4]
+    scores = output[:, 4]
+    class_ids = output[:, 5].astype(int)
+    keep = scores > threshold
+    scores = scores[keep]
+    class_ids = class_ids[keep]
+    boxes = boxes[keep]
+    labels = [f"{COCO_CLASSES[class_id]}" for class_id in class_ids]
+    annotated_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+    np.testing.assert_allclose(sort_boxes(boxes), sort_boxes(excepted_xyxys[i]), atol=0.5)
+    for box, label, class_id in zip(boxes, labels, class_ids):
+      x1, y1, x2, y2 = map(int, box)
+      color = ((int(class_id)*37)%255, (int(class_id)*17)%255, (int(class_id)*97)%255); cv2.rectangle(annotated_image, (x1, y1), (x2, y2), color, 2); cv2.rectangle(annotated_image, (x1, y1-18), (x1+len(label)*9, y1), color, -1); cv2.putText(annotated_image, label, (x1, y1 - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1, cv2.LINE_AA)
+    cv2.imwrite(f"annotated_image_{i}.jpg", annotated_image)
 
-    print(f"Saved result to outputs/output_{i}.jpg")
+  print("PASSED")
