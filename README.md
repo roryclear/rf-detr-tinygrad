@@ -9,7 +9,7 @@ pip install -r requirements.txt
 
 ## Inference on single image:
 ```
-python rfdetr.py {link or path to an image} {model variant}
+python rfdetr.py {link to an image} {model variant}
 ```
 
 ## Testing performance
