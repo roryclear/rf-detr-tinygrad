@@ -607,7 +607,8 @@ class RFDETR():
     state_dict = safe_load(fetch(f'https://huggingface.co/roryclear/rf-detr/resolve/main/{name}.safetensors'))
     load_state_dict(self, state_dict)
 
-  def __call__(self, processed_images):
+  def __call__(self, img):
+    processed_images = self.preprocess(img)
     predictions = self.predict(processed_images)
     out_logits, out_bbox = predictions
     prob = out_logits.sigmoid()
@@ -617,6 +618,7 @@ class RFDETR():
     boxes = box_cxcywh_to_xyxy(out_bbox)
     boxes = Tensor.gather(boxes, 1, topk_boxes.unsqueeze(-1).repeat(1,1,4))
     ret = Tensor.cat(boxes.squeeze(0), topk_values.squeeze(0).unsqueeze(1), labels.squeeze(0).unsqueeze(1), dim=1)
+    print(boxes.dtype, topk_values.dtype)
     return ret
 
   def predict(self, samples, targets=None):
@@ -696,10 +698,9 @@ if __name__ == '__main__':
   img_np = np.asarray(image)
   h, w = img_np.shape[:2]
   img = Tensor(img_np)
-  processed_images = model.preprocess(img)
-  output = model(processed_images)
+  output = model(img)
   output = output.numpy()
-  output = model.scale_boxes(img.shape[:2], output, image.shape)
+  output = model.scale_boxes([model.res, model.res], output, image.shape)
   boxes = output[:, :4]
   scores = output[:, 4]
   class_ids = output[:, 5].astype(int)

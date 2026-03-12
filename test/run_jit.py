@@ -8,9 +8,8 @@ import sys
 import time
 
 @TinyJit
-def jit_inf(im, model):
-  im = model.preprocess(im)
-  return model(im)
+def jit_inf(im, model): return model(im)
+
 if __name__ == "__main__":
   sizes = {'n': 'nano', 's': 'small', 'm': 'medium', 'l': 'large'}
   size = sys.argv[1]
@@ -21,8 +20,7 @@ if __name__ == "__main__":
   img_np = np.asarray(image)
   h, w = img_np.shape[:2]
   img = Tensor(img_np)
-  processed_images = model.preprocess(img)
-  output = model(processed_images).numpy()
+  output = model(img).numpy()
   for _ in range(3): jit_output = jit_inf(img, model).numpy()
   np.testing.assert_allclose(jit_output, output, rtol=1e-7)
 
