@@ -48,10 +48,8 @@ if __name__ == "__main__":
     img_np = np.asarray(image)
     h, w = img_np.shape[:2]
     img = Tensor(img_np)
-    processed_images = model.preprocess(img)
-    output = model(processed_images)
+    output = model(img)
     output = output.numpy()
-    output = model.scale_boxes(img.shape[:2], output, image.shape)
     boxes = output[:, :4]
     scores = output[:, 4]
     class_ids = output[:, 5].astype(int)

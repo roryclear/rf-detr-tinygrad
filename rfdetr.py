@@ -607,8 +607,9 @@ class RFDETR():
     state_dict = safe_load(fetch(f'https://huggingface.co/roryclear/rf-detr/resolve/main/{name}.safetensors'))
     load_state_dict(self, state_dict)
 
-  def __call__(self, processed_images):
-    predictions = self.predict(processed_images)
+  def __call__(self, img):
+    pre = self.preprocess(img)
+    predictions = self.predict(pre)
     out_logits, out_bbox = predictions
     prob = out_logits.sigmoid()
     topk_values, topk_indexes = Tensor.topk(prob.view(out_logits.shape[0], -1), 300, dim=1)
@@ -617,6 +618,7 @@ class RFDETR():
     boxes = box_cxcywh_to_xyxy(out_bbox)
     boxes = Tensor.gather(boxes, 1, topk_boxes.unsqueeze(-1).repeat(1,1,4))
     ret = Tensor.cat(boxes.squeeze(0), topk_values.squeeze(0).unsqueeze(1), labels.squeeze(0).unsqueeze(1), dim=1)
+    ret = self.scale_boxes(img.shape[:2], ret, img.shape)
     return ret
 
   def predict(self, samples, targets=None):
@@ -634,8 +636,8 @@ class RFDETR():
     outputs_class = self.class_embed(hs)[-1]
     return outputs_class, outputs_coord[-1]
   
-  def preprocess(self, img):
-    img = img.cast(dtypes.float32)
+  def preprocess(self, frame):
+    img = frame.cast(dtypes.float32)
     img /= 255.0
     means = Tensor([[[0.485, 0.456, 0.406]]])
     stds = Tensor([[[0.229, 0.224, 0.225]]])
@@ -645,7 +647,7 @@ class RFDETR():
     return img
 
   def scale_boxes(self, img1_shape, predictions, img0_shape):
-    predictions[:,:4] *= [img0_shape[1], img0_shape[0], img0_shape[1], img0_shape[0]]
+    predictions[:,:4] *= Tensor([img0_shape[1], img0_shape[0], img0_shape[1], img0_shape[0]])
     return predictions
 
 def box_cxcywh_to_xyxy(x):
@@ -696,10 +698,8 @@ if __name__ == '__main__':
   img_np = np.asarray(image)
   h, w = img_np.shape[:2]
   img = Tensor(img_np)
-  processed_images = model.preprocess(img)
-  output = model(processed_images)
+  output = model(img)
   output = output.numpy()
-  output = model.scale_boxes(img.shape[:2], output, image.shape)
   boxes = output[:, :4]
   scores = output[:, 4]
   class_ids = output[:, 5].astype(int)
