@@ -719,3 +719,4 @@ if __name__ == '__main__':
     x1, y1, x2, y2 = map(int, box)
     color = ((int(class_id)*37)%255, (int(class_id)*17)%255, (int(class_id)*97)%255); cv2.rectangle(image, (x1, y1), (x2, y2), color, th); cv2.rectangle(image, (x1, y1-tb), (x1+len(label)*int(9*scale), y1), color, -1); cv2.putText(image, label, (x1, y1 - int(4*scale)), cv2.FONT_HERSHEY_SIMPLEX, fs, (255,255,255), ft, cv2.LINE_AA)
   cv2.imwrite(f"annotated_image.jpg", image)
+  print("saved result as annotated_image.jpg")
