@@ -227,7 +227,10 @@
                     wgpuError.style.display = "block";
                     loadingContainer.style.display = "none";
                 }
-                net = await RFDETR.load(device, "./net.safetensors");
+                net = await RFDETR.load(
+                device,
+                    "https://huggingface.co/roryclear/rf-detr/resolve/main/nano_webgpu.safetensors"
+                );
                 loadingContainer.style.display = "none";
             }
             const input = await prepareInput(offscreenContext);
