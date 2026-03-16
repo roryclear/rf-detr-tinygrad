@@ -638,6 +638,7 @@ class RFDETR():
   
   def preprocess(self, frame):
     img = frame.cast(dtypes.float32)
+    img = img[:, :, ::-1]
     img /= 255.0
     means = Tensor([[[0.485, 0.456, 0.406]]])
     stds = Tensor([[[0.229, 0.224, 0.225]]])

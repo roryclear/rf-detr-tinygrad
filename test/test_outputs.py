@@ -41,7 +41,6 @@ if __name__ == "__main__":
   threshold = 0.5
   models = [[384, "nano"], [512, "small"], [576, "medium"], [704, "large"]]
   image = cv2.imread("test/dog.jpg")
-  image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
   for i in range(len(models)):
     model = RFDETR(models[i][1])

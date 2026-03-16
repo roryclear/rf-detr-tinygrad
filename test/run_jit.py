@@ -14,7 +14,6 @@ if __name__ == "__main__":
   size = sys.argv[1]
   size = sizes[size]
   image = cv2.imread("test/dog.jpg")
-  image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
   model = RFDETR(size)
   img_np = np.asarray(image)
   h, w = img_np.shape[:2]
