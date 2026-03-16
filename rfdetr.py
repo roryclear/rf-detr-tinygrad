@@ -645,7 +645,10 @@ class RFDETR():
     return img
 
   def scale_boxes(self, img1_shape, predictions, img0_shape):
-    predictions[:,:4] *= Tensor([img0_shape[1], img0_shape[0], img0_shape[1], img0_shape[0]])
+    predictions[:,0] *= img0_shape[1]
+    predictions[:,1] *= img0_shape[0]
+    predictions[:,2] *= img0_shape[1]
+    predictions[:,3] *= img0_shape[0]
     return predictions
 
 def box_cxcywh_to_xyxy(x):
