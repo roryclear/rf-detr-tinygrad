@@ -13,6 +13,13 @@ python rfdetr.py {link to an image} {model variant}
 ```
 e.g python rfdetr.py https://i.ytimg.com/vi/w0V4SK21UIE/hq720.jpg l
 
+## Live WebGPU inference
+```
+python compile_to_webgpu.py
+python -m http.server 8080
+```
+open localhost:8080
+
 ## Testing performance
 ```
 PYTHONPATH=. python test/test_jit.py
