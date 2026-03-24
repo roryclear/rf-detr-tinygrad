@@ -272,14 +272,12 @@ class TransformerDecoder(): # todo remove unused
         def get_reference(refpoints_unsigmoid):
           obj_center = refpoints_unsigmoid[..., :4]
           refpoints_input = obj_center[:, :, None]
-          query_sine_embed = gen_sineembed_for_position(
-              refpoints_input[:, :, 0, :], 256 / 2) # bs, nq, 256*2
+          query_sine_embed = gen_sineembed_for_position(refpoints_input[:, :, 0, :], 256 / 2)
           query_pos = self.ref_point_head(query_sine_embed)
           return refpoints_input, query_pos
 
-        for _, layer in enumerate(self.layers):
-          refpoints_input, query_pos = get_reference(refpoints_unsigmoid) #todo
-
+        refpoints_input, query_pos = get_reference(refpoints_unsigmoid) 
+        for layer in self.layers:
           tgt = layer(tgt, memory,
             memory_key_padding_mask=memory_key_padding_mask,
             query_pos=query_pos,
