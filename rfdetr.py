@@ -120,37 +120,11 @@ class WindowedDinov2WithRegistersBackbone():
 
         outputs = self.encoder(embedding_output, output_hidden_states=True, output_attentions=output_attentions, return_dict=return_dict)
 
-        hidden_states = outputs[1]
+        hidden_states = outputs[1]       
+        hidden_state = hidden_states[9][:, 1 :]
+        hidden_state = hidden_state.reshape(1, 2, 2, 12, 12, 384)
 
-        feature_maps = ()
-        for stage, hidden_state in zip(self.stage_names, hidden_states):
-          if stage in self.out_features:
-            hidden_state = self.layernorm(hidden_state)
-            hidden_state = hidden_state[:, 1 :]
-            # this was actually a bug in the original implementation that we copied here,
-            # cause normally the order is height, width
-            batch_size, _, height, width = pixel_values.shape
-            patch_size = 16
-
-
-            num_h_patches = height // patch_size
-            num_w_patches = width // patch_size
-
-            # undo windowing
-            num_windows_squared = self.num_windows ** 2
-            B, HW, C = hidden_state.shape
-
-            num_h_patches_per_window = num_h_patches // self.num_windows
-            num_w_patches_per_window = num_w_patches // self.num_windows
-
-            hidden_state = hidden_state.reshape(B // num_windows_squared, self.num_windows, self.num_windows, num_h_patches_per_window, num_w_patches_per_window, C)
-            hidden_state = hidden_state.permute(0,1,3,2,4,5)
-            hidden_state = hidden_state.reshape(batch_size, num_h_patches, num_w_patches, C)
-            hidden_state = hidden_state.permute(0,3,1,2).contiguous()
-            feature_maps += (hidden_state,)
-
-        output = (feature_maps,) + outputs[2:]
-        return output
+        return hidden_state
     
 def ms_deform_attn_core(value, value_spatial_shapes, sampling_locations, attention_weights):
     B, n_heads, head_dim, _ = value.shape
@@ -340,7 +314,6 @@ class Transformer():
 
         self.enc_out_class_embed_w = self.enc_out_class_embed[0].weight
         self.enc_out_class_embed_b = self.enc_out_class_embed[0].bias
-
         src = srcs[0] if type(srcs) == list else srcs
         bs, _, h, w = src.shape
         src = src.flatten(2).transpose(1, 2)              # bs, hw, c
@@ -364,7 +337,6 @@ class Transformer():
         boxes_ts = enc_outputs_coord_unselected_gidx.gather(dim=1, index=topk_proposals_gidx.unsqueeze(-1).repeat(1, 1, 4))
         tgt = query_feat.unsqueeze(0).repeat(bs, 1, 1)
         refpoint_embed = refpoint_embed.unsqueeze(0).repeat(bs, 1, 1)
-
         ts_len = boxes_ts.shape[-2]
         refpoint_embed_ts_subset = refpoint_embed[..., :ts_len, :]
         refpoint_embed_subset = refpoint_embed[..., ts_len:, :]
@@ -445,10 +417,10 @@ class PositionEmbeddingSine():
 
 class Backbone():
     def __call__(self, tensors ,mask):
-      feats = list(self.encoder(tensors)[0])
+      feats = list(self.encoder(tensors)[0]) # fails here?
+      return feats[0], None
       feats = self.projector(feats)
-      m = mask
-      mask = ~Tensor.interpolate(m.unsqueeze(0), size=feats[0].shape[-2:])[0]
+      mask = ~Tensor.interpolate(mask.unsqueeze(0), size=feats[0].shape[-2:])[0]
       return feats[0], mask
 
 class MLP():
@@ -603,6 +575,7 @@ class RFDETR():
   def __call__(self, img):
     pre = self.preprocess(img)
     predictions = self.predict(pre)
+    return predictions[0]
     out_logits, out_bbox = predictions
     prob = out_logits.sigmoid()
     topk_values, topk_indexes = Tensor.topk(prob.view(out_logits.shape[0], -1), 300, dim=1)
@@ -618,6 +591,7 @@ class RFDETR():
     _, _, h, w = samples.shape
     mask = Tensor.zeros((1, h, w), dtype=dtypes.bool)
     feature, mask = self.backbone(samples, mask)
+    return feature
     refpoint_embed_weight = self.refpoint_embed[:self.num_queries]
     query_feat_weight = self.query_feat[:self.num_queries]
     hs, ref_unsigmoid = self.transformer(feature, mask, refpoint_embed_weight, query_feat_weight)
