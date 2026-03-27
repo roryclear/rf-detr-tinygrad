@@ -39,25 +39,24 @@ class Dinov2WithRegistersSdpaSelfAttention():
       return x.permute(0, 2, 1, 3)
 
     def __call__(self, hidden_states, head_mask, output_attentions):
-      mixed_query_layer = self.query(hidden_states)
-      key_layer = self.transpose_for_scores(self.key(hidden_states))
-      value_layer = self.transpose_for_scores(self.value(hidden_states))
-      query_layer = self.transpose_for_scores(mixed_query_layer)
+      query_layer = Tensor.rand((1, 6, 580, 64))
+      value_layer = Tensor.rand((1, 6, 580, 64))
+      key_layer = Tensor.rand((1, 6, 580, 64))
 
-      d_k = query_layer.size(-1)
-      attn_scores = Tensor.matmul(query_layer, key_layer.transpose(-2, -1)) / math.sqrt(d_k)
+      attn_scores = Tensor.matmul(query_layer, key_layer.transpose(-2, -1))
       attn_probs = Tensor.softmax(attn_scores, axis=-1)
       context_layer = Tensor.matmul(attn_probs, value_layer)
       context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
       new_context_layer_shape = context_layer.size()[:-2] + (384,)
       context_layer = context_layer.view(new_context_layer_shape)
-      return context_layer, None
+      return context_layer
 
 class Dinov2WithRegistersSdpaAttention():
     def __call__(self, hidden_states, head_mask=None, output_attentions= False):
-      self_outputs = self.attention(hidden_states, head_mask, output_attentions)
-      attention_output = self.dense(self_outputs[0])
-      return (attention_output,) + self_outputs[1:]
+      print(type(self.attention))
+      x = self.attention(hidden_states, head_mask, output_attentions)
+      attention_output = self.dense(x)
+      return (attention_output,)
 
 class Dinov2WithRegistersMLP():
     def __call__(self, hidden_state):
@@ -95,99 +94,10 @@ class WindowedDinov2WithRegistersBackbone():
         hidden_state = hidden_state.reshape(1, 2, 2, 12, 12, 384)
 
         return hidden_state
-    
-def ms_deform_attn_core(value, value_spatial_shapes, sampling_locations, attention_weights):
-    B, n_heads, head_dim, _ = value.shape
-    _, Len_q, n_heads, L, P, _ = sampling_locations.shape
-    sampling_grids = 2 * sampling_locations - 1
-    value_l_ = value.view(B * n_heads, head_dim, int(value_spatial_shapes), int(value_spatial_shapes))
-    sampling_grid_l_ = sampling_grids[:, :, :, 0].transpose(1, 2).flatten(0, 1)
-
-    N, C, H, W = value_l_.shape
-    _, H_out, W_out, _ = sampling_grid_l_.shape
-    x = (sampling_grid_l_[..., 0] + 1) * W / 2 - 0.5
-    y = (sampling_grid_l_[..., 1] + 1) * H / 2 - 0.5
-    x0 = x.floor().cast(dtype=dtypes.int64)
-    y0 = y.floor().cast(dtype=dtypes.int64)
-    x1 = x0 + 1
-    y1 = y0 + 1
-
-    wx = x - x0.float()
-
-    wy = y - y0.cast(dtype=dtypes.float)
-    w00 = (1 - wx) * (1 - wy)
-    w01 = (1 - wx) * wy
-    w10 = wx * (1 - wy)
-    w11 = wx * wy
-
-
-    v00 = (x0 >= 0) & (x0 < W) & (y0 >= 0) & (y0 < H)
-
-    v01 = (x0 >= 0) & (x0 < W) & (y1 >= 0) & (y1 < H)
-
-    v10 = (x1 >= 0) & (x1 < W) & (y0 >= 0) & (y0 < H)
-    v11 = (x1 >= 0) & (x1 < W) & (y1 >= 0) & (y1 < H)
-
-    x0c = x0.clamp(0, W - 1)
-    x1c = x1.clamp(0, W - 1)
-    y0c = y0.clamp(0, H - 1)
-    y1c = y1.clamp(0, H - 1)
-
-    value_flat = value_l_.view(N, C, H * W)
-    def gather(xi, yi):
-        idx = (yi * W + xi).view(N, 1, -1).expand(-1, C, -1)
-        return Tensor.gather(value_flat, 2, idx).view(N, C, H_out, W_out)
-
-    g00 = gather(x0c, y0c)
-    g01 = gather(x0c, y1c)
-    g10 = gather(x1c, y0c)
-    g11 = gather(x1c, y1c)
-    sampling_value_l_ = (g00 * (w00 * v00).unsqueeze(1) + g01 * (w01 * v01).unsqueeze(1) +
-    g10 * (w10 * v10).unsqueeze(1) + g11 * (w11 * v11).unsqueeze(1))
-    attention_weights = attention_weights.transpose(1, 2).reshape(B * n_heads, 1, Len_q, L * P)
-    output = (sampling_value_l_ * attention_weights).sum(-1).view(B, n_heads * head_dim, Len_q)
-    ret = output.transpose(1, 2).contiguous()
-    return ret    
 
 class TransformerDecoderLayer(): # todo, remove unused
     def __call__(self, tgt, memory, memory_key_padding_mask, query_pos,
-      reference_points=None, spatial_shapes=None, level_start_index=None):  
-        q = k = tgt + query_pos
-        v = tgt
-
-        C = 256
-        B, T, C = q.shape
-        H = 8
-        D = C // H
-        w = self.in_proj_weight
-        b = self.in_proj_bias
-        wo = self.out_proj_weight
-        bo = self.out_proj_bias
-        wq, wk, wv = w.chunk(3, dim=0)
-        bq, bk, bv = b.chunk(3, dim=0)
-
-        q = q @ wq.T + bq
-        k = k @ wk.T + bk
-        v = v @ wv.T + bv
-
-        q = q.view(B, T, H, D).transpose(1, 2)
-        k = k.view(B, T, H, D).transpose(1, 2)
-        v = v.view(B, T, H, D).transpose(1, 2)
-
-        attn = Tensor.scaled_dot_product_attention(q,k,v)
-        attn = attn.transpose(1, 2).contiguous().view(B, T, C)
-        tgt2 = attn @ wo.T + bo
-        tgt = tgt + tgt2
-        tgt = self.norm1(tgt)
-        tgt2 = self.cross_attn(tgt+query_pos, reference_points, memory, spatial_shapes, memory_key_padding_mask)
-        tgt = tgt + tgt2
-        tgt = self.norm2(tgt)
-        x = self.linear1(tgt)
-        x = x.relu()
-        tgt2 = self.linear2(x)
-        tgt += tgt2
-        tgt = self.norm3(tgt)
-        return tgt
+      reference_points=None, spatial_shapes=None, level_start_index=None): pass
     
 def gen_sineembed_for_position(pos_tensor, dim=128):
   scale = 2 * math.pi
@@ -211,151 +121,30 @@ def gen_sineembed_for_position(pos_tensor, dim=128):
 
 class TransformerDecoder(): # todo remove unused
     def __call__(self, tgt, memory, memory_key_padding_mask=None,
-      refpoints_unsigmoid=None, level_start_index=None, spatial_shapes=None):
-        intermediate = []
-        def get_reference(refpoints_unsigmoid):
-          obj_center = refpoints_unsigmoid[..., :4]
-          refpoints_input = obj_center[:, :, None]
-          query_sine_embed = gen_sineembed_for_position(refpoints_input[:, :, 0, :], 256 / 2)
-          query_pos = self.ref_point_head(query_sine_embed)
-          return refpoints_input, query_pos
+      refpoints_unsigmoid=None, level_start_index=None, spatial_shapes=None): pass
 
-        refpoints_input, query_pos = get_reference(refpoints_unsigmoid) 
-        for layer in self.layers:
-          tgt = layer(tgt, memory,
-            memory_key_padding_mask=memory_key_padding_mask,
-            query_pos=query_pos,
-            reference_points=refpoints_input,
-            spatial_shapes=spatial_shapes,
-            level_start_index=level_start_index)
 
-          x = self.norm(tgt)
-          intermediate.append(x)
-        return [(Tensor.stack(intermediate)), (refpoints_unsigmoid.unsqueeze(0))]
-
-def gen_encoder_output_proposals(memory, memory_padding_mask, spatial_shape, unsigmoid=True):
-    memory_padding_mask = memory_padding_mask.cast(dtype=dtypes.bool)
-
-    H_, W_ = spatial_shape, spatial_shape
-    mask = memory_padding_mask.reshape(1, H_, W_)
-
-    valid_H = (~mask[:, :, 0]).sum(axis=1).unsqueeze(-1)
-    valid_W = (~mask[:, 0, :]).sum(axis=1).unsqueeze(-1)
-
-    x = Tensor.linspace(0, H_ - 1, H_)
-    y = Tensor.linspace(0, W_ - 1, W_)
-    grid_y, grid_x = Tensor.meshgrid(y, x)
-
-    grid = Tensor.cat(grid_x.unsqueeze(-1), grid_y.unsqueeze(-1), dim=-1)
-    scale = Tensor.cat(valid_W, valid_H, dim=1).view(1, 1, 1, 2)
-    grid = (grid.unsqueeze(0).expand(1, -1, -1, -1) + 0.5) / scale
-
-    wh = Tensor.ones_like(grid) * 0.05
-    output_proposals = Tensor.cat(grid, wh, dim=-1).view(1, -1, 4)
-
-    output_proposals_valid = ((output_proposals > 0.01) & (output_proposals < 0.99)).all(-1, keepdim=True)
-    output_proposals = output_proposals.masked_fill(memory_padding_mask.unsqueeze(-1), float(0))
-    output_proposals = output_proposals.masked_fill(~output_proposals_valid, float(0))
-    output_memory = memory
-    output_memory = output_memory.masked_fill(memory_padding_mask.unsqueeze(-1), float(0))
-    output_memory = output_memory.masked_fill(~output_proposals_valid, float(0))
-    return output_memory, output_proposals
 
 class MSDeformAttn():
-    def __call__(self, query, reference_points, input_flatten, input_spatial_shapes, input_padding_mask=None):
-        N, Len_q, _ = query.shape
-        N, Len_in, _ = input_flatten.shape
-
-        value = self.value_proj(input_flatten)
-        value = value.masked_fill(input_padding_mask[..., None], float(0))
-        sampling_offsets = self.sampling_offsets(query).view(N, Len_q, 16, 1, 2, 2)
-        attention_weights = self.attention_weights(query).view(N, Len_q, 16, 1 * 2)
-        sampling_locations = reference_points[:, :, None, :, None, :2] \
-                                + sampling_offsets / 2 * reference_points[:, :, None, :, None, 2:] * 0.5
-        attention_weights = attention_weights.softmax(-1)
-        value = value.transpose(1, 2).contiguous().view(N, 16, 256 // 16, Len_in)
-        output = ms_deform_attn_core(
-            value, input_spatial_shapes, sampling_locations, attention_weights)
-        output = self.output_proj(output)
-        return output
+    def __call__(self, query, reference_points, input_flatten, input_spatial_shapes, input_padding_mask=None): pass
 
 class Transformer():
-    def __call__(self, srcs, masks, refpoint_embed, query_feat):
-
-        self.enc_out_class_embed_w = self.enc_out_class_embed[0].weight
-        self.enc_out_class_embed_b = self.enc_out_class_embed[0].bias
-        src = srcs[0] if type(srcs) == list else srcs
-        bs, _, h, w = src.shape
-        src = src.flatten(2).transpose(1, 2)              # bs, hw, c
-        mask = masks[0].flatten(1) if type(masks) == list else masks.flatten(1)
-        output_memory, output_proposals = gen_encoder_output_proposals(
-            src, mask, h, unsigmoid=True)
-        
-        output_memory_gidx = self.enc_output_norm(self.enc_output(output_memory))
-        enc_outputs_class_unselected_gidx = output_memory_gidx @ self.enc_out_class_embed_w.T + self.enc_out_class_embed_b
-
-        
-        enc_outputs_coord_delta_gidx = self.enc_out_bbox_embed[0](output_memory_gidx)
-
-        enc_outputs_coord_cxcy_gidx = enc_outputs_coord_delta_gidx[...,
-            :2] * output_proposals[..., 2:] + output_proposals[..., :2]
-        enc_outputs_coord_wh_gidx = enc_outputs_coord_delta_gidx[..., 2:].exp() * output_proposals[..., 2:]
-        enc_outputs_coord_unselected_gidx = Tensor.cat(enc_outputs_coord_cxcy_gidx, enc_outputs_coord_wh_gidx, dim=-1)
-        topk = min(300, enc_outputs_class_unselected_gidx.shape[-2])
-        x = enc_outputs_class_unselected_gidx.max(-1)
-        topk_proposals_gidx = Tensor.topk(x, topk, dim=1)[1]
-        boxes_ts = enc_outputs_coord_unselected_gidx.gather(dim=1, index=topk_proposals_gidx.unsqueeze(-1).repeat(1, 1, 4))
-        tgt = query_feat.unsqueeze(0).repeat(bs, 1, 1)
-        refpoint_embed = refpoint_embed.unsqueeze(0).repeat(bs, 1, 1)
-        ts_len = boxes_ts.shape[-2]
-        refpoint_embed_ts_subset = refpoint_embed[..., :ts_len, :]
-        refpoint_embed_subset = refpoint_embed[..., ts_len:, :]
-
-
-        refpoint_embed_cxcy = refpoint_embed_ts_subset[..., :2] * boxes_ts[..., 2:]
-        refpoint_embed_cxcy = refpoint_embed_cxcy + boxes_ts[..., :2]
-        refpoint_embed_wh = refpoint_embed_ts_subset[..., 2:].exp() * boxes_ts[..., 2:]
-        refpoint_embed_ts_subset = Tensor.cat(refpoint_embed_cxcy, refpoint_embed_wh, dim=-1)
-        refpoint_embed = Tensor.cat(refpoint_embed_ts_subset, refpoint_embed_subset, dim=-2)
-        hs, references = self.decoder(tgt, src, memory_key_padding_mask=mask,
-                        refpoints_unsigmoid=refpoint_embed,
-                        spatial_shapes=h)
-
-        return hs, references
+    def __call__(self, srcs, masks, refpoint_embed, query_feat): pass
 
     
 class ConvX():
-    def __call__(self, x):
-      x = self.conv(x)
-      x = self.bn(x)
-      return Tensor.silu(x)
+    def __call__(self, x): pass
 
 class Bottleneck():
-    def __call__(self, x): return self.cv2(self.cv1(x))
+    def __call__(self, x): pass
 
 class C2f():
     def __init__(self): self.c = 128
-    def __call__(self, x):
-        """Forward pass using split() instead of chunk()."""
-        y = list(self.cv1(x).split((self.c, self.c), 1))
-        y.extend(m(y[-1]) for m in self.m)
-        y = Tensor.cat(*y, dim=1)
-        y = self.cv2(y)
-        return y
+    def __call__(self, x): pass
 
 class LayerNorm():
     def __init__(self): self.eps = 1e-6
-    def __call__(self, x):
-      x = x.permute(0, 2, 3, 1)
-      x -= x.mean(axis=-1, keepdim=True)
-      var = (x ** 2).mean(axis=-1, keepdim=True) + self.eps
-      var = Tensor.sqrt(var)
-      x_norm = x / var
-      x_norm = x_norm * self.weight
-      x_norm = x_norm + self.bias
-      x = x_norm
-      x = x.permute(0, 3, 1, 2)
-      return x
+    def __call__(self, x): pass
 
 class MultiScaleProjector():
     def __call__(self, x):
@@ -369,34 +158,15 @@ class PositionEmbeddingSine():
       self.num_pos_feats = 128
       self.temperature = 10000
 
-    def __call__(self, tensors, mask, align_dim_orders = True):
-        not_mask = ~mask
-        y_embed = not_mask.cumsum(1)
-        x_embed = not_mask.cumsum(2)
-        eps = 1e-6
-        y_embed = y_embed / (y_embed[:, -1:, :] + eps) * self.scale
-        x_embed = x_embed / (x_embed[:, :, -1:] + eps) * self.scale
-        dim_t = Tensor.arange(self.num_pos_feats)
-        dim_t = self.temperature ** (2 * (dim_t // 2) / self.num_pos_feats)
-        pos_x = x_embed[:, :, :, None] / dim_t
-        pos_y = y_embed[:, :, :, None] / dim_t
-        pos_x = Tensor.stack((pos_x[:, :, :, 0::2].sin(), pos_x[:, :, :, 1::2].cos()), dim=4).flatten(3)
-        pos_y = Tensor.stack((pos_y[:, :, :, 0::2].sin(), pos_y[:, :, :, 1::2].cos()), dim=4).flatten(3)
-        pos = Tensor.cat(pos_y, pos_x, dim=3).permute(0, 3, 1, 2)
-        return pos
+    def __call__(self, tensors, mask, align_dim_orders = True): pass
 
 class Backbone():
     def __call__(self, tensors ,mask):
       feats = list(self.encoder(tensors)[0]) # fails here?
       return feats[0], None
-      feats = self.projector(feats)
-      mask = ~Tensor.interpolate(mask.unsqueeze(0), size=feats[0].shape[-2:])[0]
-      return feats[0], mask
 
 class MLP():
-    def __call__(self, x):            
-      for i, layer in enumerate(self.layers): x = Tensor.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
-      return x
+    def __call__(self, x): pass
     
 class RFDETR():
   def __init__(self, name, res=None):
@@ -546,32 +316,12 @@ class RFDETR():
     pre = self.preprocess(img)
     predictions = self.predict(pre)
     return predictions[0]
-    out_logits, out_bbox = predictions
-    prob = out_logits.sigmoid()
-    topk_values, topk_indexes = Tensor.topk(prob.view(out_logits.shape[0], -1), 300, dim=1)
-    topk_boxes = topk_indexes // out_logits.shape[2]
-    labels = topk_indexes % out_logits.shape[2]
-    boxes = box_cxcywh_to_xyxy(out_bbox)
-    boxes = Tensor.gather(boxes, 1, topk_boxes.unsqueeze(-1).repeat(1,1,4))
-    ret = Tensor.cat(boxes.squeeze(0), topk_values.squeeze(0).unsqueeze(1), labels.squeeze(0).unsqueeze(1), dim=1)
-    ret = self.scale_boxes(img.shape[:2], ret, img.shape)
-    return ret
 
   def predict(self, samples, targets=None):
     _, _, h, w = samples.shape
     mask = Tensor.zeros((1, h, w), dtype=dtypes.bool)
-    feature, mask = self.backbone(samples, mask)
+    feature, _ = self.backbone(samples, mask)
     return feature
-    refpoint_embed_weight = self.refpoint_embed[:self.num_queries]
-    query_feat_weight = self.query_feat[:self.num_queries]
-    hs, ref_unsigmoid = self.transformer(feature, mask, refpoint_embed_weight, query_feat_weight)
-    outputs_coord_delta = self.bbox_embed(hs)
-
-    outputs_coord_cxcy = outputs_coord_delta[..., :2] * ref_unsigmoid[..., 2:] + ref_unsigmoid[..., :2]
-    outputs_coord_wh = outputs_coord_delta[..., 2:].exp() * ref_unsigmoid[..., 2:]
-    outputs_coord = Tensor.cat(outputs_coord_cxcy, outputs_coord_wh, dim=-1)
-    outputs_class = self.class_embed(hs)[-1]
-    return outputs_class, outputs_coord[-1]
   
   def preprocess(self, frame):
     img = frame.cast(dtypes.float32)
@@ -582,19 +332,6 @@ class RFDETR():
     img = img.permute(2, 0, 1).unsqueeze(0)
     return img
 
-  def scale_boxes(self, img1_shape, predictions, img0_shape):
-    predictions[:,0] *= img0_shape[1]
-    predictions[:,1] *= img0_shape[0]
-    predictions[:,2] *= img0_shape[1]
-    predictions[:,3] *= img0_shape[0]
-    return predictions
-
-def box_cxcywh_to_xyxy(x):
-  x_c, y_c, w, h = [t.squeeze(-1) for t in x.split(1, dim=-1)]
-  w_pos = w.clip(0.0, float("inf"))
-  h_pos = h.clip(0.0, float("inf"))
-  b = [x_c - 0.5 * w_pos, y_c - 0.5 * h_pos, x_c + 0.5 * w_pos, y_c + 0.5 * h_pos]
-  return Tensor.stack(b, dim=-1)
 
 class seq:
   def __init__(self, size=0): self.size = size
@@ -605,12 +342,8 @@ class seq:
     except AttributeError:
       raise IndexError(idx)
   def __len__(self): return self.size
-  def __call__(self, x):
-    for i in range(self.size):
-      layer = getattr(self, str(i))
-      x = layer(x)
-    return x
-
+  def __call__(self, x): pass
+  
 def resize(img, new_size):
   img = img.permute(2,0,1)
   img = Tensor.interpolate(img, size=(new_size[1], new_size[0]), mode='linear', align_corners=False)
