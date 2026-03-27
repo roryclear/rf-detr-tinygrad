@@ -9,28 +9,7 @@ COCO_CLASSES = ["","person","bicycle","car","motorcycle","airplane","bus","train
 detr_to_yolo = [80, 0, 1, 2, -1, -1, 5, 6, 7, 8, 9, 10, 80, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 80, 24, 25, 80, 80, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 80, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, -1, -1, 59, 80, -1, 80, 80, 61, 80, -1, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 80, 73, 74, 75, 76, 77, 78]
 
 class WindowedDinov2WithRegistersEmbeddings():
-  def __call__(self, pixel_values):
-    batch_size, _, height, width = pixel_values.shape
-    embeddings = self.projection(pixel_values).flatten(2).transpose(1, 2)
-
-    cls_tokens = self.cls_token.expand(batch_size, -1, -1)
-    embeddings = Tensor.cat(cls_tokens, embeddings, dim=1)
-    embeddings = embeddings + self.position_embeddings
-    num_h_patches = height // 16
-    num_w_patches = width // 16
-    cls_token_with_pos_embed = embeddings[:, :1]
-    pixel_tokens_with_pos_embed = embeddings[:, 1:]
-    pixel_tokens_with_pos_embed = pixel_tokens_with_pos_embed.view(batch_size, num_h_patches, num_w_patches, -1)
-
-    num_w_patches_per_window = num_w_patches // self.num_windows
-    num_h_patches_per_window = num_h_patches // self.num_windows
-    windowed_pixel_tokens = pixel_tokens_with_pos_embed.reshape(batch_size, self.num_windows, num_h_patches_per_window, self.num_windows, num_w_patches_per_window, -1)
-    windowed_pixel_tokens = windowed_pixel_tokens.permute(0,1,3,2,4,5)
-    windowed_pixel_tokens = windowed_pixel_tokens.reshape(batch_size * self.num_windows**2, num_h_patches_per_window * num_w_patches_per_window, -1)
-
-    windowed_cls_token_with_pos_embed = cls_token_with_pos_embed.repeat(self.num_windows ** 2, 1, 1)
-    embeddings = Tensor.cat(windowed_cls_token_with_pos_embed, windowed_pixel_tokens, dim=1)
-    return embeddings
+  def __call__(self, pixel_values): pass
 
 class Dinov2WithRegistersSdpaSelfAttention():
     def transpose_for_scores(self, x):
@@ -278,28 +257,16 @@ class RFDETR():
     state_dict = safe_load(fetch(f'https://huggingface.co/roryclear/rf-detr/resolve/main/{name}.safetensors'))
     load_state_dict(self, state_dict)
 
-  def __call__(self, img):
-    pre = self.preprocess(img)
-    predictions = self.predict(pre)
+  def __call__(self):
+    predictions = self.predict()
     return predictions[0]
 
-  def predict(self, samples, targets=None):    
-    embedding_output = self.backbone.encoder.embeddings(samples)
-    embedding_output = Tensor.rand_like(embedding_output)
+  def predict(self):
+    embedding_output = Tensor.rand((4, 145, 384))
     outputs = self.backbone.encoder.encoder(embedding_output, output_hidden_states=True, output_attentions=None, return_dict=None)
     hidden_state = outputs[:, 1 :]
     feature = hidden_state.reshape(1, 2, 2, 12, 12, 384)[0]
     return feature
-  
-  def preprocess(self, frame):
-    img = frame.cast(dtypes.float32)
-    img = img[:, :, ::-1]
-    img /= 255.0
-    img = resize(img, (self.res, self.res))
-    img = (img - self.means) / self.stds
-    img = img.permute(2, 0, 1).unsqueeze(0)
-    return img
-
 
 class seq:
   def __init__(self, size=0): self.size = size
