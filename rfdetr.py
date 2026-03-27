@@ -138,9 +138,7 @@ class PositionEmbeddingSine():
     def __call__(self, tensors, mask, align_dim_orders = True): pass
 
 class Backbone():
-    def __call__(self, tensors ,mask):
-      feats = list(self.encoder(tensors)[0]) # fails here?
-      return feats[0], None
+    def __call__(self, tensors ,mask): pass
 
 class MLP():
     def __call__(self, x): pass
@@ -295,9 +293,7 @@ class RFDETR():
     return predictions[0]
 
   def predict(self, samples, targets=None):
-    _, _, h, w = samples.shape
-    mask = Tensor.zeros((1, h, w), dtype=dtypes.bool)
-    feature, _ = self.backbone(samples, mask)
+    feature = self.backbone.encoder(samples)[0]
     return feature
   
   def preprocess(self, frame):
