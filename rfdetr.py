@@ -68,38 +68,17 @@ class Dinov2WithRegistersMLP():
 
 class WindowedDinov2WithRegistersLayer():
     def __call__(self, hidden_states, head_mask=None, output_attentions= False, run_full_attention= False):
-      shortcut = hidden_states
-      if run_full_attention:
-        B, HW, C = hidden_states.shape
-        num_windows_squared = self.num_windows ** 2
-        hidden_states = hidden_states.view(B // num_windows_squared, num_windows_squared * HW, C)
-      x = self.norm1(hidden_states)
-
-      # todo
+      x = Tensor.rand((1, 580, 384))
       self_attention_outputs = self.attention(x, head_mask, output_attentions=output_attentions,)
       attention_output = self_attention_outputs[0]
-
-      if run_full_attention:
-        B, HW, C = hidden_states.shape
-        num_windows_squared = self.num_windows ** 2
-        attention_output = attention_output.view(B * num_windows_squared, HW // num_windows_squared, C)
-      attention_output = (attention_output) * self.lambda1
-      outputs = self_attention_outputs[1:]
-      hidden_states = attention_output + shortcut
-
-      # in Dinov2WithRegisters, layernorm is also applied after self-attention
-      layer_output = self.norm2(hidden_states)
-      layer_output = self.mlp(layer_output)
-      layer_output = layer_output * self.lambda2
-      layer_output = layer_output + hidden_states
-      return (layer_output,) + outputs
+      attention_output = attention_output.view(4, 145, 384)
+      return attention_output
 
 class WindowedDinov2WithRegistersEncoder():
     def __call__(self, hidden_states, head_mask=None, output_attentions=False, output_hidden_states=False, return_dict=True,):
       hidden_states = Tensor.rand((4, 145, 384))
       layer_outputs = self.layer[9](hidden_states, None, output_attentions, True)
-      hidden_states = layer_outputs[0]
-      return hidden_states
+      return layer_outputs
 
 class WindowedDinov2WithRegistersBackbone():
     def __init__(self):
