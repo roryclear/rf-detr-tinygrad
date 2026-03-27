@@ -82,10 +82,10 @@ class MLP():
     
 class RFDETR():
   def __init__(self, name, res=None):
-    self.dense = nn.Linear(384, 384)
+    self.dense = nn.Linear(65, 65, bias=False)
 
   def __call__(self):
-    x = Tensor.rand((1, 580, 384))
+    x = Tensor.rand((65, 65))
     return self.dense(x)
 
 class seq:
