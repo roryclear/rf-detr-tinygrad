@@ -39,19 +39,10 @@ class Dinov2WithRegistersMLP():
         return hidden_state
 
 class WindowedDinov2WithRegistersLayer():
-    def __call__(self, hidden_states, head_mask=None, output_attentions= False, run_full_attention= False):
-      x = Tensor.rand((1, 580, 384))
-      self_attention_outputs = self.attention(x, head_mask, output_attentions=output_attentions,)
-      attention_output = self_attention_outputs[0]
-      attention_output = attention_output.view(4, 145, 384)
-      return attention_output
+    def __call__(self, hidden_states, head_mask=None, output_attentions= False, run_full_attention= False): pass
 
 class WindowedDinov2WithRegistersEncoder():
-    def __call__(self):
-      hidden_states = Tensor.rand((4, 145, 384))
-      layer_outputs = self.layer[9](hidden_states, None, None, True)
-      return layer_outputs
-
+    def __call__(self): pass
 class WindowedDinov2WithRegistersBackbone():
     def __init__(self):
       self.config = {}
@@ -251,8 +242,10 @@ class RFDETR():
       self.backbone.encoder.encoder.layer[i].mlp.fc2 = nn.Linear(1536, 384)
 
   def __call__(self):
-    
-    outputs = self.backbone.encoder.encoder()
+    x = Tensor.rand((1, 580, 384))
+    self_attention_outputs = self.backbone.encoder.encoder.layer[9].attention(x, None, output_attentions=None)
+    attention_output = self_attention_outputs[0]
+    outputs = attention_output.view(4, 145, 384)
     hidden_state = outputs[:, 1 :]
     feature = hidden_state.reshape(1, 2, 2, 12, 12, 384)[0][0]
     return feature
