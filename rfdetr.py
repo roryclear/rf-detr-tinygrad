@@ -251,14 +251,12 @@ class RFDETR():
       self.backbone.encoder.encoder.layer[i].mlp.fc2 = nn.Linear(1536, 384)
 
   def __call__(self):
-    predictions = self.predict()
-    return predictions[0]
-
-  def predict(self):
+    
     outputs = self.backbone.encoder.encoder()
     hidden_state = outputs[:, 1 :]
-    feature = hidden_state.reshape(1, 2, 2, 12, 12, 384)[0]
+    feature = hidden_state.reshape(1, 2, 2, 12, 12, 384)[0][0]
     return feature
+
 
 class seq:
   def __init__(self, size=0): self.size = size
