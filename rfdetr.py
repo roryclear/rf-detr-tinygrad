@@ -12,11 +12,6 @@ class WindowedDinov2WithRegistersEmbeddings():
   def __call__(self, pixel_values): pass
 
 class Dinov2WithRegistersSdpaSelfAttention():
-    def transpose_for_scores(self, x):
-      new_x_shape = x.size()[:-1] + (6, 64)
-      x = x.view(new_x_shape)
-      return x.permute(0, 2, 1, 3)
-
     def __call__(self, hidden_states, head_mask, output_attentions):
       query_layer = Tensor.rand((1, 6, 580, 64))
       value_layer = Tensor.rand((1, 6, 580, 64))
@@ -52,9 +47,9 @@ class WindowedDinov2WithRegistersLayer():
       return attention_output
 
 class WindowedDinov2WithRegistersEncoder():
-    def __call__(self, hidden_states, head_mask=None, output_attentions=False, output_hidden_states=False, return_dict=True,):
+    def __call__(self):
       hidden_states = Tensor.rand((4, 145, 384))
-      layer_outputs = self.layer[9](hidden_states, None, output_attentions, True)
+      layer_outputs = self.layer[9](hidden_states, None, None, True)
       return layer_outputs
 
 class WindowedDinov2WithRegistersBackbone():
@@ -254,16 +249,13 @@ class RFDETR():
       self.backbone.encoder.encoder.layer[i].mlp = Dinov2WithRegistersMLP()
       self.backbone.encoder.encoder.layer[i].mlp.fc1 = nn.Linear(384, 1536)
       self.backbone.encoder.encoder.layer[i].mlp.fc2 = nn.Linear(1536, 384)
-    state_dict = safe_load(fetch(f'https://huggingface.co/roryclear/rf-detr/resolve/main/{name}.safetensors'))
-    load_state_dict(self, state_dict)
 
   def __call__(self):
     predictions = self.predict()
     return predictions[0]
 
   def predict(self):
-    embedding_output = Tensor.rand((4, 145, 384))
-    outputs = self.backbone.encoder.encoder(embedding_output, output_hidden_states=True, output_attentions=None, return_dict=None)
+    outputs = self.backbone.encoder.encoder()
     hidden_state = outputs[:, 1 :]
     feature = hidden_state.reshape(1, 2, 2, 12, 12, 384)[0]
     return feature

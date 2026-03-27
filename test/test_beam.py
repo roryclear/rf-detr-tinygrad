@@ -3,6 +3,7 @@ from rfdetr import RFDETR
 import numpy as np
 from tinygrad.helpers import Context
 if __name__ == "__main__":
+    Tensor.manual_seed(1337)
     model = RFDETR("nano")
     Tensor.manual_seed(1337)
     res = model().numpy()
