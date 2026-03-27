@@ -96,18 +96,10 @@ class WindowedDinov2WithRegistersLayer():
 
 class WindowedDinov2WithRegistersEncoder():
     def __call__(self, hidden_states, head_mask=None, output_attentions=False, output_hidden_states=False, return_dict=True,):
-      all_hidden_states = () if output_hidden_states else None
-      all_self_attentions = () if output_attentions else None
-
-      for i, layer_module in enumerate(self.layer):
-        all_hidden_states = all_hidden_states + (hidden_states,)
-        run_full_attention = i not in [0, 1, 2, 4, 5, 7, 8, 10, 11]
-        layer_head_mask = None
-        layer_outputs = layer_module(hidden_states, layer_head_mask, output_attentions, run_full_attention)
-        hidden_states = layer_outputs[0]
-
-      all_hidden_states = all_hidden_states + (hidden_states,)
-      return tuple(v for v in [hidden_states, all_hidden_states, all_self_attentions] if v is not None)
+      hidden_states = Tensor.rand((4, 145, 384))
+      layer_outputs = self.layer[9](hidden_states, None, output_attentions, True)
+      hidden_states = layer_outputs[0]
+      return hidden_states
 
 class WindowedDinov2WithRegistersBackbone():
     def __init__(self):
@@ -118,10 +110,9 @@ class WindowedDinov2WithRegistersBackbone():
     def __call__(self, pixel_values, output_hidden_states=None, output_attentions=None, return_dict=None,):
         embedding_output = self.embeddings(pixel_values)
 
+        embedding_output = Tensor.rand_like(embedding_output)
         outputs = self.encoder(embedding_output, output_hidden_states=True, output_attentions=output_attentions, return_dict=return_dict)
-
-        hidden_states = outputs[1]       
-        hidden_state = hidden_states[9][:, 1 :]
+        hidden_state = outputs[:, 1 :]
         hidden_state = hidden_state.reshape(1, 2, 2, 12, 12, 384)
 
         return hidden_state
@@ -689,3 +680,4 @@ if __name__ == '__main__':
     color = ((int(class_id)*37)%255, (int(class_id)*17)%255, (int(class_id)*97)%255); cv2.rectangle(image, (x1, y1), (x2, y2), color, th); cv2.rectangle(image, (x1, y1-tb), (x1+len(label)*int(9*scale), y1), color, -1); cv2.putText(image, label, (x1, y1 - int(4*scale)), cv2.FONT_HERSHEY_SIMPLEX, fs, (255,255,255), ft, cv2.LINE_AA)
   cv2.imwrite(f"annotated_image.jpg", image)
   print("saved result as annotated_image.jpg")
+
