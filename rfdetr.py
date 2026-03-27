@@ -53,7 +53,6 @@ class Dinov2WithRegistersSdpaSelfAttention():
 
 class Dinov2WithRegistersSdpaAttention():
     def __call__(self, hidden_states, head_mask=None, output_attentions= False):
-      print(type(self.attention))
       x = self.attention(hidden_states, head_mask, output_attentions)
       attention_output = self.dense(x)
       return (attention_output,)
@@ -85,15 +84,7 @@ class WindowedDinov2WithRegistersBackbone():
       self.stage_names = ['stem', 'stage1', 'stage2', 'stage3', 'stage4', 'stage5', 'stage6', 'stage7', 'stage8', 'stage9', 'stage10', 'stage11', 'stage12']
       self.out_features = ['stage3', 'stage6', 'stage9', 'stage12']
 
-    def __call__(self, pixel_values, output_hidden_states=None, output_attentions=None, return_dict=None,):
-        embedding_output = self.embeddings(pixel_values)
-
-        embedding_output = Tensor.rand_like(embedding_output)
-        outputs = self.encoder(embedding_output, output_hidden_states=True, output_attentions=output_attentions, return_dict=return_dict)
-        hidden_state = outputs[:, 1 :]
-        hidden_state = hidden_state.reshape(1, 2, 2, 12, 12, 384)
-
-        return hidden_state
+    def __call__(self, pixel_values, output_hidden_states=None, output_attentions=None, return_dict=None,): pass
 
 class TransformerDecoderLayer(): # todo, remove unused
     def __call__(self, tgt, memory, memory_key_padding_mask, query_pos,
@@ -292,8 +283,12 @@ class RFDETR():
     predictions = self.predict(pre)
     return predictions[0]
 
-  def predict(self, samples, targets=None):
-    feature = self.backbone.encoder(samples)[0]
+  def predict(self, samples, targets=None):    
+    embedding_output = self.backbone.encoder.embeddings(samples)
+    embedding_output = Tensor.rand_like(embedding_output)
+    outputs = self.backbone.encoder.encoder(embedding_output, output_hidden_states=True, output_attentions=None, return_dict=None)
+    hidden_state = outputs[:, 1 :]
+    feature = hidden_state.reshape(1, 2, 2, 12, 12, 384)[0]
     return feature
   
   def preprocess(self, frame):
