@@ -99,26 +99,6 @@ class TransformerDecoderLayer(): # todo, remove unused
     def __call__(self, tgt, memory, memory_key_padding_mask, query_pos,
       reference_points=None, spatial_shapes=None, level_start_index=None): pass
     
-def gen_sineembed_for_position(pos_tensor, dim=128):
-  scale = 2 * math.pi
-  dim_t = Tensor.arange(dim)
-  dim_t = 10000 ** (2 * (dim_t // 2) / dim)
-  x_embed = pos_tensor[:, :, 0] * scale
-  y_embed = pos_tensor[:, :, 1] * scale
-  pos_x = x_embed[:, :, None] / dim_t
-  pos_y = y_embed[:, :, None] / dim_t
-  pos_x = Tensor.stack(pos_x[:, :, 0::2].sin(), pos_x[:, :, 1::2].cos(), dim=3).flatten(2)
-  pos_y = Tensor.stack(pos_y[:, :, 0::2].sin(), pos_y[:, :, 1::2].cos(), dim=3).flatten(2)
-  w_embed = pos_tensor[:, :, 2] * scale
-  pos_w = w_embed[:, :, None] / dim_t
-  pos_w = Tensor.stack(pos_w[:, :, 0::2].sin(), pos_w[:, :, 1::2].cos(), dim=3).flatten(2)
-
-  h_embed = pos_tensor[:, :, 3] * scale
-  pos_h = h_embed[:, :, None] / dim_t
-  pos_h = Tensor.stack(pos_h[:, :, 0::2].sin(), pos_h[:, :, 1::2].cos(), dim=3).flatten(2)
-  pos = Tensor.cat(pos_y, pos_x, pos_w, pos_h, dim=2)
-  return pos
-
 class TransformerDecoder(): # todo remove unused
     def __call__(self, tgt, memory, memory_key_padding_mask=None,
       refpoints_unsigmoid=None, level_start_index=None, spatial_shapes=None): pass
@@ -147,10 +127,7 @@ class LayerNorm():
     def __call__(self, x): pass
 
 class MultiScaleProjector():
-    def __call__(self, x):
-      feat_fuse = Tensor.cat(*x, dim=1)
-      stage_output = self.stages[0](feat_fuse)
-      return [stage_output]
+    def __call__(self, x): pass
 
 class PositionEmbeddingSine():
     def __init__(self):
