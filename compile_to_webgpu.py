@@ -217,10 +217,10 @@ def export_model(model, target:str, *inputs, model_name: Optional[str] = "model"
 from rfdetr import RFDETR
 if __name__ == "__main__":
     Device.DEFAULT = "WEBGPU"
-    yolo_infer = RFDETR("nano")
-    yolo_infer.stds = Tensor([[[0.229, 0.224, 0.225]]])
-    yolo_infer.means = Tensor([[[0.485, 0.456, 0.406]]])
-    prg, inp_sizes, out_sizes, state = export_model(yolo_infer, Device.DEFAULT.lower(), Tensor.randn(384,384,3), model_name="RFDETR")
+    rfdetr_infer = RFDETR("nano")
+    rfdetr_infer.stds = Tensor([[[0.229, 0.224, 0.225]]])
+    rfdetr_infer.means = Tensor([[[0.485, 0.456, 0.406]]])
+    prg, inp_sizes, out_sizes, state = export_model(rfdetr_infer, Device.DEFAULT.lower(), Tensor.randn(384,384,3), model_name="RFDETR")
     dirname = Path(__file__).parent
     safe_save(state, (dirname / "net.safetensors").as_posix())
     with open(dirname / f"net.js", "w") as text_file:
