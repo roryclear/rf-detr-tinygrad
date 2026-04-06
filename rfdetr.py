@@ -649,47 +649,22 @@ class RFDETR():
     return img
   
   def scale_boxes(self, img1_shape, predictions, img0_shape):
-      print(img1_shape, img0_shape)
-      predictions = predictions.numpy()
-      """
-      Scale bounding boxes from preprocessed image coordinates back to original image coordinates.
-      
-      Args:
-          img1_shape: Shape of the preprocessed image (after letterboxing) - typically (self.res, self.res)
-          predictions: Bounding boxes in format [x1, y1, x2, y2] normalized to [0, 1] relative to preprocessed image
-          img0_shape: Original image shape (height, width)
-      
-      Returns:
-          Scaled bounding boxes in absolute coordinates of original image
-      """
-      # Get original image dimensions
-      orig_h, orig_w = img0_shape[0], img0_shape[1]
-      
-      # Get preprocessed image dimensions (square after letterboxing)
-      proc_h, proc_w = img1_shape[0], img1_shape[1]
-      
-      # Calculate the scaling factor used during preprocessing
-      scale = min(proc_w / orig_w, proc_h / orig_h)
-      
-      # Calculate padding that was added
-      new_w = int(orig_w * scale)
-      new_h = int(orig_h * scale)
-      pad_x = (proc_w - new_w) // 2
-      pad_y = (proc_h - new_h) // 2
-      
-      # Remove padding from predictions (convert from canvas coordinates to resized image coordinates)
-      predictions[:, 0] = (predictions[:, 0] * proc_w - pad_x) / scale
-      predictions[:, 1] = (predictions[:, 1] * proc_h - pad_y) / scale
-      predictions[:, 2] = (predictions[:, 2] * proc_w - pad_x) / scale
-      predictions[:, 3] = (predictions[:, 3] * proc_h - pad_y) / scale
-      
-      # Clip boxes to ensure they're within image boundaries
-      predictions[:, 0] = np.clip(predictions[:, 0], 0, orig_w)
-      predictions[:, 1] = np.clip(predictions[:, 1], 0, orig_h)
-      predictions[:, 2] = np.clip(predictions[:, 2], 0, orig_w)
-      predictions[:, 3] = np.clip(predictions[:, 3], 0, orig_h)
-      
-      return Tensor(predictions)
+    orig_h, orig_w = img0_shape[0], img0_shape[1]
+    proc_h, proc_w = img1_shape[0], img1_shape[1]
+    scale = min(proc_w / orig_w, proc_h / orig_h)
+    new_w = int(orig_w * scale)
+    new_h = int(orig_h * scale)
+    pad_x = (proc_w - new_w) // 2
+    pad_y = (proc_h - new_h) // 2
+    predictions[:, 0] = (predictions[:, 0] * proc_w - pad_x) / scale
+    predictions[:, 1] = (predictions[:, 1] * proc_h - pad_y) / scale
+    predictions[:, 2] = (predictions[:, 2] * proc_w - pad_x) / scale
+    predictions[:, 3] = (predictions[:, 3] * proc_h - pad_y) / scale
+    predictions[:, 0] = Tensor.clip(predictions[:, 0], 0, orig_w)
+    predictions[:, 1] = Tensor.clip(predictions[:, 1], 0, orig_h)
+    predictions[:, 2] = Tensor.clip(predictions[:, 2], 0, orig_w)
+    predictions[:, 3] = Tensor.clip(predictions[:, 3], 0, orig_h)
+    return predictions
 
 def box_cxcywh_to_xyxy(x):
   x_c, y_c, w, h = [t.squeeze(-1) for t in x.split(1, dim=-1)]
