@@ -4,6 +4,7 @@ from tinygrad.dtype import dtypes
 from tinygrad.nn.state import get_state_dict, load_state_dict, safe_save, safe_load
 from tinygrad.helpers import fetch
 from tinygrad import Tensor, nn
+import cv2
 
 COCO_CLASSES = ["","person","bicycle","car","motorcycle","airplane","bus","train","truck","boat","traffic light","fire hydrant","","stop sign","parking meter","bench","bird","cat","dog","horse","sheep","cow","elephant","bear","zebra","giraffe","","backpack","umbrella","","","handbag","tie","suitcase","frisbee","skis","snowboard","sports ball","kite","baseball bat","baseball glove","skateboard","surfboard","tennis racket","bottle","","wine glass","cup","fork","knife","spoon","bowl","banana","apple","sandwich","orange","broccoli","carrot","hot dog","pizza","donut","cake","chair","couch","potted plant","bed","","dining table","","","toilet","","tv","laptop","mouse","remote","keyboard","cell phone","microwave","oven","toaster","sink","refrigerator","","book","clock","vase","scissors","teddy bear","hair drier"]
 detr_to_yolo = [80, 0, 1, 2, -1, -1, 5, 6, 7, 8, 9, 10, 80, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 80, 24, 25, 80, 80, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 80, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, -1, -1, 59, 80, -1, 80, 80, 61, 80, -1, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 80, 73, 74, 75, 76, 77, 78]
@@ -611,7 +612,7 @@ class RFDETR():
     boxes = box_cxcywh_to_xyxy(out_bbox)
     boxes = Tensor.gather(boxes, 1, topk_boxes.unsqueeze(-1).repeat(1,1,4))
     ret = Tensor.cat(boxes.squeeze(0), topk_values.squeeze(0).unsqueeze(1), labels.squeeze(0).unsqueeze(1), dim=1)
-    ret = self.scale_boxes(img.shape[:2], ret, img.shape)
+    ret = self.scale_boxes(pre.shape[2:], ret, img.shape[:2])
     return ret
 
   def predict(self, samples, targets=None):
@@ -629,20 +630,40 @@ class RFDETR():
     outputs_class = self.class_embed(hs)[-1]
     return outputs_class, outputs_coord[-1]
   
-  def preprocess(self, frame):
-    img = frame.cast(dtypes.float32)
+  def preprocess(self, img):
+    img = img.cast(dtypes.float32)
     img = img[:, :, ::-1]
     img /= 255.0
-    img = resize(img, (self.res, self.res))
+    h, w = img.shape[:2]
+    scale = self.res / max(h, w)
+    new_w = int(w * scale)
+    new_h = int(h * scale)
+    img = resize(img, (new_w, new_h))
+    canvas = Tensor.zeros((self.res, self.res, 3))
+    pad_x = (self.res - new_w) // 2
+    pad_y = (self.res - new_h) // 2
+    canvas[pad_y:pad_y+new_h, pad_x:pad_x+new_w] = img
+    img = canvas
     img = (img - self.means) / self.stds
     img = img.permute(2, 0, 1).unsqueeze(0)
     return img
-
+  
   def scale_boxes(self, img1_shape, predictions, img0_shape):
-    predictions[:,0] *= img0_shape[1]
-    predictions[:,1] *= img0_shape[0]
-    predictions[:,2] *= img0_shape[1]
-    predictions[:,3] *= img0_shape[0]
+    orig_h, orig_w = img0_shape[0], img0_shape[1]
+    proc_h, proc_w = img1_shape[0], img1_shape[1]
+    scale = min(proc_w / orig_w, proc_h / orig_h)
+    new_w = int(orig_w * scale)
+    new_h = int(orig_h * scale)
+    pad_x = (proc_w - new_w) // 2
+    pad_y = (proc_h - new_h) // 2
+    predictions[:, 0] = (predictions[:, 0] * proc_w - pad_x) / scale
+    predictions[:, 1] = (predictions[:, 1] * proc_h - pad_y) / scale
+    predictions[:, 2] = (predictions[:, 2] * proc_w - pad_x) / scale
+    predictions[:, 3] = (predictions[:, 3] * proc_h - pad_y) / scale
+    predictions[:, 0] = Tensor.clip(predictions[:, 0], 0, orig_w)
+    predictions[:, 1] = Tensor.clip(predictions[:, 1], 0, orig_h)
+    predictions[:, 2] = Tensor.clip(predictions[:, 2], 0, orig_w)
+    predictions[:, 3] = Tensor.clip(predictions[:, 3], 0, orig_h)
     return predictions
 
 def box_cxcywh_to_xyxy(x):
