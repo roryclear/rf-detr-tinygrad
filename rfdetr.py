@@ -639,24 +639,20 @@ class RFDETR():
       new_w = int(w * scale)
       new_h = int(h * scale)
       resized = resize(img, (new_w, new_h))
-      img = resized.numpy()
-      resized = resized.numpy()
       
       # Create a canvas of size self.res x self.res with zeros (black background)
-      canvas = np.zeros((self.res, self.res, 3), dtype=np.float32)
+      canvas = Tensor.zeros((self.res, self.res, 3))
       
       # Calculate padding to center the image
       pad_x = (self.res - new_w) // 2
       pad_y = (self.res - new_h) // 2
-      
-      # Place the resized image on the canvas
+
       canvas[pad_y:pad_y+new_h, pad_x:pad_x+new_w] = resized
       
       img = canvas
-      cv2.imwrite("img.jpg", (img * 255).astype(np.uint8))
       # Apply mean and std normalization
-      img = (img - self.means.numpy()) / self.stds.numpy()
-      
+      img = (img - self.means) / self.stds
+      img = img.numpy()
       # Convert from HWC to CHW format (no batch dimension)
       img = np.transpose(img, (2, 0, 1))
       return Tensor(img).unsqueeze(0)
