@@ -630,27 +630,17 @@ class RFDETR():
     outputs_class = self.class_embed(hs)[-1]
     return outputs_class, outputs_coord[-1]
   
-  def preprocess(self, frame):
-      frame = frame.numpy()
-      # frame is a numpy array (H, W, C) in BGR format
-      img = frame.astype(np.float32)
-      
-      # Convert BGR to RGB ([:, :, ::-1])
+  def preprocess(self, img):
+      img = img.cast(dtypes.float32)
       img = img[:, :, ::-1]
-      
-      # Normalize to [0, 1]
       img /= 255.0
-      
-      # Resize with letterboxing/pillarboxing
       h, w = img.shape[:2]
-      
-      # Calculate scaling factor to fit within self.res x self.res
       scale = self.res / max(h, w)
       new_w = int(w * scale)
       new_h = int(h * scale)
-      
-      # Resize the image
-      resized = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+      resized = resize(img, (new_w, new_h))
+      img = resized.numpy()
+      resized = resized.numpy()
       
       # Create a canvas of size self.res x self.res with zeros (black background)
       canvas = np.zeros((self.res, self.res, 3), dtype=np.float32)
@@ -663,7 +653,7 @@ class RFDETR():
       canvas[pad_y:pad_y+new_h, pad_x:pad_x+new_w] = resized
       
       img = canvas
-      
+      cv2.imwrite("img.jpg", (img * 255).astype(np.uint8))
       # Apply mean and std normalization
       img = (img - self.means.numpy()) / self.stds.numpy()
       
