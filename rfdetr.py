@@ -631,31 +631,22 @@ class RFDETR():
     return outputs_class, outputs_coord[-1]
   
   def preprocess(self, img):
-      img = img.cast(dtypes.float32)
-      img = img[:, :, ::-1]
-      img /= 255.0
-      h, w = img.shape[:2]
-      scale = self.res / max(h, w)
-      new_w = int(w * scale)
-      new_h = int(h * scale)
-      resized = resize(img, (new_w, new_h))
-      
-      # Create a canvas of size self.res x self.res with zeros (black background)
-      canvas = Tensor.zeros((self.res, self.res, 3))
-      
-      # Calculate padding to center the image
-      pad_x = (self.res - new_w) // 2
-      pad_y = (self.res - new_h) // 2
-
-      canvas[pad_y:pad_y+new_h, pad_x:pad_x+new_w] = resized
-      
-      img = canvas
-      # Apply mean and std normalization
-      img = (img - self.means) / self.stds
-      img = img.numpy()
-      # Convert from HWC to CHW format (no batch dimension)
-      img = np.transpose(img, (2, 0, 1))
-      return Tensor(img).unsqueeze(0)
+    img = img.cast(dtypes.float32)
+    img = img[:, :, ::-1]
+    img /= 255.0
+    h, w = img.shape[:2]
+    scale = self.res / max(h, w)
+    new_w = int(w * scale)
+    new_h = int(h * scale)
+    img = resize(img, (new_w, new_h))
+    canvas = Tensor.zeros((self.res, self.res, 3))
+    pad_x = (self.res - new_w) // 2
+    pad_y = (self.res - new_h) // 2
+    canvas[pad_y:pad_y+new_h, pad_x:pad_x+new_w] = img
+    img = canvas
+    img = (img - self.means) / self.stds
+    img = img.permute(2, 0, 1).unsqueeze(0)
+    return img
   
   def scale_boxes(self, img1_shape, predictions, img0_shape):
       print(img1_shape, img0_shape)
