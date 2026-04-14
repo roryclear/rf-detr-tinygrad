@@ -45,7 +45,7 @@ PYTHONPATH=. BEAM=2 DEBUG=2 python test/test_jit.py
 ## without BEAM=2:
 | Model | Resolution | FPS |
 |-------|------------|-----|
-| nano | 384 | 9.63 |
-| small | 512 | 5.39 |
-| medium | 576 | 4.04 |
-| large | 704 | 2.32 |
+| nano | 384 | 10.14 |
+| small | 512 | 5.56 |
+| medium | 576 | 4.15 |
+| large | 704 | 2.37 |
