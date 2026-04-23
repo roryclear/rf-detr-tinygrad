@@ -49,3 +49,11 @@ PYTHONPATH=. BEAM=2 DEBUG=2 python test/test_jit.py
 | small | 512 | 5.56 |
 | medium | 576 | 4.15 |
 | large | 704 | 2.37 |
+
+# Speed (RX7600 via tinygrad egpu)
+| Model | Resolution | FPS |
+|-------|------------|-----|
+| nano | 384 | 64.04 |
+| small | 512 | 22.73 |
+| medium | 576 | 21.21 |
+| large | 704 | 12.16 |
